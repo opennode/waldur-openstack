@@ -58,6 +58,14 @@ def delete_tenant_with_spl(serialized_tenant):
     spl.delete()
 
 
+# TODO: move this signal to gcloud assembly application
+@shared_task
+def register_instance_in_zabbix(instance_uuid):
+    from nodeconductor.template.zabbix import register_instance
+    instance = models.Instance.objects.get(uuid=instance_uuid)
+    register_instance(instance)
+
+
 # Temporary task. Should be removed after tenant will be connected to instance.
 class SecurityGroupCreationTask(BackendMethodTask):
     """ Create tenant for SPL if it does not exist and execute backend method """

@@ -1,5 +1,7 @@
 from django.apps import AppConfig
+from django.conf import settings
 from django.db.models import signals
+from django_fsm import signals as fsm_signals
 
 
 class OpenStackConfig(AppConfig):
@@ -95,3 +97,11 @@ class OpenStackConfig(AppConfig):
             sender=OpenStackServiceProjectLink,
             dispatch_uid='nodeconductor_openstack.handlers.autocreate_spl_tenant',
         )
+
+        # TODO: this should be moved to itacloud assembly application
+        if getattr(settings, 'NODECONDUCTOR', {}).get('IS_ITACLOUD', False):
+            fsm_signals.post_transition.connect(
+                handlers.create_host_for_instance,
+                sender=Instance,
+                dispatch_uid='nodeconductor.template.handlers.create_host_for_instance',
+            )

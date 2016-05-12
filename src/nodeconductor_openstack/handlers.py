@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from . import executors
 from .log import event_logger
 from .models import SecurityGroup, SecurityGroupRule, OpenStackServiceProjectLink
+from nodeconductor_openstack.tasks import register_instance_in_zabbix
 
 
 logger = logging.getLogger(__name__)
@@ -144,3 +145,10 @@ def autocreate_spl_tenant(sender, instance, created=False, **kwargs):
         # Execute Celery task only after transaction commits
         # Need countdown to make sure that tenant will exist in database on task execution
         executors.TenantCreateExecutor.execute(tenant, countdown=2)
+
+
+# TODO: move this handler to itacloud assembly
+def create_host_for_instance(sender, instance, name, source, target, **kwargs):
+    """ Add Zabbix host to OpenStack instance on creation """
+    if source == Instance.States.PROVISIONING and target == Instance.States.ONLINE:
+        register_instance_in_zabbix.delay(instance.uuid.hex)
