@@ -31,6 +31,10 @@ class OpenStackService(structure_models.Service):
         verbose_name = 'OpenStack service'
         verbose_name_plural = 'OpenStack services'
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack'
+
     @property
     def auth_url(self):
         # XXX: Temporary backward compatibility
@@ -53,6 +57,10 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
     class Meta(structure_models.ServiceProjectLink.Meta):
         verbose_name = 'OpenStack service project link'
         verbose_name_plural = 'OpenStack service project links'
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-spl'
 
     @property
     def cloud(self):
@@ -251,6 +259,10 @@ class Instance(structure_models.VirtualMachineMixin,
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
 
     tracker = FieldTracker()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-instance'
 
     @property
     def cloud_project_membership(self):
