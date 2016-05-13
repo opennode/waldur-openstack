@@ -12,7 +12,7 @@ class OpenStackServiceFactory(factory.DjangoModelFactory):
         model = models.OpenStackService
 
     name = factory.Sequence(lambda n: 'service%s' % n)
-    settings = factory.SubFactory(structure_factories.ServiceSettingsFactory)
+    settings = factory.SubFactory(structure_factories.ServiceSettingsFactory, type='OpenStack')
     customer = factory.SubFactory(structure_factories.CustomerFactory)
 
     @classmethod
