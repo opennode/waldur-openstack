@@ -1,7 +1,6 @@
 from mock import patch
 from rest_framework import status, test
 
-from nodeconductor.structure import SupportedServices
 from nodeconductor.structure.models import ServiceSettings, ProjectRole, CustomerRole, ProjectGroupRole
 from nodeconductor.structure.tests import factories as structure_factories
 from .. import models
@@ -42,8 +41,7 @@ class ServicePermissionTest(test.APITransactionTestCase):
             'not_in_project': factories.OpenStackServiceFactory(),
         }
 
-        self.settings = structure_factories.ServiceSettingsFactory(
-            type=SupportedServices.Types.OpenStack, customer=self.customers['owned'])
+        self.settings = structure_factories.ServiceSettingsFactory(type="OpenStack", customer=self.customers['owned'])
         self.customers['owned'].add_user(self.users['customer_owner'], CustomerRole.OWNER)
 
         self.projects['admined'].add_user(self.users['project_admin'], ProjectRole.ADMINISTRATOR)
