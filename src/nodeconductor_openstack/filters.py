@@ -78,6 +78,11 @@ class FloatingIPFilter(django_filters.FilterSet):
     service = django_filters.CharFilter(
         name='service_project_link__service__uuid',
     )
+    service_project_link = core_filters.URLFilter(
+        view_name='openstack-spl-detail',
+        name='service_project_link__pk',
+        lookup_field='pk',
+    )
 
     class Meta(object):
         model = models.FloatingIP
@@ -85,6 +90,7 @@ class FloatingIPFilter(django_filters.FilterSet):
             'project',
             'service',
             'status',
+            'service_project_link',
         ]
 
 
