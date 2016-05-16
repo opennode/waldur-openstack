@@ -23,7 +23,7 @@ class BackupEventLogger(EventLogger):
 
 class InstanceFlavorChangeEventLogger(EventLogger):
     resource = 'structure.Resource'
-    flavor = 'nodeconductor_openstack.Flavor'
+    flavor = 'openstack.Flavor'
 
     class Meta:
         event_types = ('resource_flavor_change_scheduled',
