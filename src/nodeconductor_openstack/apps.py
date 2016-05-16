@@ -10,6 +10,7 @@ class OpenStackConfig(AppConfig):
         tenants, instances, security groups and networks.
     """
     name = 'nodeconductor_openstack'
+    label = 'openstack'
     verbose_name = 'OpenStack'
     service_name = 'OpenStack'
 

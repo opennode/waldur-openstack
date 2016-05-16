@@ -149,7 +149,7 @@ class Migration(migrations.Migration):
             name='InstanceSecurityGroup',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('instance', models.ForeignKey(related_name='security_groups', to='nodeconductor_openstack.Instance')),
+                ('instance', models.ForeignKey(related_name='security_groups', to='openstack.Instance')),
             ],
         ),
         migrations.CreateModel(
@@ -172,7 +172,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('project', models.ForeignKey(to='structure.Project')),
-                ('service', models.ForeignKey(to='nodeconductor_openstack.OpenStackService')),
+                ('service', models.ForeignKey(to='openstack.OpenStackService')),
             ],
             options={
                 'abstract': False,
@@ -191,7 +191,7 @@ class Migration(migrations.Migration):
                 ('error_message', models.TextField(blank=True)),
                 ('state', django_fsm.FSMIntegerField(default=5, choices=[(5, 'Creation Scheduled'), (6, 'Creating'), (1, 'Update Scheduled'), (2, 'Updating'), (7, 'Deletion Scheduled'), (8, 'Deleting'), (3, 'OK'), (4, 'Erred')])),
                 ('backend_id', models.CharField(max_length=128, blank=True)),
-                ('service_project_link', models.ForeignKey(related_name='security_groups', to='nodeconductor_openstack.OpenStackServiceProjectLink')),
+                ('service_project_link', models.ForeignKey(related_name='security_groups', to='openstack.OpenStackServiceProjectLink')),
             ],
             options={
                 'abstract': False,
@@ -206,7 +206,7 @@ class Migration(migrations.Migration):
                 ('to_port', models.IntegerField(null=True, validators=[django.core.validators.MaxValueValidator(65535)])),
                 ('cidr', models.CharField(max_length=32, blank=True)),
                 ('backend_id', models.CharField(max_length=128, blank=True)),
-                ('security_group', models.ForeignKey(related_name='rules', to='nodeconductor_openstack.SecurityGroup')),
+                ('security_group', models.ForeignKey(related_name='rules', to='openstack.SecurityGroup')),
             ],
         ),
         migrations.CreateModel(
@@ -228,7 +228,7 @@ class Migration(migrations.Migration):
                 ('availability_zone', models.CharField(help_text='Optional availability group. Will be used for all instances provisioned in this tenant', max_length=100, blank=True)),
                 ('user_username', models.CharField(max_length=50, blank=True)),
                 ('user_password', models.CharField(max_length=50, blank=True)),
-                ('service_project_link', models.ForeignKey(related_name='tenants', on_delete=django.db.models.deletion.PROTECT, to='nodeconductor_openstack.OpenStackServiceProjectLink')),
+                ('service_project_link', models.ForeignKey(related_name='tenants', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink')),
                 ('tags', taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags')),
             ],
             options={
@@ -239,7 +239,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='openstackservice',
             name='projects',
-            field=models.ManyToManyField(related_name='openstack_services', through='nodeconductor_openstack.OpenStackServiceProjectLink', to='structure.Project'),
+            field=models.ManyToManyField(related_name='openstack_services', through='openstack.OpenStackServiceProjectLink', to='structure.Project'),
         ),
         migrations.AddField(
             model_name='openstackservice',
@@ -249,12 +249,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='instancesecuritygroup',
             name='security_group',
-            field=models.ForeignKey(related_name='instance_groups', to='nodeconductor_openstack.SecurityGroup'),
+            field=models.ForeignKey(related_name='instance_groups', to='openstack.SecurityGroup'),
         ),
         migrations.AddField(
             model_name='instance',
             name='service_project_link',
-            field=models.ForeignKey(related_name='instances', on_delete=django.db.models.deletion.PROTECT, to='nodeconductor_openstack.OpenStackServiceProjectLink'),
+            field=models.ForeignKey(related_name='instances', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink'),
         ),
         migrations.AddField(
             model_name='instance',
@@ -264,22 +264,22 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='floatingip',
             name='service_project_link',
-            field=models.ForeignKey(related_name='floating_ips', to='nodeconductor_openstack.OpenStackServiceProjectLink'),
+            field=models.ForeignKey(related_name='floating_ips', to='openstack.OpenStackServiceProjectLink'),
         ),
         migrations.AddField(
             model_name='backupschedule',
             name='instance',
-            field=models.ForeignKey(related_name='backup_schedules', to='nodeconductor_openstack.Instance'),
+            field=models.ForeignKey(related_name='backup_schedules', to='openstack.Instance'),
         ),
         migrations.AddField(
             model_name='backup',
             name='backup_schedule',
-            field=models.ForeignKey(related_name='backups', on_delete=django.db.models.deletion.SET_NULL, blank=True, to='nodeconductor_openstack.BackupSchedule', null=True),
+            field=models.ForeignKey(related_name='backups', on_delete=django.db.models.deletion.SET_NULL, blank=True, to='openstack.BackupSchedule', null=True),
         ),
         migrations.AddField(
             model_name='backup',
             name='instance',
-            field=models.ForeignKey(related_name='backups', to='nodeconductor_openstack.Instance'),
+            field=models.ForeignKey(related_name='backups', to='openstack.Instance'),
         ),
         migrations.AlterUniqueTogether(
             name='openstackserviceprojectlink',
