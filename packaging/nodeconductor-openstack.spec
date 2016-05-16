@@ -1,5 +1,5 @@
 Name: nodeconductor-openstack
-Summary: Oracle OpenStack plugin for NodeConductor
+Summary: OpenStack plugin for NodeConductor
 Group: Development/Libraries
 Version: 0.2.0
 Release: 1.el7
