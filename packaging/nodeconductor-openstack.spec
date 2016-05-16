@@ -8,13 +8,14 @@ Url: http://nodeconductor.com
 Source0: %{name}-%{version}.tar.gz
 
 Requires: nodeconductor >= 0.97.0
+Requires: python-ceilometerclient = 1.0.12
 Requires: python-cinderclient = 1.1.1
 Requires: python-glanceclient = 1:0.15.0
 Requires: python-iptools >= 0.6.1
 Requires: python-keystoneclient = 1:0.11.1
 Requires: python-neutronclient = 2.3.9
 Requires: python-novaclient = 1:2.20.0
-Requires: PyYAML
+
 BuildArch: noarch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 
