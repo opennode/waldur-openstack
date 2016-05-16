@@ -3,9 +3,9 @@ from nodeconductor.structure import models as structure_models, perms as structu
 
 
 PERMISSION_LOGICS = (
-    ('nodeconductor_openstack.OpenStackService', structure_perms.service_permission_logic),
-    ('nodeconductor_openstack.OpenStackServiceProjectLink', structure_perms.service_project_link_permission_logic),
-    ('nodeconductor_openstack.SecurityGroup', FilteredCollaboratorsPermissionLogic(
+    ('openstack.OpenStackService', structure_perms.service_permission_logic),
+    ('openstack.OpenStackServiceProjectLink', structure_perms.service_project_link_permission_logic),
+    ('openstack.SecurityGroup', FilteredCollaboratorsPermissionLogic(
         collaborators_query=[
             'service_project_link__service__customer__roles__permission_group__user',
             'service_project_link__project__roles__permission_group__user',
@@ -19,7 +19,7 @@ PERMISSION_LOGICS = (
         ],
         any_permission=True,
     )),
-    ('nodeconductor_openstack.SecurityGroupRule', FilteredCollaboratorsPermissionLogic(
+    ('openstack.SecurityGroupRule', FilteredCollaboratorsPermissionLogic(
         collaborators_query=[
             'security_group__service_project_link__service__customer__roles__permission_group__user',
             'security_group__service_project_link__project__roles__permission_group__user',
@@ -35,7 +35,7 @@ PERMISSION_LOGICS = (
         ],
         any_permission=True,
     )),
-    ('nodeconductor_openstack.BackupSchedule', FilteredCollaboratorsPermissionLogic(
+    ('openstack.BackupSchedule', FilteredCollaboratorsPermissionLogic(
         collaborators_query=[
             'instance__service_project_link__service__customer__roles__permission_group__user',
             'instance__service_project_link__project__roles__permission_group__user',
@@ -51,7 +51,7 @@ PERMISSION_LOGICS = (
         ],
         any_permission=True,
     )),
-    ('nodeconductor_openstack.Backup', FilteredCollaboratorsPermissionLogic(
+    ('openstack.Backup', FilteredCollaboratorsPermissionLogic(
         collaborators_query=[
             'instance__service_project_link__service__customer__roles__permission_group__user',
             'instance__service_project_link__project__roles__permission_group__user',
@@ -67,9 +67,9 @@ PERMISSION_LOGICS = (
         ],
         any_permission=True,
     )),
-    ('nodeconductor_openstack.Instance', structure_perms.resource_permission_logic),
-    ('nodeconductor_openstack.Tenant', structure_perms.resource_permission_logic),
-    ('nodeconductor_openstack.Flavor', StaffPermissionLogic(any_permission=True)),
-    ('nodeconductor_openstack.Image', StaffPermissionLogic(any_permission=True)),
-    ('nodeconductor_openstack.FloatingIP', StaffPermissionLogic(any_permission=True)),
+    ('openstack.Instance', structure_perms.resource_permission_logic),
+    ('openstack.Tenant', structure_perms.resource_permission_logic),
+    ('openstack.Flavor', StaffPermissionLogic(any_permission=True)),
+    ('openstack.Image', StaffPermissionLogic(any_permission=True)),
+    ('openstack.FloatingIP', StaffPermissionLogic(any_permission=True)),
 )
