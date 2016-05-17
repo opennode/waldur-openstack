@@ -365,7 +365,7 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'instance': {'lookup_field': 'uuid'},
-            'backups': {'lookup_field': 'uuid'},
+            'backups': {'lookup_field': 'uuid', 'view_name': 'openstack-backup-detail'},
         }
 
 
@@ -388,7 +388,7 @@ class BackupSerializer(serializers.HyperlinkedModelSerializer):
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'instance': {'lookup_field': 'uuid'},
-            'backup_schedule': {'lookup_field': 'uuid'},
+            'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
         }
 
 

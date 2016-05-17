@@ -58,7 +58,7 @@ def delete_tenant_with_spl(serialized_tenant):
     spl.delete()
 
 
-# TODO: move this signal to gcloud assembly application
+# TODO: move this signal to itacloud assembly application
 @shared_task
 def register_instance_in_zabbix(instance_uuid):
     from nodeconductor.template.zabbix import register_instance
