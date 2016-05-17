@@ -35,11 +35,6 @@ class OpenStackService(structure_models.Service):
     def get_url_name(cls):
         return 'openstack'
 
-    @property
-    def auth_url(self):
-        # XXX: Temporary backward compatibility
-        return self.settings.backend_url
-
 
 class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
@@ -61,21 +56,6 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
     @classmethod
     def get_url_name(cls):
         return 'openstack-spl'
-
-    @property
-    def cloud(self):
-        # XXX: Temporary backward compatibility
-        return self.service
-
-    @property
-    def username(self):
-        # XXX: Temporary backward compatibility
-        return self.service.settings.username
-
-    @property
-    def password(self):
-        # XXX: Temporary backward compatibility
-        return self.service.settings.password
 
     def get_backend(self):
         return super(OpenStackServiceProjectLink, self).get_backend(tenant_id=self.tenant_id)
@@ -263,11 +243,6 @@ class Instance(structure_models.VirtualMachineMixin,
     @classmethod
     def get_url_name(cls):
         return 'openstack-instance'
-
-    @property
-    def cloud_project_membership(self):
-        # XXX: Temporary backward compatibility. To be removed after IaaS removal.
-        return self.service_project_link
 
     def get_log_fields(self):
         return (
