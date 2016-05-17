@@ -100,7 +100,7 @@ class OpenStackClient(object):
         self.verify_ssl = verify_ssl
         if session:
             if isinstance(session, dict):
-                logger.info('Trying to recover OpenStack session.')
+                logger.debug('Trying to recover OpenStack session.')
                 self.session = OpenStackSession.recover(session, verify_ssl=verify_ssl)
                 self.session.validate()
             else:
@@ -248,7 +248,7 @@ class OpenStackBackend(ServiceBackend):
             logger.exception('Failed to synchronize OpenStack service %s', self.settings.backend_url)
             six.reraise(OpenStackBackendError, e)
         else:
-            logger.info('Successfully synchronized OpenStack service %s', self.settings.backend_url)
+            logger.debug('Successfully synchronized OpenStack service %s', self.settings.backend_url)
 
     def provision(self, instance, flavor=None, image=None, ssh_key=None, **kwargs):
         if ssh_key:
@@ -329,7 +329,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         else:
             # Found a key with the same fingerprint, skip adding
-            logger.info('Skipped propagating ssh public key %s to backend', key_name)
+            logger.debug('Skipped propagating ssh public key %s to backend', key_name)
 
     def remove_ssh_key(self, ssh_key, service_project_link):
         if service_project_link.tenant is not None:
@@ -1137,7 +1137,7 @@ class OpenStackBackend(ServiceBackend):
                 instance.system_volume_size = instance_data['system_volume_size']
                 instance.data_volume_size = instance_data['data_volume_size']
                 instance.save()
-                logger.info('Instance %s (PK: %s) has been successfully pulled from OpenStack.', instance, instance.pk)
+                logger.debug('Instance %s (PK: %s) has been successfully pulled from OpenStack.', instance, instance.pk)
 
     # XXX: This method should be deleted after tenant separation from SPL.
     def cleanup(self, dryrun=True):
