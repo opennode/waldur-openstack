@@ -16,3 +16,12 @@ Installation
     cd /path/to/nodeconductor-openstack/
     python setup.py install
 
+
+Installation from RPM repository
+--------------------------------
+
+To make sure dependencies are available, first install RDO repository.
+
+.. code-block:: bash
+    yum -y install http://opennodecloud.com/centos/7/rdo-release.rpm
+    yum -y install nodeconductor-openstack
