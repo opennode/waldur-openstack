@@ -519,7 +519,8 @@ class OpenStackBackend(ServiceBackend):
     def push_tenant_quotas(self, tenant, quotas):
         if 'instances' in quotas:
             # convert instances quota to volumes and snapshots.
-            quotas_ratios = django_settings.NODECONDUCTOR.get('OPENSTACK_QUOTAS_INSTANCE_RATIOS', {})
+            quotas_ratios = getattr(django_settings, 'NODECONDUCTOR_OPENSTACK', {}).get(
+                'OPENSTACK_QUOTAS_INSTANCE_RATIOS', {})
             volume_ratio = quotas_ratios.get('volumes', 4)
             snapshots_ratio = quotas_ratios.get('snapshots', 20)
 
