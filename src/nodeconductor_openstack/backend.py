@@ -2043,7 +2043,6 @@ class OpenStackBackend(ServiceBackend):
             kwargs['imageRef'] = volume.image.backend_id
         # TODO: set backend volume metadata if it is defined in NC.
         cinder = self.cinder_client
-        print 'Creating volume with kwargs', kwargs
         try:
             backend_volume = cinder.volumes.create(**kwargs)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
