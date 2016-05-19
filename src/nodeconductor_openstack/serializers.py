@@ -784,7 +784,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
             size = attrs['size']
             if image and image.min_disk > size:
                 raise serializers.ValidationError(
-                    'Volume size should be greater than %s for selected image' % image.min_disk)
+                    'Volume size should be equal or greater than %s for selected image' % image.min_disk)
             # TODO: add tenant quota validation (NC-1405)
         return attrs
 

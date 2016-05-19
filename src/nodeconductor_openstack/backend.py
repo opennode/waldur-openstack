@@ -2050,7 +2050,7 @@ class OpenStackBackend(ServiceBackend):
         volume.backend_id = backend_volume.id
         if hasattr(backend_volume, 'volume_image_metadata'):
             volume.image_metadata = backend_volume.volume_image_metadata
-        volume.bootable = True if backend_volume.bootable == 'true' else False
+        volume.bootable = backend_volume.bootable == 'true'
         volume.runtime_state = backend_volume.status
         volume.save()
 

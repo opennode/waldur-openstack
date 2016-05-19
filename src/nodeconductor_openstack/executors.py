@@ -234,6 +234,7 @@ class VolumeUpdateExecutor(executors.UpdateExecutor):
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         updated_fields = kwargs['updated_fields']
+        # TODO: call separate task on metadata update
         if 'name' in updated_fields or 'description' in updated_fields:
             return tasks.BackendMethodTask().si(serialized_volume, 'update_volume', state_transition='begin_updating')
         else:
