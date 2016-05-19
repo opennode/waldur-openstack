@@ -2029,3 +2029,56 @@ class OpenStackBackend(ServiceBackend):
         logger.info('Successfully created snapshot %s for volume %s', snapshot.id, volume_id)
 
         return snapshot
+
+    @log_backend_action()
+    def create_volume(self, volume):
+        kwargs = {
+            'size': self.mb2gb(volume.size),
+            'display_name': volume.name,
+            'display_description': volume.description,
+        }
+        if volume.type:
+            kwargs['type'] = volume.type
+        if volume.image:
+            kwargs['imageRef'] = volume.image.backend_id
+        # TODO: set backend volume metadata if it is defined in NC.
+        cinder = self.cinder_client
+        print 'Creating volume with kwargs', kwargs
+        try:
+            backend_volume = cinder.volumes.create(**kwargs)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        volume.backend_id = backend_volume.id
+        if hasattr(backend_volume, 'volume_image_metadata'):
+            volume.image_metadata = backend_volume.volume_image_metadata
+        volume.bootable = True if backend_volume.bootable == 'true' else False
+        volume.runtime_state = backend_volume.status
+        volume.save()
+
+    @log_backend_action()
+    def pull_volume_runtime_state(self, volume):
+        cinder = self.cinder_client
+        try:
+            backend_volume = cinder.volumes.get(volume.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        if backend_volume.status != volume.runtime_state:
+            volume.runtime_state = backend_volume.status
+            volume.save(update_fields=['runtime_state'])
+
+    @log_backend_action()
+    def update_volume(self, volume):
+        # TODO: add metadata update
+        cinder = self.cinder_client
+        try:
+            cinder.volumes.update(volume.backend_id, display_name=volume.name, display_description=volume.description)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_volume(self, volume):
+        cinder = self.cinder_client
+        try:
+            cinder.volumes.delete(volume.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)

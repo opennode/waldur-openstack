@@ -376,8 +376,7 @@ class Backup(core_models.UuidMixin,
         pass
 
 
-class Tenant(core_models.RuntimeStateMixin, core_models.StateMixin,
-             structure_models.PrivateCloudMixin, structure_models.ResourceMixin):
+class Tenant(core_models.RuntimeStateMixin, structure_models.PrivateCloudMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='tenants', on_delete=models.PROTECT)
 
@@ -394,3 +393,18 @@ class Tenant(core_models.RuntimeStateMixin, core_models.StateMixin,
 
     def get_backend(self):
         return self.service_project_link.service.get_backend(tenant_id=self.backend_id)
+
+
+class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
+    service_project_link = models.ForeignKey(
+        OpenStackServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
+    tenant = models.ForeignKey(Tenant, related_name='volumes')
+    size = models.PositiveIntegerField(help_text='Size in MiB')
+    bootable = models.BooleanField(default=False)
+    metadata = JSONField(blank=True)
+    image = models.ForeignKey(Image, null=True)
+    image_metadata = JSONField(blank=True)
+    type = models.CharField(max_length=100, blank=True)
+
+    def get_backend(self):
+        return self.tenant.get_backend()
