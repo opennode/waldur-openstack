@@ -1030,3 +1030,14 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
+
+
+class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         structure_views.ResourceViewMixin,
+                                         StateExecutorViewSet)):
+    queryset = models.Snapshot.objects.all()
+    serializer_class = serializers.SnapshotSerializer
+    create_executor = executors.SnapshotCreateExecutor
+    update_executor = executors.SnapshotUpdateExecutor
+    delete_executor = executors.SnapshotDeleteExecutor
+    filter_class = structure_filters.BaseResourceStateFilter

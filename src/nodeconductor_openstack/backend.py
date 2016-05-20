@@ -1922,7 +1922,7 @@ class OpenStackBackend(ServiceBackend):
             snapshot_ids = []
             for volume_id in volume_ids:
                 # create a temporary snapshot
-                snapshot = self.create_snapshot(volume_id, cinder)
+                snapshot = self._create_snapshot(volume_id, cinder)
                 service_project_link.add_quota_usage('storage', self.gb2mb(snapshot.size))
                 snapshot_ids.append(snapshot.id)
 
@@ -2009,7 +2009,8 @@ class OpenStackBackend(ServiceBackend):
             logger.error('Tenant with id %s does not exist', tenant.backend_id)
             six.reraise(OpenStackBackendError, e)
 
-    def create_snapshot(self, volume_id, cinder):
+    # deprecated. Use method create_snapshot with Snapshot model instance as parameter
+    def _create_snapshot(self, volume_id, cinder):
         """
         Create snapshot from volume
 
@@ -2080,5 +2081,51 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             cinder.volumes.delete(volume.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def create_snapshot(self, snapshot, force=False):
+        kwargs = {
+            'display_name': snapshot.name,
+            'display_description': snapshot.description,
+        }
+        # TODO: set backend snapshot metadata if it is defined in NC.
+        cinder = self.cinder_client
+        try:
+            backend_snapshot = cinder.volume_snapshots.create(snapshot.volume.backend_id, force=force, **kwargs)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        snapshot.backend_id = backend_snapshot.id
+        snapshot.runtime_state = backend_snapshot.status
+        snapshot.size = self.gb2mb(backend_snapshot.size)
+        snapshot.save()
+
+    @log_backend_action()
+    def pull_snapshot_runtime_state(self, snapshot):
+        cinder = self.cinder_client
+        try:
+            backend_snapshot = cinder.volume_snapshots.get(snapshot.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        if backend_snapshot.status != snapshot.runtime_state:
+            snapshot.runtime_state = backend_snapshot.status
+            snapshot.save(update_fields=['runtime_state'])
+
+    @log_backend_action()
+    def delete_snapshot(self, snapshot):
+        cinder = self.cinder_client
+        try:
+            cinder.volume_snapshots.delete(snapshot.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def update_snapshot(self, snapshot):
+        # TODO: add metadata update
+        cinder = self.cinder_client
+        try:
+            cinder.volume_snapshots.update(
+                snapshot.backend_id, display_name=snapshot.name, display_description=snapshot.description)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)

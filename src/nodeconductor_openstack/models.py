@@ -408,3 +408,14 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
 
     def get_backend(self):
         return self.tenant.get_backend()
+
+
+class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
+    service_project_link = models.ForeignKey(
+        OpenStackServiceProjectLink, related_name='shapshots', on_delete=models.PROTECT)
+    volume = models.ForeignKey(Volume, related_name='shapshots')
+    size = models.PositiveIntegerField(help_text='Size in MiB')
+    metadata = JSONField(blank=True)
+
+    def get_backend(self):
+        return self.volume.get_backend()
