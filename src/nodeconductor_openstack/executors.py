@@ -250,3 +250,42 @@ class VolumeDeleteExecutor(executors.DeleteExecutor):
                 serialized_volume, 'delete_volume', state_transition='begin_deleting')
         else:
             return tasks.StateTransitionTask().si(serialized_volume, state_transition='begin_deleting')
+
+
+class SnapshotCreateExecutor(executors.CreateExecutor):
+
+    @classmethod
+    def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
+        return chain(
+            tasks.BackendMethodTask().si(serialized_snapshot, 'create_snapshot', state_transition='begin_creating'),
+            PollRuntimeStateTask().si(
+                serialized_snapshot,
+                backend_pull_method='pull_snapshot_runtime_state',
+                success_state='available',
+                erred_state='error',
+            ).set(countdown=10)
+        )
+
+
+class SnapshotUpdateExecutor(executors.UpdateExecutor):
+
+    @classmethod
+    def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
+        updated_fields = kwargs['updated_fields']
+        # TODO: call separate task on metadata update
+        if 'name' in updated_fields or 'description' in updated_fields:
+            return tasks.BackendMethodTask().si(
+                serialized_snapshot, 'update_snapshot', state_transition='begin_updating')
+        else:
+            return tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_updating')
+
+
+class SnapshotDeleteExecutor(executors.DeleteExecutor):
+
+    @classmethod
+    def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
+        if snapshot.backend_id:
+            return tasks.BackendMethodTask().si(
+                serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting')
+        else:
+            return tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
