@@ -94,7 +94,7 @@ class SecurityGroupCreationTask(BackendMethodTask):
             tenant = self.create_tenant(spl, security_group)
             # Create new security group
             backend = tenant.get_backend()
-            backend.create_security_group(security_group, *args, **kwargs)
+            backend.create_security_group(security_group)
             # Pull all security groups
             executors.TenantPullSecurityGroupsExecutor.execute(tenant, async=False)
         else:
