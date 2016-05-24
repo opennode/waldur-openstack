@@ -20,7 +20,7 @@ from cinderclient.v1 import client as cinder_client
 from glanceclient.v1 import client as glance_client
 from keystoneclient.v2_0 import client as keystone_client
 from neutronclient.v2_0 import client as neutron_client
-from novaclient.v1_1 import client as nova_client
+from novaclient.v2 import client as nova_client
 
 from cinderclient import exceptions as cinder_exceptions
 from glanceclient import exc as glance_exceptions
