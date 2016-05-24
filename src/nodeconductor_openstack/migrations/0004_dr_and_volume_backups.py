@@ -60,6 +60,7 @@ class Migration(migrations.Migration):
                 ('metadata', jsonfield.fields.JSONField(blank=True)),
                 ('service_project_link', models.ForeignKey(related_name='volume_backups', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink')),
                 ('tags', taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags')),
+                ('tenant', models.ForeignKey(related_name='volume_backups', to='openstack.Tenant')),
             ],
             options={
                 'abstract': False,
@@ -67,14 +68,25 @@ class Migration(migrations.Migration):
             bases=(nodeconductor.core.models.SerializableAbstractMixin, nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.AddField(
+            model_name='snapshot',
+            name='tenant',
+            field=models.ForeignKey(related_name='shapshots', default=1, to='openstack.Tenant'),
+            preserve_default=False,
+        ),
+        migrations.AddField(
             model_name='volume',
             name='snapshot',
-            field=models.ForeignKey(related_name='volumes', to='openstack.Snapshot', null=True),
+            field=models.ForeignKey(related_name='volumes', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Snapshot', null=True),
+        ),
+        migrations.AlterField(
+            model_name='snapshot',
+            name='volume',
+            field=models.ForeignKey(related_name='shapshots', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Volume', null=True),
         ),
         migrations.AddField(
             model_name='volumebackup',
             name='volume',
-            field=models.ForeignKey(related_name='backups', to='openstack.Volume'),
+            field=models.ForeignKey(related_name='backups', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Volume', null=True),
         ),
         migrations.AddField(
             model_name='drbackup',

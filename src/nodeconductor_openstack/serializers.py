@@ -828,18 +828,25 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Snapshot
         view_name = 'openstack-snapshot-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'volume', 'size', 'metadata',
+            'volume', 'size', 'metadata', 'tenant',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'size',
+            'size', 'tenant'
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'volume',
         )
         extra_kwargs = dict(
             volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail'},
+            tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
+
+    def get_fields(self):
+        fields = super(SnapshotSerializer, self).get_fields()
+        fields['volume'].allow_null = False
+        fields['volume'].required = True
+        return fields
 
     def validate(self, attrs):
         # TODO: add tenant quota validation (NC-1405)
@@ -848,6 +855,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         volume = validated_data['volume']
         validated_data['service_project_link'] = volume.service_project_link
+        validated_data['tenant'] = volume.tenant
         validated_data['size'] = volume.size
         return super(SnapshotSerializer, self).create(validated_data)
 

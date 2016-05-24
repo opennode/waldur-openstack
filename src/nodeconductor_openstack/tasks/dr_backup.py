@@ -10,6 +10,7 @@ class CreateTemporarySnapshotTask(tasks.Task):
         dr_backup.instance_volumes.add(volume)  # XXX: hack to store imported instance volumes.
         snapshot = models.Snapshot.objects.create(
             volume=volume,
+            tenant=volume.tenant,
             service_project_link=volume.service_project_link,
             size=volume.size,
             name='Temporary snapshot for volume: %s' % volume.name,
@@ -48,6 +49,7 @@ class CreateTemporaryVolumeBackupTask(tasks.Task):
             name=source_volume_name,
             description=source_volume_description,
             volume=volume,
+            tenant=volume.tenant,
             service_project_link=volume.service_project_link,
         )
         dr_backup.volume_backups.add(volume_backup)
@@ -86,7 +88,6 @@ class CleanUpDRBackupTask(tasks.StateTransitionTask):
 
         # import here to avoid circular dependencies
         from ..executors import SnapshotDeleteExecutor, VolumeDeleteExecutor
-
         for snapshot in dr_backup.temporary_snapshots.all():
             SnapshotDeleteExecutor.execute(snapshot)
         for volume in dr_backup.temporary_volumes.all():

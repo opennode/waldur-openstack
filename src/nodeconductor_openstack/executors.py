@@ -1,4 +1,4 @@
-from celery import chain
+from celery import chain, group
 
 from nodeconductor.core import tasks, executors, utils
 
@@ -295,7 +295,7 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
 
 
 # TODO: Add runtime state messages.
-class DRBackupCreateExecutor(executors.CreateExecutor):
+class DRBackupCreateExecutor(executors.BaseChordExecutor):
     """ Create backup for each instance volume separately using temporary volumes and snaphots """
 
     @classmethod
@@ -303,7 +303,7 @@ class DRBackupCreateExecutor(executors.CreateExecutor):
         instance = dr_backup.instance
         creation_tasks = [tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_creating')]
         for volume_id in (instance.system_volume_id, instance.data_volume_id):
-            creation_tasks += [
+            creation_tasks.append(chain(
                 # 0. Temporary step. Import volume based instance volume_id.
                 #    Should be removed after NC-1410 implementation.
                 tasks.IndependentBackendMethodTask().si(serialized_dr_backup, 'import_volume', volume_id),
@@ -340,11 +340,8 @@ class DRBackupCreateExecutor(executors.CreateExecutor):
                 ).set(countdown=50),
                 tasks.BackendMethodTask().s('pull_volume_backup_metadata'),
                 tasks.StateTransitionTask().s(state_transition='set_ok'),
-            ]
-        # XXX: It is possible to speed up backup creation - for this volume backups creation should be executed
-        #      in simultaneously, but celery fails to execute error callback for group of chains.
-        #      Issue for speed up: NC-1413
-        return chain(*creation_tasks)
+            ))
+        return group(creation_tasks)
 
     @classmethod
     def get_success_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
@@ -354,4 +351,34 @@ class DRBackupCreateExecutor(executors.CreateExecutor):
     @classmethod
     def get_failure_signature(cls, dr_backup, serialized_dr_backup, force=False, **kwargs):
         # mark DR and all related non-OK resources as Erred
-        return SetDRBackupErredTask().si(serialized_dr_backup)
+        return SetDRBackupErredTask().s(serialized_dr_backup)
+
+
+class DRBackupDeleteExecutor(executors.DeleteExecutor, executors.BaseChordExecutor):
+
+    @classmethod
+    def get_task_signature(cls, dr_backup, serialized_dr_backup, force=False, **kwargs):
+        deletion_tasks = [tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_deleting')]
+
+        resources_and_deletion_method = [
+            (dr_backup.volume_backups.all(), 'delete_volume_backup'),
+            (dr_backup.temporary_volumes.all(), 'delete_volume'),
+            (dr_backup.temporary_snapshots.all(), 'delete_snapshot'),
+        ]
+
+        for resources, deletion_method in resources_and_deletion_method:
+            for resource in resources:
+                resource.schedule_deleting()
+                resource.save(update_fields=['state'])
+                serialized = utils.serialize_instance(resource)
+                deletion_task = tasks.BackendMethodTask().si(
+                    serialized, deletion_method, state_transition='begin_deleting')
+                deletion_task = deletion_task.set(link=tasks.DeletionTask().si(serialized))
+                if force:
+                    deletion_task = deletion_task.set(link_error=tasks.DeletionTask().si(serialized))
+                else:
+                    deletion_task = deletion_task.set(link_error=tasks.StateTransitionTask().si(
+                        serialized, state_transition='set_erred'))
+                deletion_tasks.append(deletion_task)
+
+        return group(deletion_tasks)

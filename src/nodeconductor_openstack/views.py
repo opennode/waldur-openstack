@@ -1049,7 +1049,7 @@ class DRBackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     queryset = models.DRBackup.objects.all()
     serializer_class = serializers.DRBackupSerializer
     create_executor = executors.DRBackupCreateExecutor
-    # delete_executor = executors.SnapshotDeleteExecutor
+    delete_executor = executors.DRBackupDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
     def perform_update(self, serializer):
