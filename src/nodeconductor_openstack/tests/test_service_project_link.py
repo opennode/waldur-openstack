@@ -182,7 +182,7 @@ class ServiceProjectLinkActionsTest(test.APISimpleTestCase):
                 (spl.to_string(),), {}, countdown=2)
 
 
-class ProjectCloudApiPermissionTest(test.APITransactionTestCase):
+class ProjectServiceApiPermissionTest(test.APITransactionTestCase):
     def setUp(self):
         self.users = {
             'owner': structure_factories.UserFactory(),

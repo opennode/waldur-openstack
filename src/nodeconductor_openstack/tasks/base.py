@@ -1,7 +1,7 @@
 from celery import shared_task, current_app
 from functools import wraps
 
-from nodeconductor.core.tasks import retry_if_false, BackendMethodTask
+from nodeconductor.core.tasks import retry_if_false, BackendMethodTask, Task
 from nodeconductor.core.utils import deserialize_instance
 
 from .. import models
@@ -58,7 +58,7 @@ def delete_tenant_with_spl(serialized_tenant):
     spl.delete()
 
 
-# TODO: move this signal to gcloud assembly application
+# TODO: move this signal to itacloud assembly application
 @shared_task
 def register_instance_in_zabbix(instance_uuid):
     from nodeconductor.template.zabbix import register_instance
@@ -94,8 +94,30 @@ class SecurityGroupCreationTask(BackendMethodTask):
             tenant = self.create_tenant(spl, security_group)
             # Create new security group
             backend = tenant.get_backend()
-            backend.create_security_group(security_group, *args, **kwargs)
+            backend.create_security_group(security_group)
             # Pull all security groups
             executors.TenantPullSecurityGroupsExecutor.execute(tenant, async=False)
         else:
             super(SecurityGroupCreationTask, self).execute(security_group, 'create_security_group', *args, **kwargs)
+
+
+class RuntimeStateException(Exception):
+    pass
+
+
+class PollRuntimeStateTask(Task):
+    max_retries = 300
+    default_retry_delay = 5
+
+    def get_backend(self, instance):
+        return instance.get_backend()
+
+    def execute(self, instance, backend_pull_method, success_state, erred_state):
+        backend = self.get_backend(instance)
+        getattr(backend, backend_pull_method)(instance)
+        instance.refresh_from_db()
+        if instance.runtime_state not in (success_state, erred_state):
+            self.retry()
+        elif instance.runtime_state == erred_state:
+            raise RuntimeStateException(
+                'Instance %s (PK: %s) runtime state become erred: %s' % (instance, instance.pk, erred_state))

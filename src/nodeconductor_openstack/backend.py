@@ -100,7 +100,7 @@ class OpenStackClient(object):
         self.verify_ssl = verify_ssl
         if session:
             if isinstance(session, dict):
-                logger.info('Trying to recover OpenStack session.')
+                logger.debug('Trying to recover OpenStack session.')
                 self.session = OpenStackSession.recover(session, verify_ssl=verify_ssl)
                 self.session.validate()
             else:
@@ -248,7 +248,7 @@ class OpenStackBackend(ServiceBackend):
             logger.exception('Failed to synchronize OpenStack service %s', self.settings.backend_url)
             six.reraise(OpenStackBackendError, e)
         else:
-            logger.info('Successfully synchronized OpenStack service %s', self.settings.backend_url)
+            logger.debug('Successfully synchronized OpenStack service %s', self.settings.backend_url)
 
     def provision(self, instance, flavor=None, image=None, ssh_key=None, **kwargs):
         if ssh_key:
@@ -329,7 +329,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         else:
             # Found a key with the same fingerprint, skip adding
-            logger.info('Skipped propagating ssh public key %s to backend', key_name)
+            logger.debug('Skipped propagating ssh public key %s to backend', key_name)
 
     def remove_ssh_key(self, ssh_key, service_project_link):
         if service_project_link.tenant is not None:
@@ -519,7 +519,8 @@ class OpenStackBackend(ServiceBackend):
     def push_tenant_quotas(self, tenant, quotas):
         if 'instances' in quotas:
             # convert instances quota to volumes and snapshots.
-            quotas_ratios = django_settings.NODECONDUCTOR.get('OPENSTACK_QUOTAS_INSTANCE_RATIOS', {})
+            quotas_ratios = getattr(django_settings, 'NODECONDUCTOR_OPENSTACK', {}).get(
+                'OPENSTACK_QUOTAS_INSTANCE_RATIOS', {})
             volume_ratio = quotas_ratios.get('volumes', 4)
             snapshots_ratio = quotas_ratios.get('snapshots', 20)
 
@@ -1137,7 +1138,7 @@ class OpenStackBackend(ServiceBackend):
                 instance.system_volume_size = instance_data['system_volume_size']
                 instance.data_volume_size = instance_data['data_volume_size']
                 instance.save()
-                logger.info('Instance %s (PK: %s) has been successfully pulled from OpenStack.', instance, instance.pk)
+                logger.debug('Instance %s (PK: %s) has been successfully pulled from OpenStack.', instance, instance.pk)
 
     # XXX: This method should be deleted after tenant separation from SPL.
     def cleanup(self, dryrun=True):
@@ -1921,7 +1922,7 @@ class OpenStackBackend(ServiceBackend):
             snapshot_ids = []
             for volume_id in volume_ids:
                 # create a temporary snapshot
-                snapshot = self.create_snapshot(volume_id, cinder)
+                snapshot = self._create_snapshot(volume_id, cinder)
                 service_project_link.add_quota_usage('storage', self.gb2mb(snapshot.size))
                 snapshot_ids.append(snapshot.id)
 
@@ -2008,7 +2009,8 @@ class OpenStackBackend(ServiceBackend):
             logger.error('Tenant with id %s does not exist', tenant.backend_id)
             six.reraise(OpenStackBackendError, e)
 
-    def create_snapshot(self, volume_id, cinder):
+    # deprecated. Use method create_snapshot with Snapshot model instance as parameter
+    def _create_snapshot(self, volume_id, cinder):
         """
         Create snapshot from volume
 
@@ -2029,3 +2031,101 @@ class OpenStackBackend(ServiceBackend):
         logger.info('Successfully created snapshot %s for volume %s', snapshot.id, volume_id)
 
         return snapshot
+
+    @log_backend_action()
+    def create_volume(self, volume):
+        kwargs = {
+            'size': self.mb2gb(volume.size),
+            'display_name': volume.name,
+            'display_description': volume.description,
+        }
+        if volume.type:
+            kwargs['type'] = volume.type
+        if volume.image:
+            kwargs['imageRef'] = volume.image.backend_id
+        # TODO: set backend volume metadata if it is defined in NC.
+        cinder = self.cinder_client
+        try:
+            backend_volume = cinder.volumes.create(**kwargs)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        volume.backend_id = backend_volume.id
+        if hasattr(backend_volume, 'volume_image_metadata'):
+            volume.image_metadata = backend_volume.volume_image_metadata
+        volume.bootable = backend_volume.bootable == 'true'
+        volume.runtime_state = backend_volume.status
+        volume.save()
+
+    @log_backend_action()
+    def pull_volume_runtime_state(self, volume):
+        cinder = self.cinder_client
+        try:
+            backend_volume = cinder.volumes.get(volume.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        if backend_volume.status != volume.runtime_state:
+            volume.runtime_state = backend_volume.status
+            volume.save(update_fields=['runtime_state'])
+
+    @log_backend_action()
+    def update_volume(self, volume):
+        # TODO: add metadata update
+        cinder = self.cinder_client
+        try:
+            cinder.volumes.update(volume.backend_id, display_name=volume.name, display_description=volume.description)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_volume(self, volume):
+        cinder = self.cinder_client
+        try:
+            cinder.volumes.delete(volume.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def create_snapshot(self, snapshot, force=False):
+        kwargs = {
+            'display_name': snapshot.name,
+            'display_description': snapshot.description,
+        }
+        # TODO: set backend snapshot metadata if it is defined in NC.
+        cinder = self.cinder_client
+        try:
+            backend_snapshot = cinder.volume_snapshots.create(snapshot.volume.backend_id, force=force, **kwargs)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        snapshot.backend_id = backend_snapshot.id
+        snapshot.runtime_state = backend_snapshot.status
+        snapshot.size = self.gb2mb(backend_snapshot.size)
+        snapshot.save()
+
+    @log_backend_action()
+    def pull_snapshot_runtime_state(self, snapshot):
+        cinder = self.cinder_client
+        try:
+            backend_snapshot = cinder.volume_snapshots.get(snapshot.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        if backend_snapshot.status != snapshot.runtime_state:
+            snapshot.runtime_state = backend_snapshot.status
+            snapshot.save(update_fields=['runtime_state'])
+
+    @log_backend_action()
+    def delete_snapshot(self, snapshot):
+        cinder = self.cinder_client
+        try:
+            cinder.volume_snapshots.delete(snapshot.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def update_snapshot(self, snapshot):
+        # TODO: add metadata update
+        cinder = self.cinder_client
+        try:
+            cinder.volume_snapshots.update(
+                snapshot.backend_id, display_name=snapshot.name, display_description=snapshot.description)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)

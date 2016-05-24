@@ -35,11 +35,6 @@ class OpenStackService(structure_models.Service):
     def get_url_name(cls):
         return 'openstack'
 
-    @property
-    def auth_url(self):
-        # XXX: Temporary backward compatibility
-        return self.settings.backend_url
-
 
 class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
@@ -61,21 +56,6 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
     @classmethod
     def get_url_name(cls):
         return 'openstack-spl'
-
-    @property
-    def cloud(self):
-        # XXX: Temporary backward compatibility
-        return self.service
-
-    @property
-    def username(self):
-        # XXX: Temporary backward compatibility
-        return self.service.settings.username
-
-    @property
-    def password(self):
-        # XXX: Temporary backward compatibility
-        return self.service.settings.password
 
     def get_backend(self):
         return super(OpenStackServiceProjectLink, self).get_backend(tenant_id=self.tenant_id)
@@ -264,11 +244,6 @@ class Instance(structure_models.VirtualMachineMixin,
     def get_url_name(cls):
         return 'openstack-instance'
 
-    @property
-    def cloud_project_membership(self):
-        # XXX: Temporary backward compatibility. To be removed after IaaS removal.
-        return self.service_project_link
-
     def get_log_fields(self):
         return (
             'uuid', 'name', 'type', 'service_project_link', 'ram', 'cores',
@@ -401,8 +376,7 @@ class Backup(core_models.UuidMixin,
         pass
 
 
-class Tenant(core_models.RuntimeStateMixin, core_models.StateMixin,
-             structure_models.PrivateCloudMixin, structure_models.ResourceMixin):
+class Tenant(core_models.RuntimeStateMixin, structure_models.PrivateCloudMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='tenants', on_delete=models.PROTECT)
 
@@ -419,3 +393,29 @@ class Tenant(core_models.RuntimeStateMixin, core_models.StateMixin,
 
     def get_backend(self):
         return self.service_project_link.service.get_backend(tenant_id=self.backend_id)
+
+
+class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
+    service_project_link = models.ForeignKey(
+        OpenStackServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
+    tenant = models.ForeignKey(Tenant, related_name='volumes')
+    size = models.PositiveIntegerField(help_text='Size in MiB')
+    bootable = models.BooleanField(default=False)
+    metadata = JSONField(blank=True)
+    image = models.ForeignKey(Image, null=True)
+    image_metadata = JSONField(blank=True)
+    type = models.CharField(max_length=100, blank=True)
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+
+class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
+    service_project_link = models.ForeignKey(
+        OpenStackServiceProjectLink, related_name='shapshots', on_delete=models.PROTECT)
+    volume = models.ForeignKey(Volume, related_name='shapshots')
+    size = models.PositiveIntegerField(help_text='Size in MiB')
+    metadata = JSONField(blank=True)
+
+    def get_backend(self):
+        return self.volume.get_backend()

@@ -1019,3 +1019,25 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             status=status.HTTP_202_ACCEPTED)
 
     allocate_floating_ip.title = 'Allocate floating IP'
+
+
+class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                       structure_views.ResourceViewMixin,
+                                       StateExecutorViewSet)):
+    queryset = models.Volume.objects.all()
+    serializer_class = serializers.VolumeSerializer
+    create_executor = executors.VolumeCreateExecutor
+    update_executor = executors.VolumeUpdateExecutor
+    delete_executor = executors.VolumeDeleteExecutor
+    filter_class = structure_filters.BaseResourceStateFilter
+
+
+class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         structure_views.ResourceViewMixin,
+                                         StateExecutorViewSet)):
+    queryset = models.Snapshot.objects.all()
+    serializer_class = serializers.SnapshotSerializer
+    create_executor = executors.SnapshotCreateExecutor
+    update_executor = executors.SnapshotUpdateExecutor
+    delete_executor = executors.SnapshotDeleteExecutor
+    filter_class = structure_filters.BaseResourceStateFilter

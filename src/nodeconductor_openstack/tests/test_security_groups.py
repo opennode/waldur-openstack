@@ -78,7 +78,7 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
             self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
             security_group = models.SecurityGroup.objects.get(name=self.valid_data['name'])
 
-            mocked_execute.assert_called_once_with(security_group)
+            mocked_execute.assert_called_once_with(security_group, async=True)
 
     def test_security_group_raises_validation_error_on_wrong_membership_in_request(self):
         del self.valid_data['service_project_link']['url']
@@ -183,7 +183,7 @@ class SecurityGroupUpdateTest(test.APITransactionTestCase):
             response = self.client.patch(self.url, data={'name': 'new_name'})
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            mocked_execute.assert_called_once_with(self.security_group, updated_fields={'name'})
+            mocked_execute.assert_called_once_with(self.security_group, updated_fields={'name'}, async=True)
 
     def test_user_can_remove_rule_from_security_group(self):
         rule1 = factories.SecurityGroupRuleFactory(security_group=self.security_group)
@@ -240,7 +240,7 @@ class SecurityGroupDeleteTest(test.APITransactionTestCase):
             response = self.client.delete(self.url)
             self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
-            mocked_execute.assert_called_once_with(self.security_group, force=False)
+            mocked_execute.assert_called_once_with(self.security_group, force=False, async=True)
 
     def test_security_group_can_be_deleted_from_erred_state(self):
         self.security_group.state = SynchronizationStates.ERRED
