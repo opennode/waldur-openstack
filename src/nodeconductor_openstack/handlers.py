@@ -6,8 +6,8 @@ from django.core.exceptions import ValidationError
 
 from . import executors
 from .log import event_logger
-from .models import SecurityGroup, SecurityGroupRule, OpenStackServiceProjectLink
-from nodeconductor_openstack.tasks import register_instance_in_zabbix
+from .models import SecurityGroup, SecurityGroupRule, OpenStackServiceProjectLink, Instance
+from .tasks import register_instance_in_zabbix
 
 
 logger = logging.getLogger(__name__)
