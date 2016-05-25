@@ -17,6 +17,7 @@ from keystoneclient import session as keystone_session
 
 from ceilometerclient import client as ceilometer_client
 from cinderclient.v1 import client as cinder_client
+from cinderclient.v2 import client as cinder_v2_client
 from glanceclient.v1 import client as glance_client
 from keystoneclient.v2_0 import client as keystone_client
 from neutronclient.v2_0 import client as neutron_client
@@ -141,6 +142,14 @@ class OpenStackClient(object):
             six.reraise(OpenStackBackendError, e)
 
     @property
+    def cinder_v2(self):
+        try:
+            return cinder_v2_client.Client(session=self.session.keystone_session)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            logger.exception('Failed to create cinder client: %s', e)
+            six.reraise(OpenStackBackendError, e)
+
+    @property
     def glance(self):
         catalog = ServiceCatalog.factory(self.session.auth.auth_ref)
         endpoint = catalog.url_for(service_type='image')
@@ -211,7 +220,7 @@ class OpenStackBackend(ServiceBackend):
             return client
 
     def __getattr__(self, name):
-        clients = 'keystone', 'nova', 'neutron', 'cinder', 'glance', 'ceilometer'
+        clients = 'keystone', 'nova', 'neutron', 'cinder', 'cinder_v2', 'glance', 'ceilometer'
         for client in clients:
             if name == '{}_client'.format(client):
                 return self.get_client(client, admin=False)
@@ -1961,6 +1970,7 @@ class OpenStackBackend(ServiceBackend):
             logger.info(
                 'Successfully deleted snapshots %s', ', '.join(snapshot_ids))
 
+    # Deprecated. Use `create_volume` instead.
     def create_volume_from_snapshot(self, snapshot_id, prefix='Promoted volume'):
         cinder = self.cinder_client
         snapshot = cinder.volume_snapshots.get(snapshot_id)
@@ -2039,6 +2049,8 @@ class OpenStackBackend(ServiceBackend):
             'display_name': volume.name,
             'display_description': volume.description,
         }
+        if volume.source_snapshot:
+            kwargs['snapshot_id'] = volume.source_snapshot.backend_id
         if volume.type:
             kwargs['type'] = volume.type
         if volume.image:
@@ -2055,6 +2067,7 @@ class OpenStackBackend(ServiceBackend):
         volume.bootable = backend_volume.bootable == 'true'
         volume.runtime_state = backend_volume.status
         volume.save()
+        return volume
 
     @log_backend_action()
     def pull_volume_runtime_state(self, volume):
@@ -2084,22 +2097,56 @@ class OpenStackBackend(ServiceBackend):
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
 
+    def import_volume(self, backend_volume_id):
+        """ Restore NC Volume instance based on backend data. """
+        cinder = self.cinder_client
+        try:
+            backend_volume = cinder.volumes.get(backend_volume_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
+        spl = tenant.service_project_link
+        volume = models.Volume(
+            name=backend_volume.display_name,
+            description=backend_volume.display_description,
+            size=self.gb2mb(backend_volume.size),
+            metadata=backend_volume.metadata,
+            backend_id=backend_volume_id,
+            type=backend_volume.volume_type,
+            bootable=backend_volume.bootable == 'true',
+            tenant=tenant,
+            runtime_state=backend_volume.status,
+            service_project_link=spl,
+            state=models.Volume.States.OK,
+        )
+        if hasattr(backend_volume, 'volume_image_metadata'):
+            volume.image_metadata = backend_volume.volume_image_metadata
+            try:
+                volume.image = models.Image.objects.get(
+                    settings=spl.service.settings, backend_id=volume.image_metadata['image_id'])
+            except models.Image.DoesNotExist:
+                pass
+        volume.save()
+        return volume
+
     @log_backend_action()
     def create_snapshot(self, snapshot, force=False):
         kwargs = {
             'display_name': snapshot.name,
             'display_description': snapshot.description,
+            'force': force,
         }
         # TODO: set backend snapshot metadata if it is defined in NC.
         cinder = self.cinder_client
         try:
-            backend_snapshot = cinder.volume_snapshots.create(snapshot.volume.backend_id, force=force, **kwargs)
+            backend_snapshot = cinder.volume_snapshots.create(snapshot.source_volume.backend_id, **kwargs)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
         snapshot.backend_id = backend_snapshot.id
         snapshot.runtime_state = backend_snapshot.status
         snapshot.size = self.gb2mb(backend_snapshot.size)
         snapshot.save()
+        return snapshot
 
     @log_backend_action()
     def pull_snapshot_runtime_state(self, snapshot):
@@ -2111,6 +2158,7 @@ class OpenStackBackend(ServiceBackend):
         if backend_snapshot.status != snapshot.runtime_state:
             snapshot.runtime_state = backend_snapshot.status
             snapshot.save(update_fields=['runtime_state'])
+        return snapshot
 
     @log_backend_action()
     def delete_snapshot(self, snapshot):
@@ -2127,5 +2175,47 @@ class OpenStackBackend(ServiceBackend):
         try:
             cinder.volume_snapshots.update(
                 snapshot.backend_id, display_name=snapshot.name, display_description=snapshot.description)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def create_volume_backup(self, volume_backup):
+        cinder = self.cinder_client
+        try:
+            backend_volume_backup = cinder.backups.create(volume_id=volume_backup.source_volume.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        volume_backup.backend_id = backend_volume_backup.id
+        volume_backup.runtime_state = backend_volume_backup.status
+        volume_backup.save()
+        return volume_backup
+
+    def pull_volume_backup_metadata(self, volume_backup):
+        cinder_v2 = self.cinder_v2_client
+        try:
+            backend_metadata = cinder_v2.backups.export_record(volume_backup.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        volume_backup.metadata = backend_metadata
+        volume_backup.save(update_fields=['metadata'])
+        return volume_backup
+
+    @log_backend_action()
+    def pull_volume_backup_runtime_state(self, volume_backup):
+        cinder = self.cinder_client
+        try:
+            backend_volume_backup = cinder.backups.get(volume_backup.backend_id)
+        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        if backend_volume_backup.status != volume_backup.runtime_state:
+            volume_backup.runtime_state = backend_volume_backup.status
+            volume_backup.save(update_fields=['runtime_state'])
+        return volume_backup
+
+    @log_backend_action()
+    def delete_volume_backup(self, volume_backup):
+        cinder = self.cinder_client
+        try:
+            cinder.backups.delete(volume_backup.backend_id)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)

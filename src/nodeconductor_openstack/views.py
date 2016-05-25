@@ -1041,3 +1041,17 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
+
+
+class DRBackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         structure_views.ResourceViewMixin,
+                                         StateExecutorViewSet)):
+    queryset = models.DRBackup.objects.all()
+    serializer_class = serializers.DRBackupSerializer
+    create_executor = executors.DRBackupCreateExecutor
+    delete_executor = executors.DRBackupDeleteExecutor
+    filter_class = structure_filters.BaseResourceStateFilter
+
+    def perform_update(self, serializer):
+        # Update do not make any changes at backend, so there is no executor
+        serializer.save()

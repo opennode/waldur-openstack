@@ -121,3 +121,4 @@ class PollRuntimeStateTask(Task):
         elif instance.runtime_state == erred_state:
             raise RuntimeStateException(
                 'Instance %s (PK: %s) runtime state become erred: %s' % (instance, instance.pk, erred_state))
+        return instance

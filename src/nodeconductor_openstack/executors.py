@@ -1,7 +1,10 @@
-from celery import chain
+from celery import chain, group
 
 from nodeconductor.core import tasks, executors, utils
-from .tasks import delete_tenant_with_spl, SecurityGroupCreationTask, PollRuntimeStateTask
+
+from .tasks import (delete_tenant_with_spl, SecurityGroupCreationTask, PollRuntimeStateTask,
+                    CreateTemporarySnapshotTask, CreateTemporaryVolumeTask, CreateTemporaryVolumeBackupTask,
+                    SetDRBackupErredTask, CleanUpDRBackupTask)
 
 
 class SecurityGroupCreateExecutor(executors.CreateExecutor):
@@ -289,3 +292,93 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
                 serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting')
         else:
             return tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
+
+
+# TODO: Add runtime state messages.
+class DRBackupCreateExecutor(executors.BaseChordExecutor):
+    """ Create backup for each instance volume separately using temporary volumes and snaphots """
+
+    @classmethod
+    def get_task_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
+        instance = dr_backup.instance
+        creation_tasks = [tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_creating')]
+        for volume_id in (instance.system_volume_id, instance.data_volume_id):
+            creation_tasks.append(chain(
+                # 0. Temporary step. Import volume based instance volume_id.
+                #    Should be removed after NC-1410 implementation.
+                tasks.IndependentBackendMethodTask().si(serialized_dr_backup, 'import_volume', volume_id),
+                # 1. Create temporary snapshot from existing volume.
+                CreateTemporarySnapshotTask().s(serialized_dr_backup),
+                # 2. Create snapshot on backend.
+                tasks.BackendMethodTask().s('create_snapshot', force=True, state_transition='begin_creating'),
+                PollRuntimeStateTask().s(
+                    backend_pull_method='pull_snapshot_runtime_state',
+                    success_state='available',
+                    erred_state='error',
+                ).set(countdown=10),
+                tasks.StateTransitionTask().s(state_transition='set_ok'),
+                # 3. Create volume from snapshot.
+                CreateTemporaryVolumeTask().s(serialized_dr_backup),
+                # 4. Create volume on backend.
+                tasks.BackendMethodTask().s(
+                    'create_volume', state_transition='begin_creating'),
+                PollRuntimeStateTask().s(
+                    backend_pull_method='pull_volume_runtime_state',
+                    success_state='available',
+                    erred_state='error',
+                ).set(countdown=30),
+                tasks.StateTransitionTask().s(state_transition='set_ok'),
+                # 5. Create volume_backup from volume
+                CreateTemporaryVolumeBackupTask().s(serialized_dr_backup),
+                # 6. Create volume_backup on backend
+                tasks.BackendMethodTask().s(
+                    'create_volume_backup', state_transition='begin_creating'),
+                PollRuntimeStateTask().s(
+                    backend_pull_method='pull_volume_backup_runtime_state',
+                    success_state='available',
+                    erred_state='error',
+                ).set(countdown=50),
+                tasks.BackendMethodTask().s('pull_volume_backup_metadata'),
+                tasks.StateTransitionTask().s(state_transition='set_ok'),
+            ))
+        return group(creation_tasks)
+
+    @classmethod
+    def get_success_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
+        # mark DR backup as OK and delete all temporary objects - volumes and snapshots
+        return CleanUpDRBackupTask().si(serialized_dr_backup, state_transition='set_ok')
+
+    @classmethod
+    def get_failure_signature(cls, dr_backup, serialized_dr_backup, force=False, **kwargs):
+        # mark DR and all related non-OK resources as Erred
+        return SetDRBackupErredTask().s(serialized_dr_backup)
+
+
+class DRBackupDeleteExecutor(executors.DeleteExecutor, executors.BaseChordExecutor):
+
+    @classmethod
+    def get_task_signature(cls, dr_backup, serialized_dr_backup, force=False, **kwargs):
+        deletion_tasks = [tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_deleting')]
+
+        resources_and_deletion_method = [
+            (dr_backup.volume_backups.all(), 'delete_volume_backup'),
+            (dr_backup.temporary_volumes.all(), 'delete_volume'),
+            (dr_backup.temporary_snapshots.all(), 'delete_snapshot'),
+        ]
+
+        for resources, deletion_method in resources_and_deletion_method:
+            for resource in resources:
+                resource.schedule_deleting()
+                resource.save(update_fields=['state'])
+                serialized = utils.serialize_instance(resource)
+                deletion_task = tasks.BackendMethodTask().si(
+                    serialized, deletion_method, state_transition='begin_deleting')
+                deletion_task = deletion_task.set(link=tasks.DeletionTask().si(serialized))
+                if force:
+                    deletion_task = deletion_task.set(link_error=tasks.DeletionTask().si(serialized))
+                else:
+                    deletion_task = deletion_task.set(link_error=tasks.StateTransitionTask().si(
+                        serialized, state_transition='set_erred'))
+                deletion_tasks.append(deletion_task)
+
+        return group(deletion_tasks)

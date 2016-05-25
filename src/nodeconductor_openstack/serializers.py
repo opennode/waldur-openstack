@@ -761,7 +761,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Volume
         view_name = 'openstack-volume-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'tenant', 'size', 'bootable', 'metadata', 'image', 'image_metadata', 'type'
+            'tenant', 'source_snapshot', 'size', 'bootable', 'metadata', 'image', 'image_metadata', 'type'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'image_metadata', 'bootable'
@@ -772,16 +772,32 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             image={'lookup_field': 'uuid', 'view_name': 'openstack-image-detail'},
+            source_snapshot={'lookup_field': 'uuid', 'view_name': 'openstack-snapshot-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
+    def get_fields(self):
+        fields = super(VolumeSerializer, self).get_fields()
+        fields['size'].required = False
+        fields['size'].allow_null = True
+        return fields
+
     def validate(self, attrs):
         if self.instance is None:
+            # image validation
             image = attrs.get('image')
             tenant = attrs['tenant']
             if image and image.settings != tenant.service_project_link.service.settings:
                 raise serializers.ValidationError('Image and tenant must belong to the same service settings')
-            size = attrs['size']
+            # snapshot & size validation
+            size = attrs.get('size')
+            snapshot = attrs.get('snapshot')
+            if not size and not snapshot:
+                raise serializers.ValidationError('Snapshot or size should be defined')
+            if size and snapshot:
+                raise serializers.ValidationError('It is impossible to define both snapshot and size')
+            # image & size validation
+            size = size or snapshot.size
             if image and image.min_disk > size:
                 raise serializers.ValidationError(
                     'Volume size should be equal or greater than %s for selected image' % image.min_disk)
@@ -791,6 +807,8 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         tenant = validated_data['tenant']
         validated_data['service_project_link'] = tenant.service_project_link
+        if not validated_data.get('size'):
+            validated_data['size'] = validated_data['snapshot'].size
         return super(VolumeSerializer, self).create(validated_data)
 
 
@@ -810,25 +828,70 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Snapshot
         view_name = 'openstack-snapshot-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'volume', 'size', 'metadata',
+            'source_volume', 'size', 'metadata', 'tenant',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'size',
+            'size', 'tenant'
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
-            'volume',
+            'source_volume',
         )
         extra_kwargs = dict(
-            volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail'},
+            source_volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail'},
+            tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
+
+    def get_fields(self):
+        fields = super(SnapshotSerializer, self).get_fields()
+        fields['source_volume'].allow_null = False
+        fields['source_volume'].required = True
+        return fields
 
     def validate(self, attrs):
         # TODO: add tenant quota validation (NC-1405)
         return attrs
 
     def create(self, validated_data):
-        volume = validated_data['volume']
-        validated_data['service_project_link'] = volume.service_project_link
-        validated_data['size'] = volume.size
+        source_volume = validated_data['source_volume']
+        validated_data['service_project_link'] = source_volume.service_project_link
+        validated_data['tenant'] = source_volume.tenant
+        validated_data['size'] = source_volume.size
         return super(SnapshotSerializer, self).create(validated_data)
+
+
+class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
+
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstack-detail',
+        read_only=True,
+        lookup_field='uuid')
+
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        read_only=True)
+
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+        model = models.DRBackup
+        view_name = 'openstack-dr-backup-detail'
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+            'source_instance', 'tenant',
+        )
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+            'tenant',
+        )
+        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
+            'source_instance',
+        )
+        extra_kwargs = dict(
+            tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            source_instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
+        )
+
+    def create(self, validated_data):
+        source_instance = validated_data['source_instance']
+        validated_data['tenant'] = source_instance.service_project_link.tenant
+        validated_data['service_project_link'] = source_instance.service_project_link
+        return super(DRBackupSerializer, self).create(validated_data)
