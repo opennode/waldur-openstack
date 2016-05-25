@@ -36,7 +36,6 @@ class Migration(migrations.Migration):
                 ('state', django_fsm.FSMIntegerField(default=5, choices=[(5, 'Creation Scheduled'), (6, 'Creating'), (1, 'Update Scheduled'), (2, 'Updating'), (7, 'Deletion Scheduled'), (8, 'Deleting'), (3, 'OK'), (4, 'Erred')])),
                 ('backend_id', models.CharField(max_length=255, blank=True)),
                 ('start_time', models.DateTimeField(null=True, blank=True)),
-                ('instance', models.ForeignKey(related_name='dr_backups', to='openstack.Instance', null=True)),
             ],
             options={
                 'abstract': False,
@@ -59,13 +58,21 @@ class Migration(migrations.Migration):
                 ('start_time', models.DateTimeField(null=True, blank=True)),
                 ('metadata', jsonfield.fields.JSONField(blank=True)),
                 ('service_project_link', models.ForeignKey(related_name='volume_backups', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink')),
-                ('tags', taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags')),
-                ('tenant', models.ForeignKey(related_name='volume_backups', to='openstack.Tenant')),
             ],
             options={
                 'abstract': False,
             },
             bases=(nodeconductor.core.models.SerializableAbstractMixin, nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
+        ),
+        migrations.RemoveField(
+            model_name='snapshot',
+            name='volume',
+        ),
+        migrations.AddField(
+            model_name='snapshot',
+            name='source_volume',
+            field=models.ForeignKey(related_name='shapshots', on_delete=django.db.models.deletion.PROTECT, default=1, to='openstack.Volume'),
+            preserve_default=False,
         ),
         migrations.AddField(
             model_name='snapshot',
@@ -75,18 +82,23 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='volume',
-            name='snapshot',
+            name='source_snapshot',
             field=models.ForeignKey(related_name='volumes', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Snapshot', null=True),
-        ),
-        migrations.AlterField(
-            model_name='snapshot',
-            name='volume',
-            field=models.ForeignKey(related_name='shapshots', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Volume', null=True),
         ),
         migrations.AddField(
             model_name='volumebackup',
-            name='volume',
+            name='source_volume',
             field=models.ForeignKey(related_name='backups', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Volume', null=True),
+        ),
+        migrations.AddField(
+            model_name='volumebackup',
+            name='tags',
+            field=taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags'),
+        ),
+        migrations.AddField(
+            model_name='volumebackup',
+            name='tenant',
+            field=models.ForeignKey(related_name='volume_backups', to='openstack.Tenant'),
         ),
         migrations.AddField(
             model_name='drbackup',
@@ -97,6 +109,11 @@ class Migration(migrations.Migration):
             model_name='drbackup',
             name='service_project_link',
             field=models.ForeignKey(related_name='dr_backups', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink'),
+        ),
+        migrations.AddField(
+            model_name='drbackup',
+            name='source_instance',
+            field=models.ForeignKey(related_name='dr_backups', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Instance', null=True),
         ),
         migrations.AddField(
             model_name='drbackup',
