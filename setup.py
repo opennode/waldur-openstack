@@ -15,7 +15,6 @@ install_requires = [
     'python-keystoneclient==2.3.1',
     'python-neutronclient==4.1.1',
     'python-novaclient==3.3.0',
-    'setuptools>=21.2.1',
 ]
 
 
