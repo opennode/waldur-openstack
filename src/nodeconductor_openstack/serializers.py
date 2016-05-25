@@ -895,3 +895,37 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
         validated_data['tenant'] = instance.service_project_link.tenant
         validated_data['service_project_link'] = instance.service_project_link
         return super(DRBackupSerializer, self).create(validated_data)
+
+
+class DRBackupRestoreSerializer(serializers.ModelSerializer):
+
+    tenant = serializers.HyperlinkedRelatedField(
+        view_name='openstack-tenant-detail',
+        queryset=models.Tenant.objects.all(),
+        lookup_field='uuid',
+        write_only=True,
+    )
+    flavor = serializers.HyperlinkedRelatedField(
+        view_name='openstack-flavor-detail',
+        lookup_field='uuid',
+        queryset=models.Flavor.objects.all().select_related('settings'),
+        write_only=True,
+    )
+
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+        model = models.DRBackup
+        view_name = 'openstack-dr-backup-restoration-detail'
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+            'instance', 'tenant',
+        )
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+            'tenant',
+        )
+        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
+            'instance',
+        )
+        extra_kwargs = dict(
+            tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
+        )

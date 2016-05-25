@@ -9,6 +9,7 @@ from django_fsm import transition, FSMIntegerField
 from jsonfield import JSONField
 from iptools.ipv4 import validate_cidr
 from model_utils import FieldTracker
+from model_utils.models import TimeStampedModel
 from urlparse import urlparse
 
 from nodeconductor.core import models as core_models
@@ -438,12 +439,27 @@ class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='dr_backups', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='dr_backups')
-    instance = models.ForeignKey(Instance, related_name='dr_backups', null=True)
+    instance = models.ForeignKey(Instance, related_name='dr_backups', null=True, on_delete=models.SET_NULL)
+    metadata = JSONField(
+        blank=True,
+        help_text='Information about instance that will be used on restoration',
+    )
     # XXX: This field is temporary. Should be deleted in NC-1410.
     instance_volumes = models.ManyToManyField(Volume, related_name='+')
     temporary_volumes = models.ManyToManyField(Volume, related_name='+')
     temporary_snapshots = models.ManyToManyField(Snapshot, related_name='+')
     volume_backups = models.ManyToManyField(VolumeBackup, related_name='dr_backups')
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+
+class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, TimeStampedModel):
+    dr_backup = models.ForeignKey(DRBackup, related_name='restorations')
+    instance = models.OneToOneField(Instance, related_name='+')
+    tenant = models.ForeignKey(Tenant, related_name='+')
+    flavor = models.ForeignKey(Flavor, related_name='+')
+    volumes = models.ManyToManyField(Volume, related_name='+')
 
     def get_backend(self):
         return self.tenant.get_backend()

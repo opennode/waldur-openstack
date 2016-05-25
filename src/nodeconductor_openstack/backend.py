@@ -2190,6 +2190,7 @@ class OpenStackBackend(ServiceBackend):
         volume_backup.save()
         return volume_backup
 
+    @log_backend_action()
     def pull_volume_backup_metadata(self, volume_backup):
         cinder_v2 = self.cinder_v2_client
         try:
