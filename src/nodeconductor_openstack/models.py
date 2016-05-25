@@ -405,7 +405,7 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
     image = models.ForeignKey(Image, null=True)
     image_metadata = JSONField(blank=True)
     type = models.CharField(max_length=100, blank=True)
-    snapshot = models.ForeignKey('Snapshot', related_name='volumes', null=True, on_delete=models.SET_NULL)
+    source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', null=True, on_delete=models.SET_NULL)
 
     def get_backend(self):
         return self.tenant.get_backend()
@@ -415,7 +415,7 @@ class VolumeBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='volume_backups', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='volume_backups')
-    volume = models.ForeignKey(Volume, related_name='backups', null=True, on_delete=models.SET_NULL)
+    source_volume = models.ForeignKey(Volume, related_name='backups', null=True, on_delete=models.SET_NULL)
     metadata = JSONField(blank=True)
 
     def get_backend(self):
@@ -426,7 +426,7 @@ class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='shapshots', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='shapshots')
-    volume = models.ForeignKey(Volume, related_name='shapshots', null=True, on_delete=models.SET_NULL)
+    source_volume = models.ForeignKey(Volume, related_name='shapshots', on_delete=models.PROTECT)
     size = models.PositiveIntegerField(help_text='Size in MiB')
     metadata = JSONField(blank=True)
 
@@ -438,7 +438,7 @@ class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='dr_backups', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='dr_backups')
-    instance = models.ForeignKey(Instance, related_name='dr_backups', null=True)
+    source_instance = models.ForeignKey(Instance, related_name='dr_backups', null=True, on_delete=models.SET_NULL)
     # XXX: This field is temporary. Should be deleted in NC-1410.
     instance_volumes = models.ManyToManyField(Volume, related_name='+')
     temporary_volumes = models.ManyToManyField(Volume, related_name='+')

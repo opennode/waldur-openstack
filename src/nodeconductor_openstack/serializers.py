@@ -761,7 +761,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Volume
         view_name = 'openstack-volume-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'tenant', 'snapshot', 'size', 'bootable', 'metadata', 'image', 'image_metadata', 'type'
+            'tenant', 'source_snapshot', 'size', 'bootable', 'metadata', 'image', 'image_metadata', 'type'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'image_metadata', 'bootable'
@@ -772,7 +772,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             image={'lookup_field': 'uuid', 'view_name': 'openstack-image-detail'},
-            snapshot={'lookup_field': 'uuid', 'view_name': 'openstack-snapshot-detail'},
+            source_snapshot={'lookup_field': 'uuid', 'view_name': 'openstack-snapshot-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
@@ -828,24 +828,24 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Snapshot
         view_name = 'openstack-snapshot-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'volume', 'size', 'metadata', 'tenant',
+            'source_volume', 'size', 'metadata', 'tenant',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'size', 'tenant'
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
-            'volume',
+            'source_volume',
         )
         extra_kwargs = dict(
-            volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail'},
+            source_volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail'},
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
     def get_fields(self):
         fields = super(SnapshotSerializer, self).get_fields()
-        fields['volume'].allow_null = False
-        fields['volume'].required = True
+        fields['source_volume'].allow_null = False
+        fields['source_volume'].required = True
         return fields
 
     def validate(self, attrs):
@@ -853,10 +853,10 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         return attrs
 
     def create(self, validated_data):
-        volume = validated_data['volume']
-        validated_data['service_project_link'] = volume.service_project_link
-        validated_data['tenant'] = volume.tenant
-        validated_data['size'] = volume.size
+        source_volume = validated_data['source_volume']
+        validated_data['service_project_link'] = source_volume.service_project_link
+        validated_data['tenant'] = source_volume.tenant
+        validated_data['size'] = source_volume.size
         return super(SnapshotSerializer, self).create(validated_data)
 
 
@@ -876,22 +876,22 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
         model = models.DRBackup
         view_name = 'openstack-dr-backup-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'instance', 'tenant',
+            'source_instance', 'tenant',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'tenant',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
-            'instance',
+            'source_instance',
         )
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
-            instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            source_instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
     def create(self, validated_data):
-        instance = validated_data['instance']
-        validated_data['tenant'] = instance.service_project_link.tenant
-        validated_data['service_project_link'] = instance.service_project_link
+        source_instance = validated_data['source_instance']
+        validated_data['tenant'] = source_instance.service_project_link.tenant
+        validated_data['service_project_link'] = source_instance.service_project_link
         return super(DRBackupSerializer, self).create(validated_data)

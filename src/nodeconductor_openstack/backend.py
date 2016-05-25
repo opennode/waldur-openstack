@@ -2049,8 +2049,8 @@ class OpenStackBackend(ServiceBackend):
             'display_name': volume.name,
             'display_description': volume.description,
         }
-        if volume.snapshot:
-            kwargs['snapshot_id'] = volume.snapshot.backend_id
+        if volume.source_snapshot:
+            kwargs['snapshot_id'] = volume.source_snapshot.backend_id
         if volume.type:
             kwargs['type'] = volume.type
         if volume.image:
@@ -2139,7 +2139,7 @@ class OpenStackBackend(ServiceBackend):
         # TODO: set backend snapshot metadata if it is defined in NC.
         cinder = self.cinder_client
         try:
-            backend_snapshot = cinder.volume_snapshots.create(snapshot.volume.backend_id, **kwargs)
+            backend_snapshot = cinder.volume_snapshots.create(snapshot.source_volume.backend_id, **kwargs)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
         snapshot.backend_id = backend_snapshot.id
@@ -2182,7 +2182,7 @@ class OpenStackBackend(ServiceBackend):
     def create_volume_backup(self, volume_backup):
         cinder = self.cinder_client
         try:
-            backend_volume_backup = cinder.backups.create(volume_id=volume_backup.volume.backend_id)
+            backend_volume_backup = cinder.backups.create(volume_id=volume_backup.source_volume.backend_id)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
         volume_backup.backend_id = backend_volume_backup.id
