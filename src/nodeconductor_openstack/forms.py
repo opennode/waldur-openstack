@@ -35,16 +35,6 @@ class InstanceForm(ModelForm):
             if opts[1]:
                 tags.append(':'.join(opts))
 
-                event_logger.licenses.info(
-                    'License added to resource with name {resource_name}.',
-                    event_type='resource_license_added',
-                    event_context={
-                        'resource': self.instance,
-                        'license_name': opts[-1],
-                        'license_type': 'IaaS' if tag == 'os' else 'PaaS',
-                    }
-                )
-
         remote = self.data.get('tags_remote_type')
         if remote:
             tags.append(':'.join([remote, self.data.get('tags_remote_instance')]))
