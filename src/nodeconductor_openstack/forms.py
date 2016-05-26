@@ -5,8 +5,6 @@ import pytz
 from django.core.exceptions import ValidationError
 from django.forms import ModelForm
 
-from nodeconductor.structure.log import event_logger
-
 from .models import Instance
 from .widgets import OpenStackTagsWidget
 
