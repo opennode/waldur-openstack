@@ -77,7 +77,7 @@ class TenantCreateExecutor(executors.CreateExecutor):
 
         # initialize external network if it defined in service settings
         service_settings = tenant.service_project_link.service.settings
-        external_network_id = service_settings.options.get('external_network_id')
+        external_network_id = service_settings.get_option('external_network_id')
         if external_network_id:
             creation_tasks.append(tasks.BackendMethodTask().si(
                 serialized_tenant, 'connect_tenant_to_external_network',

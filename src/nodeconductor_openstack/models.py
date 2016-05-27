@@ -252,7 +252,7 @@ class Instance(structure_models.VirtualMachineMixin,
 
     def detect_coordinates(self):
         settings = self.service_project_link.service.settings
-        data = settings.options.get('coordinates')
+        data = settings.get_option('coordinates')
         if data:
             return Coordinates(latitude=data['latitude'],
                                longitude=data['longitude'])
