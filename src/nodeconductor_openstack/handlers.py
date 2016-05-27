@@ -13,13 +13,6 @@ from .tasks import register_instance_in_zabbix
 logger = logging.getLogger(__name__)
 
 
-def set_tenant_default_availability_zone(sender, instance=None, **kwargs):
-    if not instance.availability_zone:
-        settings = instance.service_project_link.service.settings
-        if settings.options:
-            instance.availability_zone = settings.options.get('availability_zone', '')
-
-
 class SecurityGroupCreateException(Exception):
     pass
 
@@ -135,12 +128,8 @@ def log_backup_schedule_delete(sender, instance, **kwargs):
 
 
 def autocreate_spl_tenant(sender, instance, created=False, **kwargs):
-    if not created:
-        return
-    spl = instance
-    options = spl.service.settings.options
-    if options and options.get('autocreate_tenants'):
-        tenant = spl.create_tenant()
+    if created and instance.service.settings.get_option('autocreate_tenants'):
+        tenant = instance.create_tenant()
         # TODO: Migrate to on_commit hook
         # Execute Celery task only after transaction commits
         # Need countdown to make sure that tenant will exist in database on task execution

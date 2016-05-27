@@ -52,12 +52,6 @@ class OpenStackConfig(AppConfig):
             dispatch_uid='nodeconductor_openstack.handlers.add_quotas_to_service_project_link',
         )
 
-        signals.pre_save.connect(
-            handlers.set_tenant_default_availability_zone,
-            sender=Tenant,
-            dispatch_uid='nodeconductor_openstack.handlers.set_tenant_default_availability_zone',
-        )
-
         signals.post_save.connect(
             handlers.increase_quotas_usage_on_instance_creation,
             sender=Instance,
