@@ -447,3 +447,7 @@ class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
 
     def get_backend(self):
         return self.tenant.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-dr-backup'
