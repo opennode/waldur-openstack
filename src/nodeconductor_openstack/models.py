@@ -201,6 +201,18 @@ class SecurityGroupRule(models.Model):
                (self.security_group, self.protocol, self.cidr, self.from_port, self.to_port)
 
 
+class IpMapping(core_models.UuidMixin):
+
+    class Permissions(object):
+        project_path = 'project'
+        customer_path = 'project__customer'
+        project_group_path = 'project__project_groups'
+
+    public_ip = models.GenericIPAddressField(protocol='IPv4')
+    private_ip = models.GenericIPAddressField(protocol='IPv4')
+    project = models.ForeignKey(structure_models.Project, related_name='+')
+
+
 class FloatingIP(core_models.UuidMixin):
 
     class Permissions(object):

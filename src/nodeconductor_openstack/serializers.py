@@ -224,6 +224,18 @@ class AssignFloatingIpSerializer(serializers.Serializer):
         return attrs
 
 
+class IpMappingSerializer(serializers.HyperlinkedModelSerializer):
+
+    class Meta:
+        model = models.IpMapping
+        fields = ('url', 'uuid', 'public_ip', 'private_ip', 'project')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+            'project': {'lookup_field': 'uuid', 'view_name': 'project-detail'}
+        }
+        view_name = 'openstack-ip-mapping-detail'
+
+
 class FloatingIPSerializer(serializers.HyperlinkedModelSerializer):
     service_project_link = NestedServiceProjectLinkSerializer(read_only=True)
 
