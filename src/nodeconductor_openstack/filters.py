@@ -71,6 +71,23 @@ class SecurityGroupFilter(django_filters.FilterSet):
         ]
 
 
+class IpMappingFilter(django_filters.FilterSet):
+    project = django_filters.CharFilter(name='project__uuid')
+
+    # XXX: remove after upgrading to django-filter 0.12
+    #      which is still unavailable at https://pypi.python.org/simple/django-filter/
+    private_ip = django_filters.CharFilter()
+    public_ip = django_filters.CharFilter()
+
+    class Meta(object):
+        model = models.IpMapping
+        fields = [
+            'project',
+            'private_ip',
+            'public_ip',
+        ]
+
+
 class FloatingIPFilter(django_filters.FilterSet):
     project = django_filters.CharFilter(
         name='service_project_link__project__uuid',

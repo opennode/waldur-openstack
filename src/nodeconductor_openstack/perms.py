@@ -74,5 +74,6 @@ PERMISSION_LOGICS = (
     ('openstack.DRBackup', structure_perms.resource_permission_logic),
     ('openstack.Flavor', StaffPermissionLogic(any_permission=True)),
     ('openstack.Image', StaffPermissionLogic(any_permission=True)),
+    ('openstack.IpMapping', StaffPermissionLogic(any_permission=True)),
     ('openstack.FloatingIP', StaffPermissionLogic(any_permission=True)),
 )
