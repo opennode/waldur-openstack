@@ -457,6 +457,14 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         view_name='openstack-spl-detail',
         queryset=models.OpenStackServiceProjectLink.objects.all())
 
+    tenant = serializers.HyperlinkedRelatedField(
+        source='service_project_link.tenant',
+        view_name='openstack-tenant-detail',
+        read_only=True,
+        lookup_field='uuid')
+
+    tenant_name = serializers.ReadOnlyField(source='service_project_link.tenant.name')
+
     flavor = serializers.HyperlinkedRelatedField(
         view_name='openstack-flavor-detail',
         lookup_field='uuid',
@@ -483,6 +491,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'backups', 'backup_schedules', 'flavor_disk',
+            'tenant', 'tenant_name',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
