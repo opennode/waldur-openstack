@@ -547,6 +547,7 @@ class OpenStackBackend(ServiceBackend):
         nova_quotas = {
             'instances': quotas.get('instances'),
             'cores': quotas.get('vcpu'),
+            'ram': quotas.get('ram'),
         }
         nova_quotas = {k: v for k, v in nova_quotas.items() if v is not None}
 
