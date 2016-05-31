@@ -183,7 +183,10 @@ class OpenStackClient(object):
 
 class OpenStackBackend(ServiceBackend):
 
-    DEFAULT_TENANT = 'admin'
+    DEFAULTS = {
+        'tenant_name': 'admin',
+        'autocreate_tenants': False
+    }
 
     def __init__(self, settings, tenant_id=None):
         self.settings = settings
@@ -202,10 +205,8 @@ class OpenStackBackend(ServiceBackend):
                     "Can't create tenant session, please provide tenant ID")
 
             credentials['tenant_id'] = self.tenant_id
-        elif self.settings.options:
-            credentials['tenant_name'] = self.settings.options.get('tenant_name', self.DEFAULT_TENANT)
         else:
-            credentials['tenant_name'] = self.DEFAULT_TENANT
+            credentials['tenant_name'] = self.settings.get_option('tenant_name')
 
         # Cache session in the object
         attr_name = 'admin_session' if admin else 'session'
@@ -548,6 +549,7 @@ class OpenStackBackend(ServiceBackend):
         nova_quotas = {
             'instances': quotas.get('instances'),
             'cores': quotas.get('vcpu'),
+            'ram': quotas.get('ram'),
         }
         nova_quotas = {k: v for k, v in nova_quotas.items() if v is not None}
 

@@ -205,6 +205,18 @@ class SecurityGroupRule(models.Model):
                (self.security_group, self.protocol, self.cidr, self.from_port, self.to_port)
 
 
+class IpMapping(core_models.UuidMixin):
+
+    class Permissions(object):
+        project_path = 'project'
+        customer_path = 'project__customer'
+        project_group_path = 'project__project_groups'
+
+    public_ip = models.GenericIPAddressField(protocol='IPv4')
+    private_ip = models.GenericIPAddressField(protocol='IPv4')
+    project = models.ForeignKey(structure_models.Project, related_name='+')
+
+
 class FloatingIP(core_models.UuidMixin):
 
     class Permissions(object):
@@ -261,7 +273,7 @@ class Instance(structure_models.VirtualMachineMixin,
 
     def detect_coordinates(self):
         settings = self.service_project_link.service.settings
-        data = settings.options.get('coordinates')
+        data = settings.get_option('coordinates')
         if data:
             return Coordinates(latitude=data['latitude'],
                                longitude=data['longitude'])
@@ -498,3 +510,7 @@ class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, 
 
     def get_backend(self):
         return self.tenant.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-dr-backup'

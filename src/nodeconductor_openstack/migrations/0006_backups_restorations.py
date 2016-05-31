@@ -12,7 +12,7 @@ import uuidfield.fields
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('openstack', '0004_dr_and_volume_backups'),
+        ('openstack', '0005_ipmapping'),
     ]
 
     operations = [

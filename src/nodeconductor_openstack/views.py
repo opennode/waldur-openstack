@@ -632,6 +632,15 @@ class SecurityGroupViewSet(StateExecutorViewSet):
         return super(SecurityGroupViewSet, self).retrieve(request, *args, **kwargs)
 
 
+class IpMappingViewSet(viewsets.ModelViewSet):
+    queryset = models.IpMapping.objects.all()
+    serializer_class = serializers.IpMappingSerializer
+    lookup_field = 'uuid'
+    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
+    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
+    filter_class = filters.IpMappingFilter
+
+
 class FloatingIPViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = models.FloatingIP.objects.all()
     serializer_class = serializers.FloatingIPSerializer

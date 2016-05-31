@@ -28,12 +28,11 @@ class ServiceSerializer(structure_serializers.BaseServiceSerializer):
         'password': '',
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
-        'tenant_name': 'Administrative tenant (default: "admin")',
+        'tenant_name': 'Administrative tenant',
         'availability_zone': 'Default availability zone for provisioned Instances',
-        'cpu_overcommit_ratio': '(default: 1)',
         'external_network_id': 'ID of OpenStack external network that will be connected to new service tenants',
-        'coordinates': 'Coordianates of the datacenter, for example: {"latitude": 40.712784, "longitude": -74.005941}',
-        'autocreate_tenants': 'Automatically create tenant for new SPL (default: False)',
+        'coordinates': 'Coordianates of the datacenter (e.g. {"latitude": 40.712784, "longitude": -74.005941})',
+        'autocreate_tenants': 'Automatically create tenant for new SPL',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
@@ -223,6 +222,18 @@ class AssignFloatingIpSerializer(serializers.Serializer):
                 "Service project link of instance should be in stable state.")
 
         return attrs
+
+
+class IpMappingSerializer(serializers.HyperlinkedModelSerializer):
+
+    class Meta:
+        model = models.IpMapping
+        fields = ('url', 'uuid', 'public_ip', 'private_ip', 'project')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+            'project': {'lookup_field': 'uuid', 'view_name': 'project-detail'}
+        }
+        view_name = 'openstack-ip-mapping-detail'
 
 
 class FloatingIPSerializer(serializers.HyperlinkedModelSerializer):
@@ -458,6 +469,14 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         view_name='openstack-spl-detail',
         queryset=models.OpenStackServiceProjectLink.objects.all())
 
+    tenant = serializers.HyperlinkedRelatedField(
+        source='service_project_link.tenant',
+        view_name='openstack-tenant-detail',
+        read_only=True,
+        lookup_field='uuid')
+
+    tenant_name = serializers.ReadOnlyField(source='service_project_link.tenant.name')
+
     flavor = serializers.HyperlinkedRelatedField(
         view_name='openstack-flavor-detail',
         lookup_field='uuid',
@@ -484,6 +503,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'backups', 'backup_schedules', 'flavor_disk',
+            'tenant', 'tenant_name',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
@@ -532,10 +552,9 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     "security groups have to belong to same project and service".format(security_group.name))
 
         if not attrs['skip_external_ip_assignment']:
-            options = settings.options or {}
             tenant = service_project_link.tenant
             if tenant is None:
-                missed_net = 'external_network_id' not in options
+                missed_net = not settings.get_option('external_network_id')
             else:
                 missed_net = tenant.state == core_models.StateMixin.States.OK and not tenant.external_network_id
 
@@ -699,7 +718,7 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
         spl = validated_data['service_project_link']
         # get availability zone from service settings if it is not defined
         if not validated_data.get('availability_zone'):
-            validated_data['availability_zone'] = spl.service.settings.options.get('availability_zone', '')
+            validated_data['availability_zone'] = spl.service.settings.get_option('availability_zone') or ''
         # init tenant user username(if not defined) and password
         if not validated_data.get('user_username'):
             name = validated_data['name']
