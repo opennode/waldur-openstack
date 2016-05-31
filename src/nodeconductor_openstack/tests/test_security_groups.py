@@ -25,6 +25,7 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
         self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
             service=self.service, project=self.project)
+        self.tenant = self.service_project_link.tenant
 
         self.valid_data = {
             'name': 'test_security_group',
@@ -52,7 +53,7 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.assertTrue(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
     def test_security_group_can_not_be_created_if_quota_is_over_limit(self):
-        self.service_project_link.set_quota_limit('security_group_count', 0)
+        self.tenant.set_quota_limit('security_group_count', 0)
 
         self.client.force_authenticate(self.admin)
         response = self.client.post(self.url, self.valid_data)
@@ -61,7 +62,7 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
     def test_security_group_can_not_be_created_if_rules_quota_is_over_limit(self):
-        self.service_project_link.set_quota_limit('security_group_rule_count', 0)
+        self.tenant.set_quota_limit('security_group_rule_count', 0)
 
         self.client.force_authenticate(self.admin)
         response = self.client.post(self.url, self.valid_data)
@@ -113,6 +114,7 @@ class SecurityGroupUpdateTest(test.APITransactionTestCase):
         self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
         self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
             service=self.service, project=self.project)
+        self.tenant = self.service_project_link.tenant
 
         self.security_group = factories.SecurityGroupFactory(
             service_project_link=self.service_project_link, state=SynchronizationStates.IN_SYNC)
@@ -158,7 +160,7 @@ class SecurityGroupUpdateTest(test.APITransactionTestCase):
         self.assertEqual(self.service_project_link, reread_security_group.service_project_link)
 
     def test_security_group_rules_can_not_be_updated_if_rules_quota_is_over_limit(self):
-        self.service_project_link.set_quota_limit('security_group_rule_count', 0)
+        self.tenant.set_quota_limit('security_group_rule_count', 0)
 
         rules = [
             {

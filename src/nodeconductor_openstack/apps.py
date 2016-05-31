@@ -48,8 +48,8 @@ class OpenStackConfig(AppConfig):
 
         signals.post_save.connect(
             quotas_handlers.add_quotas_to_scope,
-            sender=OpenStackServiceProjectLink,
-            dispatch_uid='nodeconductor_openstack.handlers.add_quotas_to_service_project_link',
+            sender=Tenant,
+            dispatch_uid='nodeconductor_openstack.handlers.add_quotas_to_tenant',
         )
 
         signals.post_save.connect(

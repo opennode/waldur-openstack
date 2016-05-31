@@ -113,7 +113,7 @@ class BackupBackend(object):
     def create(self):
         instance = self.backup.instance
         spl = instance.service_project_link
-        quota_errors = spl.validate_quota_change({
+        quota_errors = spl.tenant.validate_quota_change({
             'storage': instance.system_volume_size + instance.data_volume_size})
 
         if quota_errors:

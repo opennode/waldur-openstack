@@ -20,22 +20,23 @@ class ResourceQuotasTest(test.APITransactionTestCase):
         data = {'cores': 4, 'ram': 1024, 'disk': 20480}
 
         service_project_link = factories.OpenStackServiceProjectLinkFactory(service=service, project=self.project)
+        tenant = service_project_link.tenant
         resource = factories.InstanceFactory(service_project_link=service_project_link, cores=data['cores'])
 
-        self.assertEqual(service_project_link.quotas.get(name='instances').usage, 1)
-        self.assertEqual(service_project_link.quotas.get(name='vcpu').usage, data['cores'])
-        self.assertEqual(service_project_link.quotas.get(name='ram').usage, 0)
-        self.assertEqual(service_project_link.quotas.get(name='storage').usage, 0)
+        self.assertEqual(tenant.quotas.get(name='instances').usage, 1)
+        self.assertEqual(tenant.quotas.get(name='vcpu').usage, data['cores'])
+        self.assertEqual(tenant.quotas.get(name='ram').usage, 0)
+        self.assertEqual(tenant.quotas.get(name='storage').usage, 0)
 
         resource.ram = data['ram']
         resource.disk = data['disk']
         resource.save()
 
-        self.assertEqual(service_project_link.quotas.get(name='ram').usage, data['ram'])
-        self.assertEqual(service_project_link.quotas.get(name='storage').usage, data['disk'])
+        self.assertEqual(tenant.quotas.get(name='ram').usage, data['ram'])
+        self.assertEqual(tenant.quotas.get(name='storage').usage, data['disk'])
 
         resource.delete()
-        self.assertEqual(service_project_link.quotas.get(name='instances').usage, 0)
-        self.assertEqual(service_project_link.quotas.get(name='vcpu').usage, 0)
-        self.assertEqual(service_project_link.quotas.get(name='ram').usage, 0)
-        self.assertEqual(service_project_link.quotas.get(name='storage').usage, 0)
+        self.assertEqual(tenant.quotas.get(name='instances').usage, 0)
+        self.assertEqual(tenant.quotas.get(name='vcpu').usage, 0)
+        self.assertEqual(tenant.quotas.get(name='ram').usage, 0)
+        self.assertEqual(tenant.quotas.get(name='storage').usage, 0)

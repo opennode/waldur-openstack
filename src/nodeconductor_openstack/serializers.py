@@ -71,7 +71,6 @@ class ImageSerializer(structure_serializers.BasePropertySerializer):
 class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkSerializer):
 
     state = serializers.SerializerMethodField()
-    quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
 
     def get_state(self, obj):
         if obj.tenant:
@@ -82,7 +81,7 @@ class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkS
         model = models.OpenStackServiceProjectLink
         view_name = 'openstack-spl-detail'
         fields = structure_serializers.BaseServiceProjectLinkSerializer.Meta.fields + (
-            'quotas', 'tenant_id', 'external_network_id', 'internal_network_id', 'state'
+            'tenant_id', 'external_network_id', 'internal_network_id', 'state'
         )
         extra_kwargs = {
             'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},
@@ -102,15 +101,12 @@ class NestedServiceProjectLinkSerializer(structure_serializers.PermissionFieldFi
                                          core_serializers.AugmentedSerializerMixin,
                                          core_serializers.HyperlinkedRelatedModelSerializer):
 
-    quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
-
     class Meta(object):
         model = models.OpenStackServiceProjectLink
         fields = (
             'url',
             'project', 'project_name', 'project_uuid',
             'service', 'service_name', 'service_uuid',
-            'quotas',
         )
         related_paths = 'project', 'service'
         view_name = 'openstack-spl-detail'
@@ -275,19 +271,19 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
     def validate(self, attrs):
         if self.instance is None:
             # Check security groups quotas on creation
-            service_project_link = attrs.get('service_project_link')
-            security_group_count_quota = service_project_link.quotas.get(name='security_group_count')
+            tenant = attrs.get('service_project_link').tenant
+            security_group_count_quota = tenant.quotas.get(name='security_group_count')
             if security_group_count_quota.is_exceeded(delta=1):
                 raise serializers.ValidationError('Can not create new security group - amount quota exceeded')
-            security_group_rule_count_quota = service_project_link.quotas.get(name='security_group_rule_count')
+            security_group_rule_count_quota = tenant.quotas.get(name='security_group_rule_count')
             if security_group_rule_count_quota.is_exceeded(delta=len(attrs.get('rules', []))):
                 raise serializers.ValidationError('Can not create new security group - rules amount quota exceeded')
         else:
             # Check security_groups quotas on update
-            service_project_link = self.instance.service_project_link
+            tenant = self.instance.service_project_link.tenant
             new_rules_count = len(attrs.get('rules', [])) - self.instance.rules.count()
             if new_rules_count > 0:
-                security_group_rule_count_quota = service_project_link.quotas.get(name='security_group_rule_count')
+                security_group_rule_count_quota = tenant.quotas.get(name='security_group_rule_count')
                 if security_group_rule_count_quota.is_exceeded(delta=new_rules_count):
                     raise serializers.ValidationError(
                         'Can not update new security group rules - rules amount quota exceeded')
@@ -450,7 +446,7 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
             'ram': flavor.ram,
         }
 
-        quota_errors = spl.validate_quota_change(quota_usage)
+        quota_errors = spl.tenant.validate_quota_change(quota_usage)
         if quota_errors:
             raise serializers.ValidationError(
                 'One or more quotas are over limit: \n' + '\n'.join(quota_errors))
@@ -527,7 +523,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         flavor = attrs['flavor']
         image = attrs['image']
 
-        floating_ip_count_quota = service_project_link.quotas.get(name='floating_ip_count')
+        floating_ip_count_quota = service_project_link.tenant.quotas.get(name='floating_ip_count')
         if floating_ip_count_quota.is_exceeded(delta=1):
             raise serializers.ValidationError({
                 'service_project_link': 'Can not allocate floating IP - quota has been filled'}
@@ -651,7 +647,7 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
             if value.disk < self.instance.flavor_disk:
                 raise serializers.ValidationError("New flavor disk should be greater than the previous value.")
 
-            quota_errors = spl.validate_quota_change({
+            quota_errors = spl.tenant.validate_quota_change({
                 'vcpu': value.cores - self.instance.cores,
                 'ram': value.ram - self.instance.ram,
             })
@@ -666,7 +662,7 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
                 raise serializers.ValidationError(
                     "Disk size must be strictly greater than the current one")
 
-            quota_errors = self.instance.service_project_link.validate_quota_change({
+            quota_errors = self.instance.service_project_link.tenant.validate_quota_change({
                 'storage': value - self.instance.data_volume_size,
             })
             if quota_errors:
@@ -698,11 +694,14 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
         queryset=models.OpenStackServiceProjectLink.objects.all(),
         write_only=True)
 
+    quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
+
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'availability_zone', 'internal_network_id', 'external_network_id', 'user_username', 'user_password',
+            'availability_zone', 'internal_network_id', 'external_network_id',
+            'user_username', 'user_password', 'quotas'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password',
