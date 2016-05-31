@@ -457,6 +457,7 @@ class VolumeBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
         return self.tenant.get_backend()
 
 
+# For now this model has no endpoint, so there is not need to add permissions definition.
 class VolumeBackupRestoration(core_models.UuidMixin, TimeStampedModel):
     tenant = models.ForeignKey(Tenant, related_name='volume_backup_restorations')
     volume_backup = models.ForeignKey(VolumeBackup, related_name='restorations')
@@ -507,6 +508,11 @@ class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, 
     tenant = models.ForeignKey(Tenant, related_name='+', help_text='Tenant for instance restoration')
     flavor = models.ForeignKey(Flavor, related_name='+')
     volume_backup_restorations = models.ManyToManyField(VolumeBackupRestoration, related_name='+')
+
+    class Permissions(object):
+        customer_path = 'dr_backup__service_project_link__project__customer'
+        project_path = 'dr_backup__service_project_link__project'
+        project_group_path = 'dr_backup__service_project_link__project__project_groups'
 
     def get_backend(self):
         return self.tenant.get_backend()
