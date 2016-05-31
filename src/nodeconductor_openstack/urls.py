@@ -16,3 +16,5 @@ def register_in(router):
     router.register(r'openstack-volumes', views.VolumeViewSet, base_name='openstack-volume')
     router.register(r'openstack-snapshots', views.SnapshotViewSet, base_name='openstack-snapshot')
     router.register(r'openstack-dr-backups', views.DRBackupViewSet, base_name='openstack-dr-backup')
+    router.register(r'openstack-dr-backup-restorations', views.DRBackupRestorationViewSet,
+                    base_name='openstack-dr-backup-restoration')

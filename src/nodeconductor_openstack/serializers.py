@@ -773,14 +773,9 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             image={'lookup_field': 'uuid', 'view_name': 'openstack-image-detail'},
             source_snapshot={'lookup_field': 'uuid', 'view_name': 'openstack-snapshot-detail'},
+            size={'required': False, 'allow_null': True},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
-
-    def get_fields(self):
-        fields = super(VolumeSerializer, self).get_fields()
-        fields['size'].required = False
-        fields['size'].allow_null = True
-        return fields
 
     def validate(self, attrs):
         if self.instance is None:
@@ -837,16 +832,11 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
             'source_volume',
         )
         extra_kwargs = dict(
-            source_volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail'},
+            source_volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail',
+                           'allow_null': False, 'required': True},
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
-
-    def get_fields(self):
-        fields = super(SnapshotSerializer, self).get_fields()
-        fields['source_volume'].allow_null = False
-        fields['source_volume'].required = True
-        return fields
 
     def validate(self, attrs):
         # TODO: add tenant quota validation (NC-1405)
@@ -876,17 +866,19 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
         model = models.DRBackup
         view_name = 'openstack-dr-backup-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'source_instance', 'tenant',
+            'source_instance', 'tenant', 'restorations',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'tenant',
+            'tenant', 'restorations',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'source_instance',
         )
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
-            source_instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            source_instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail',
+                             'allow_null': False, 'required': True},
+            restorations={'lookup_field': 'uuid', 'view_name': 'openstack-dr-backup-restoration-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
@@ -894,38 +886,88 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
         source_instance = validated_data['source_instance']
         validated_data['tenant'] = source_instance.service_project_link.tenant
         validated_data['service_project_link'] = source_instance.service_project_link
+        validated_data['metadata'] = {
+            'source_instance_name': source_instance.name,
+            'source_instance_description': source_instance.description,
+            'source_instance_flavor_name': source_instance.flavor_name,
+        }
         return super(DRBackupSerializer, self).create(validated_data)
 
 
-class DRBackupRestoreSerializer(serializers.ModelSerializer):
+class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
-    tenant = serializers.HyperlinkedRelatedField(
-        view_name='openstack-tenant-detail',
-        queryset=models.Tenant.objects.all(),
-        lookup_field='uuid',
-        write_only=True,
-    )
-    flavor = serializers.HyperlinkedRelatedField(
-        view_name='openstack-flavor-detail',
-        lookup_field='uuid',
-        queryset=models.Flavor.objects.all().select_related('settings'),
-        write_only=True,
-    )
-
-    class Meta(structure_serializers.BaseResourceSerializer.Meta):
-        model = models.DRBackup
+    class Meta(object):
+        model = models.DRBackupRestoration
         view_name = 'openstack-dr-backup-restoration-detail'
-        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'instance', 'tenant',
-        )
-        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'tenant',
-        )
-        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
-            'instance',
-        )
+        fields = ('url', 'uuid', 'dr_backup', 'tenant', 'flavor', 'instance',)
+        read_only_fields = ('instance',)
+        protected_fields = ('tenant', 'dr_backup', 'flavor',)
         extra_kwargs = dict(
+            url={'lookup_field': 'uuid'},
+            dr_backup={'lookup_field': 'uuid', 'view_name': 'openstack-dr-backup-detail'},
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            flavor={'lookup_field': 'uuid', 'view_name': 'openstack-flavor-detail'},
             instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
-            **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
+
+    def validate_dr_backup(self, dr_backup):
+        if dr_backup.state != models.DRBackup.States.OK:
+            raise serializers.ValidationError('Cannot start restoration of DRBackup if it is not in state OK.')
+        return dr_backup
+
+    def validate(self, attrs):
+        tenant = attrs['tenant']
+        flavor = attrs['flavor']
+        if flavor.settings != tenant.service_project_link.service.settings:
+            raise serializers.ValidationError('Tenant and flavor should belong to the same service settings.')
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        tenant = validated_data['tenant']
+        flavor = validated_data['flavor']
+        dr_backup = validated_data['dr_backup']
+        # instance that will be restored
+        instance = models.Instance.objects.create(
+            name=dr_backup.metadata['source_instance_name'],
+            description=dr_backup.metadata['source_instance_description'],
+            service_project_link=tenant.service_project_link,
+            flavor_disk=flavor.disk,
+            flavor_name=flavor.name,
+            cores=flavor.cores,
+            ram=flavor.ram,
+            disk=sum([volume_backup.size for volume_backup in dr_backup.volume_backups.all()]),
+        )
+        validated_data['instance'] = instance
+        dr_backup_restoration = super(DRBackupRestorationSerializer, self).create(validated_data)
+        # restoration for each backuped volume.
+        for volume_backup in dr_backup.volume_backups.all():
+            # volume for backup restoration.
+            volume = models.Volume.objects.create(
+                tenant=tenant,
+                service_project_link=tenant.service_project_link,
+                name=volume_backup.name,
+                description=volume_backup.description,
+                size=volume_backup.size,
+                image_metadata=volume_backup.metadata['source_volume_image_metadata'],
+            )
+            # temporary imported backup
+            mirorred_volume_backup = models.VolumeBackup.objects.create(
+                tenant=tenant,
+                service_project_link=tenant.service_project_link,
+                source_volume=volume_backup.source_volume,
+                name='Mirror of backup: %s' % volume_backup.name,
+                description='Part of "%s" (%s) instance restoration' % (instance.name, instance.uuid),
+                size=volume_backup.size,
+                metadata=volume_backup.metadata,
+                record=volume_backup.record,
+            )
+            # volume restoration from backup
+            volume_backup_restoration = models.VolumeBackupRestoration.objects.create(
+                tenant=tenant,
+                volume_backup=volume_backup,
+                mirorred_volume_backup=mirorred_volume_backup,
+                volume=volume,
+            )
+            dr_backup_restoration.volume_backup_restorations.add(volume_backup_restoration)
+        return dr_backup_restoration

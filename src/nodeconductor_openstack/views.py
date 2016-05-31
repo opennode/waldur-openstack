@@ -5,6 +5,7 @@ from rest_framework import filters as rf_filters
 from rest_framework.reverse import reverse
 from taggit.models import TaggedItem
 
+from nodeconductor.core import mixins as core_mixins
 from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
@@ -1055,3 +1056,15 @@ class DRBackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     def perform_update(self, serializer):
         # Update do not make any changes at backend, so there is no executor
         serializer.save()
+
+
+class DRBackupRestorationViewSet(core_mixins.CreateExecutorMixin,
+                                 mixins.CreateModelMixin,
+                                 mixins.RetrieveModelMixin,
+                                 mixins.ListModelMixin,
+                                 viewsets.GenericViewSet):
+    """ Restoration endpoint support only create/retrieve/list operations """
+    queryset = models.DRBackupRestoration.objects.all()
+    lookup_field = 'uuid'
+    serializer_class = serializers.DRBackupRestorationSerializer
+    create_executor = executors.DRBackupRestorationCreateExecutor
