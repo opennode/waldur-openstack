@@ -8,17 +8,6 @@ from .. import models
 from ..backend import OpenStackClient
 
 
-@shared_task
-def test(*args):
-    print args
-    return args
-
-
-@shared_task
-def test_error():
-    raise Exception('!')
-
-
 def track_openstack_session(task_fn):
     @wraps(task_fn)
     def wrapped(tracked_session, *args, **kwargs):
