@@ -346,11 +346,12 @@ class InstanceSecurityGroupSerializer(serializers.ModelSerializer):
         view_name='openstack-sgp-detail',
         queryset=models.SecurityGroup.objects.all(),
     )
+    state = serializers.ReadOnlyField(source='security_group.human_readable_state')
     description = serializers.ReadOnlyField(source='security_group.description')
 
     class Meta(object):
         model = models.InstanceSecurityGroup
-        fields = ('url', 'name', 'rules', 'description')
+        fields = ('url', 'name', 'rules', 'description', 'state')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
         }
