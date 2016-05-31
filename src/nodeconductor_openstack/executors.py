@@ -5,7 +5,7 @@ from nodeconductor.core import tasks, executors, utils
 from .tasks import (delete_tenant_with_spl, SecurityGroupCreationTask, PollRuntimeStateTask,
                     CreateTemporarySnapshotTask, CreateTemporaryVolumeTask, CreateVolumeBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
-                    CreateInstanceFromVolumesTask, RestoreVolumeBackupTask)
+                    CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask)
 
 
 class SecurityGroupCreateExecutor(executors.CreateExecutor):
@@ -458,6 +458,4 @@ class DRBackupRestorationCreateExecutor(executors.CreateExecutor, executors.Base
 
     @classmethod
     def get_failure_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
-        # TODO: Mark volumes as erred if their creation fails.
-        serialized_instance = utils.serialize_instance(dr_backup_restoration.instance)
-        return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_erred')
+        return SetDRBackupRestorationErredTask().si(serialized_dr_backup_restoration)
