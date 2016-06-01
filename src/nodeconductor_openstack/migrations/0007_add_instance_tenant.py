@@ -14,7 +14,7 @@ def pull_instance_tenant(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('openstack', '0005_ipmapping'),
+        ('openstack', '0006_backups_restorations'),
     ]
 
     operations = [

@@ -101,7 +101,7 @@ class TenantFactory(factory.DjangoModelFactory):
     @classmethod
     def get_url(cls, tenant=None):
         if tenant is None:
-            tenant = SecurityGroupFactory()
+            tenant = TenantFactory()
         return 'http://testserver' + reverse('openstack-tenant-detail', kwargs={'uuid': tenant.uuid})
 
 
