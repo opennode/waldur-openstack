@@ -1,14 +1,18 @@
 from __future__ import unicode_literals
 
+import base64
+import json
+
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.exceptions import ValidationError
 from django.template.defaultfilters import slugify
-from django.utils.encoding import python_2_unicode_compatible
+from django.utils.encoding import python_2_unicode_compatible, force_text
 from django_fsm import transition, FSMIntegerField
 from jsonfield import JSONField
 from iptools.ipv4 import validate_cidr
 from model_utils import FieldTracker
+from model_utils.models import TimeStampedModel
 from urlparse import urlparse
 
 from nodeconductor.core import models as core_models
@@ -246,6 +250,11 @@ class Instance(structure_models.VirtualMachineMixin,
     def get_backend(self):
         return self.tenant.get_backend()
 
+    # XXX: For compatibility with new-style state.
+    @property
+    def human_readable_state(self):
+        return force_text(dict(self.States.CHOICES)[self.state])
+
     @classmethod
     def get_url_name(cls):
         return 'openstack-instance'
@@ -417,12 +426,39 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
         return self.tenant.get_backend()
 
 
+class VolumeBackupRecord(core_models.UuidMixin, models.Model):
+    """ Record that corresponds backup in swift.
+        Several backups from OpenStack can be related to one record.
+    """
+    service = models.CharField(max_length=200)
+    details = JSONField(blank=True)
+
+
 class VolumeBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='volume_backups', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='volume_backups')
     source_volume = models.ForeignKey(Volume, related_name='backups', null=True, on_delete=models.SET_NULL)
-    metadata = JSONField(blank=True)
+    size = models.PositiveIntegerField(help_text='Size of source volume in MiB')
+    metadata = JSONField(blank=True, help_text='Information about volume that will be used on restoration')
+    record = models.ForeignKey(VolumeBackupRecord, related_name='volume_backups', null=True, on_delete=models.SET_NULL)
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+
+# For now this model has no endpoint, so there is not need to add permissions definition.
+class VolumeBackupRestoration(core_models.UuidMixin, TimeStampedModel):
+    """ This model corresponds volume restoration from backup.
+
+        Stores restoration details:
+         - mirrored backup, that is created from source backup.
+         - volume - restored volume.
+    """
+    tenant = models.ForeignKey(Tenant, related_name='volume_backup_restorations')
+    volume_backup = models.ForeignKey(VolumeBackup, related_name='restorations')
+    mirorred_volume_backup = models.ForeignKey(VolumeBackup, related_name='+', null=True, on_delete=models.SET_NULL)
+    volume = models.OneToOneField(Volume, related_name='+')
 
     def get_backend(self):
         return self.tenant.get_backend()
@@ -432,7 +468,8 @@ class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='shapshots', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='shapshots')
-    source_volume = models.ForeignKey(Volume, related_name='shapshots', on_delete=models.PROTECT)
+    # TODO: protect source_volume after NC-1410 implementation
+    source_volume = models.ForeignKey(Volume, related_name='shapshots', null=True, on_delete=models.SET_NULL)
     size = models.PositiveIntegerField(help_text='Size in MiB')
     metadata = JSONField(blank=True)
 
@@ -440,16 +477,44 @@ class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
         return self.tenant.get_backend()
 
 
+# XXX: This model is itacloud specific, it should be moved to assembly
 class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='dr_backups', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='dr_backups')
     source_instance = models.ForeignKey(Instance, related_name='dr_backups', null=True, on_delete=models.SET_NULL)
+    metadata = JSONField(
+        blank=True,
+        help_text='Information about instance that will be used on restoration',
+    )
     # XXX: This field is temporary. Should be deleted in NC-1410.
     instance_volumes = models.ManyToManyField(Volume, related_name='+')
     temporary_volumes = models.ManyToManyField(Volume, related_name='+')
     temporary_snapshots = models.ManyToManyField(Snapshot, related_name='+')
     volume_backups = models.ManyToManyField(VolumeBackup, related_name='dr_backups')
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+
+# XXX: This model is itacloud specific, it should be moved to assembly
+class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, TimeStampedModel):
+    """ This model corresponds instance restoration from DR backup.
+
+        Stores restoration details:
+         - volume_backup_restorations - restoration details of each instance volume.
+         - instance - restored instance.
+    """
+    dr_backup = models.ForeignKey(DRBackup, related_name='restorations')
+    instance = models.OneToOneField(Instance, related_name='+')
+    tenant = models.ForeignKey(Tenant, related_name='+', help_text='Tenant for instance restoration')
+    flavor = models.ForeignKey(Flavor, related_name='+')
+    volume_backup_restorations = models.ManyToManyField(VolumeBackupRestoration, related_name='+')
+
+    class Permissions(object):
+        customer_path = 'dr_backup__service_project_link__project__customer'
+        project_path = 'dr_backup__service_project_link__project'
+        project_group_path = 'dr_backup__service_project_link__project__project_groups'
 
     def get_backend(self):
         return self.tenant.get_backend()
