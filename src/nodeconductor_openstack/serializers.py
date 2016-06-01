@@ -218,7 +218,7 @@ class AssignFloatingIpSerializer(serializers.Serializer):
         if not self.instance.tenant.external_network_id:
             raise serializers.ValidationError(
                 "External network ID of the service project link is missing.")
-        elif self.instance.service_project_link.tenant.state != core_models.StateMixin.States.OK:
+        elif self.instance.tenant.state != core_models.StateMixin.States.OK:
             raise serializers.ValidationError(
                 "Service project link of instance should be in stable state.")
 
@@ -912,6 +912,6 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
 
     def create(self, validated_data):
         source_instance = validated_data['source_instance']
-        validated_data['tenant'] = source_instance.service_project_link.tenant
+        validated_data['tenant'] = source_instance.tenant
         validated_data['service_project_link'] = source_instance.service_project_link
         return super(DRBackupSerializer, self).create(validated_data)

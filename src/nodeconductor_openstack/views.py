@@ -417,7 +417,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         """
         # TODO: Move method after migration from service project link to tenant resource.
         instance = self.get_object()
-        kwargs = {'uuid': instance.service_project_link.tenant.uuid.hex}
+        kwargs = {'uuid': instance.tenant.uuid.hex}
         url = reverse('openstack-tenant-detail', kwargs=kwargs, request=request) + 'allocate_floating_ip/'
         response = request_api(request, url, 'POST')
         return response.Response(response.json(), response.status_code)
