@@ -16,7 +16,6 @@ class OpenStackConfig(AppConfig):
 
     def ready(self):
         from nodeconductor.cost_tracking import CostTrackingRegister
-        from nodeconductor.quotas import handlers as quotas_handlers
         from nodeconductor.structure import SupportedServices
         from nodeconductor.structure.models import Project
         from . import handlers
@@ -44,12 +43,6 @@ class OpenStackConfig(AppConfig):
             handlers.create_initial_security_groups,
             sender=OpenStackServiceProjectLink,
             dispatch_uid='nodeconductor_openstack.handlers.create_initial_security_groups',
-        )
-
-        signals.post_save.connect(
-            quotas_handlers.add_quotas_to_scope,
-            sender=OpenStackServiceProjectLink,
-            dispatch_uid='nodeconductor_openstack.handlers.add_quotas_to_service_project_link',
         )
 
         signals.post_save.connect(
