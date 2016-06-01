@@ -9,7 +9,7 @@ class CreateTemporarySnapshotTask(tasks.Task):
         dr_backup = utils.deserialize_instance(serialized_dr_backup)
         dr_backup.instance_volumes.add(volume)  # XXX: hack to store imported instance volumes.
         snapshot = models.Snapshot.objects.create(
-            volume=volume,
+            source_volume=volume,
             tenant=volume.tenant,
             service_project_link=volume.service_project_link,
             size=volume.size,
@@ -28,8 +28,8 @@ class CreateTemporaryVolumeTask(tasks.Task):
         source_volume_name = snapshot.metadata['source_volume_name']
         volume = models.Volume.objects.create(
             service_project_link=snapshot.service_project_link,
-            tenant=snapshot.volume.tenant,
-            snapshot=snapshot,
+            tenant=snapshot.tenant,
+            source_snapshot=snapshot,
             metadata=snapshot.metadata,
             name='Temporary copy for volume: %s' % source_volume_name,
             description='Part of DR backup %s' % dr_backup.name,
@@ -39,7 +39,7 @@ class CreateTemporaryVolumeTask(tasks.Task):
         return volume
 
 
-class CreateTemporaryVolumeBackupTask(tasks.Task):
+class CreateVolumeBackupTask(tasks.Task):
 
     def execute(self, volume, serialized_dr_backup):
         dr_backup = utils.deserialize_instance(serialized_dr_backup)
@@ -48,9 +48,19 @@ class CreateTemporaryVolumeBackupTask(tasks.Task):
         volume_backup = models.VolumeBackup.objects.create(
             name=source_volume_name,
             description=source_volume_description,
-            volume=volume,
+            source_volume=volume,
             tenant=volume.tenant,
+            size=volume.size,
             service_project_link=volume.service_project_link,
+            metadata={
+                'source_volume_name': volume.name,
+                'source_volume_description': volume.description,
+                'source_volume_bootable': volume.bootable,
+                'source_volume_size': volume.size,
+                'source_volume_metadata': volume.metadata,
+                'source_volume_image_metadata': volume.image_metadata,
+                'source_volume_type': volume.type,
+            }
         )
         dr_backup.volume_backups.add(volume_backup)
         return volume_backup

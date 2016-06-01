@@ -67,6 +67,22 @@ PERMISSION_LOGICS = (
         ],
         any_permission=True,
     )),
+    ('openstack.DRBackupRestoration', FilteredCollaboratorsPermissionLogic(
+        collaborators_query=[
+            'dr_backup__service_project_link__service__customer__roles__permission_group__user',
+            'dr_backup__service_project_link__project__roles__permission_group__user',
+            'dr_backup__service_project_link__project__project_groups__roles__permission_group__user',
+        ],
+        collaborators_filter=[
+            {'dr_backup__service_project_link__service__customer__roles__role_type':
+             structure_models.CustomerRole.OWNER},
+            {'dr_backup__service_project_link__project__roles__role_type':
+             structure_models.ProjectRole.ADMINISTRATOR},
+            {'dr_backup__service_project_link__project__project_groups__roles__permission_group__user':
+             structure_models.ProjectGroupRole.MANAGER},
+        ],
+        any_permission=True,
+    )),
     ('openstack.Instance', structure_perms.resource_permission_logic),
     ('openstack.Tenant', structure_perms.resource_permission_logic),
     ('openstack.Volume', structure_perms.resource_permission_logic),
