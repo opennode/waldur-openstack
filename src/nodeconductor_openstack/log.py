@@ -42,6 +42,20 @@ class InstanceVolumeChangeEventLogger(EventLogger):
                        'resource_volume_extension_failed')
 
 
+# TODO: move this handler to itacloud assembly
+class QuotaEventLogger(EventLogger):
+    quota = 'quotas.Quota'
+    service = 'structure.Service'
+    project = 'structure.Project'
+    project_group = 'structure.ProjectGroup'
+    threshold = float
+
+    class Meta:
+        nullable_fields = ['project_group']
+        event_types = ('quota_threshold_reached',)
+
+
 event_logger.register('openstack_backup', BackupEventLogger)
 event_logger.register('openstack_flavor', InstanceFlavorChangeEventLogger)
 event_logger.register('openstack_volume', InstanceVolumeChangeEventLogger)
+event_logger.register('quota', QuotaEventLogger)
