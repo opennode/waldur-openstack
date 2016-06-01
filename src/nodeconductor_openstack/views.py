@@ -312,24 +312,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     The UI can poll for updates to provide feedback after submitting one of the longer running operations.
 
-    In a DB, state is stored encoded with a symbol. States are:
-
-    - PROVISIONING_SCHEDULED = 1
-    - PROVISIONING = 2
-    - ONLINE = 3
-    - OFFLINE = 4
-    - STARTING_SCHEDULED = 5
-    - STARTING = 6
-    - STOPPING_SCHEDULED = 7
-    - STOPPING = 8
-    - ERRED = 9
-    - DELETION_SCHEDULED = 10
-    - DELETING = 11
-    - RESIZING_SCHEDULED = 13
-    - RESIZING = 14
-    - RESTARTING_SCHEDULED = 15
-    - RESTARTING = 16
-
     Any modification of an instance in unstable or PROVISIONING_SCHEDULED state is prohibited
     and will fail with 409 response code. Assuming stable states are ONLINE and OFFLINE.
 

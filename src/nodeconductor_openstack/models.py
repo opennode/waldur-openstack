@@ -69,18 +69,8 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
     # XXX: temporary method, should be removed after instance will have tenant as field
     @property
-    def internal_network_id(self):
-        return self.tenant.internal_network_id if self.tenant else None
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
     def external_network_id(self):
         return self.tenant.external_network_id if self.tenant else None
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
-    def availability_zone(self):
-        return self.tenant.availability_zone if self.tenant else None
 
     # XXX: temporary method, should be removed after instance will have tenant as field
     @property
@@ -251,6 +241,10 @@ class Instance(structure_models.VirtualMachineMixin,
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
 
     tracker = FieldTracker()
+    tenant = models.ForeignKey('Tenant', related_name='instances', null=True)
+
+    def get_backend(self):
+        return self.tenant.get_backend()
 
     @classmethod
     def get_url_name(cls):

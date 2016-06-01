@@ -11,22 +11,6 @@ logger = logging.getLogger(__name__)
 
 @shared_task(name='nodeconductor.openstack.provision')
 def provision(instance_uuid, **kwargs):
-    instance = Instance.objects.get(uuid=instance_uuid)
-    spl = instance.service_project_link
-    tenant = spl.tenant
-
-    if tenant is None:
-        from nodeconductor_openstack import executors
-
-        tenant = spl.create_tenant()
-        executors.TenantCreateExecutor.execute(tenant, async=False)
-        tenant.refresh_from_db()
-        if tenant.state != Tenant.States.OK:
-            instance.set_erred()
-            instance.error_message = 'Tenant %s (PK: %s) creation failed.' % (tenant, tenant.pk)
-            instance.save()
-            return
-
     provision_instance.apply_async(
         args=(instance_uuid,),
         kwargs=kwargs,
