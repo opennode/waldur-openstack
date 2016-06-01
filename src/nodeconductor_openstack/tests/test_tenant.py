@@ -33,7 +33,7 @@ class TenantActionsTest(test.APISimpleTestCase):
             self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
             mocked_task.assert_called_once_with(self.tenant, quotas=quotas_data)
 
-    @unittest.skip
+    @unittest.skip('Skip volume and snapshot test')
     def test_volume_and_snapshot_quotas_are_created_with_max_instances_quota(self):
         self.client.force_authenticate(self.staff)
         nc_settings = {'OPENSTACK_QUOTAS_INSTANCE_RATIOS': {'volumes': 3, 'snapshots': 7}}
@@ -51,7 +51,7 @@ class TenantActionsTest(test.APISimpleTestCase):
                     'nodeconductor.structure.sync_service_project_links',
                     (self.service_project_link.to_string(),), {'quotas': quotas_data}, countdown=2)
 
-    @unittest.skip
+    @unittest.skip('Skip volume and snapshot test')
     def test_volume_and_snapshot_quotas_are_not_created_without_max_instances_quota(self):
         self.client.force_authenticate(self.staff)
         quotas_data = {'security_group_count': 100}
@@ -63,7 +63,7 @@ class TenantActionsTest(test.APISimpleTestCase):
                 'nodeconductor.structure.sync_service_project_links',
                 (self.service_project_link.to_string(),), {'quotas': quotas_data}, countdown=2)
 
-    @unittest.skip
+    @unittest.skip('Skip volume and snapshot test')
     def test_volume_and_snapshot_values_not_provided_in_settings_use_default_values(self):
         self.client.force_authenticate(self.staff)
         quotas_data = {'instances': 10}
