@@ -107,7 +107,7 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
     def test_user_cannot_change_flavor_of_stopped_instance_he_is_administrator_of_if_quota_would_be_exceeded(self):
         self.client.force_authenticate(user=self.user)
         link = self.admined_instance.service_project_link
-        tenant = factories.TenantFactory(service_project_link=link)
+        tenant = self.admined_instance.service_project_link.tenant
         tenant.set_quota_limit('ram', 1024)
 
         # check for ram

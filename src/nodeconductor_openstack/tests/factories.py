@@ -109,6 +109,19 @@ class InstanceFactory(factory.DjangoModelFactory):
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstack-instance-list')
 
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        """Create an instance of the model, and save it to the database."""
+        manager = cls._get_manager(model_class)
+
+        if cls._meta.django_get_or_create:
+            return cls._get_or_create(model_class, *args, **kwargs)
+
+        if not models.Tenant.objects.filter(service_project_link=kwargs['service_project_link']):
+            TenantFactory(service_project_link=kwargs['service_project_link'])
+
+        return manager.create(*args, **kwargs)
+
 
 class SecurityGroupFactory(factory.DjangoModelFactory):
     class Meta(object):
@@ -164,6 +177,19 @@ class FloatingIPFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(self):
         return 'http://testserver' + reverse('openstack-fip-list')
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        """Create an instance of the model, and save it to the database."""
+        manager = cls._get_manager(model_class)
+
+        if cls._meta.django_get_or_create:
+            return cls._get_or_create(model_class, *args, **kwargs)
+
+        if not models.Tenant.objects.filter(service_project_link=kwargs['service_project_link']):
+            TenantFactory(service_project_link=kwargs['service_project_link'])
+
+        return manager.create(*args, **kwargs)
 
 
 class BackupScheduleFactory(factory.DjangoModelFactory):
@@ -242,6 +268,7 @@ class TenantFactory(factory.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: 'tenant%s' % n)
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+    state = models.Tenant.States.OK
 
     @classmethod
     def get_url(cls, tenant=None):
