@@ -64,7 +64,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
             status='DOWN',
-            backend_network_id=self.spl.external_network_id
+            backend_network_id=self.tenant.external_network_id
         )
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
@@ -99,7 +99,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
             status='ACTIVE',
-            backend_network_id=self.spl.external_network_id
+            backend_network_id=self.tenant.external_network_id
         )
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
@@ -138,7 +138,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
             status='DOWN',
-            backend_network_id=self.spl.external_network_id
+            backend_network_id=self.tenant.external_network_id
         )
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
@@ -159,7 +159,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
             status='DOWN',
-            backend_network_id=self.spl.external_network_id
+            backend_network_id=self.tenant.external_network_id
         )
         instance = factories.InstanceFactory(
             service_project_link=self.spl,

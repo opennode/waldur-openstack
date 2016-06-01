@@ -73,11 +73,6 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
     # XXX: temporary method, should be removed after instance will have tenant as field
     @property
-    def external_network_id(self):
-        return self.tenant.external_network_id if self.tenant else None
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
     def tenant_id(self):
         return self.tenant.backend_id if self.tenant else None
 

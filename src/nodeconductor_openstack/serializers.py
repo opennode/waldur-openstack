@@ -83,7 +83,7 @@ class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkS
         model = models.OpenStackServiceProjectLink
         view_name = 'openstack-spl-detail'
         fields = structure_serializers.BaseServiceProjectLinkSerializer.Meta.fields + (
-            'quotas', 'tenant_id', 'external_network_id', 'state'
+            'quotas', 'tenant_id', 'state'
         )
         extra_kwargs = {
             'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},

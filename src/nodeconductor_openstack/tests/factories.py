@@ -99,11 +99,11 @@ class TenantFactory(factory.DjangoModelFactory):
     external_network_id = factory.Sequence(lambda n: 'external_network_id%s' % n)
 
     @classmethod
-    def get_url(cls, tenant=None):
+    def get_url(cls, tenant=None, action=None):
         if tenant is None:
             tenant = TenantFactory()
-        return 'http://testserver' + reverse('openstack-tenant-detail', kwargs={'uuid': tenant.uuid})
-
+        url = 'http://testserver' + reverse('openstack-tenant-detail', kwargs={'uuid': tenant.uuid.hex})
+        return url if action is None else url + action + '/'
 
     @classmethod
     def get_list_url(cls):
