@@ -909,6 +909,8 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
             'source_instance_name': source_instance.name,
             'source_instance_description': source_instance.description,
             'source_instance_flavor_name': source_instance.flavor_name,
+            'source_instance_min_disk': source_instance.min_disk,
+            'source_instance_min_ram': source_instance.min_ram,
         }
         return super(DRBackupSerializer, self).create(validated_data)
 
@@ -935,10 +937,20 @@ class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
         return dr_backup
 
     def validate(self, attrs):
+        dr_backup = attrs['dr_backup']
         tenant = attrs['tenant']
         flavor = attrs['flavor']
         if flavor.settings != tenant.service_project_link.service.settings:
             raise serializers.ValidationError('Tenant and flavor should belong to the same service settings.')
+
+        min_disk = dr_backup.metadata['source_instance_min_disk']
+        min_ram = dr_backup.metadata['source_instance_min_ram']
+        if flavor.disk < min_disk:
+            raise serializers.ValidationError(
+                {'flavor': "Disk of flavor is not enough for restoration. Min value: %s" % min_disk})
+        if flavor.ram < min_ram:
+            raise serializers.ValidationError(
+                {'flavor': "RAM of flavor is not enough for restoration. Min value: %s" % min_disk})
         return attrs
 
     @transaction.atomic

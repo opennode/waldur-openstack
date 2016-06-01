@@ -2222,10 +2222,11 @@ class OpenStackBackend(ServiceBackend):
             backend_record = cinder_v2.backups.export_record(volume_backup.backend_id)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
-        record = models.VolumeBackupRecord.objects.create(
-            service=backend_record['backup_service'],
-            details=json.loads(base64.b64decode(backend_record['backup_url'])),
-        )
+        record = volume_backup.record or models.VolumeBackupRecord()
+        record.service = backend_record['backup_service']
+        # Store encoded details to have more information about record for debugging.
+        record.details = json.loads(base64.b64decode(backend_record['backup_url']))
+        record.save()
         volume_backup.record = record
         volume_backup.save(update_fields=['record'])
         return volume_backup
@@ -2257,7 +2258,7 @@ class OpenStackBackend(ServiceBackend):
         try:
             imported_record = cinder_v2.backups.import_record(
                 volume_backup.record.service,
-                volume_backup.record.decoded_details,
+                base64.b64encode(json.dumps(volume_backup.record.details))
             )
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException, KeyError) as e:
             six.reraise(OpenStackBackendError, e)

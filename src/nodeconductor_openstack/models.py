@@ -439,10 +439,6 @@ class VolumeBackupRecord(core_models.UuidMixin, models.Model):
     service = models.CharField(max_length=200)
     details = JSONField(blank=True)
 
-    @property
-    def decoded_details(self):
-        return base64.b64encode(json.dumps(self.details))
-
 
 class VolumeBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
@@ -459,6 +455,12 @@ class VolumeBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
 
 # For now this model has no endpoint, so there is not need to add permissions definition.
 class VolumeBackupRestoration(core_models.UuidMixin, TimeStampedModel):
+    """ This model corresponds volume restoration from backup.
+
+        Stores restoration details:
+         - mirrored backup, that is created from source backup.
+         - volume - restored volume.
+    """
     tenant = models.ForeignKey(Tenant, related_name='volume_backup_restorations')
     volume_backup = models.ForeignKey(VolumeBackup, related_name='restorations')
     mirorred_volume_backup = models.ForeignKey(VolumeBackup, related_name='+', null=True, on_delete=models.SET_NULL)
@@ -503,6 +505,12 @@ class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
 
 # XXX: This model is itacloud specific, it should be moved to assembly
 class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, TimeStampedModel):
+    """ This model corresponds instance restoration from DR backup.
+
+        Stores restoration details:
+         - volume_backup_restorations - restoration details of each instance volume.
+         - instance - restored instance.
+    """
     dr_backup = models.ForeignKey(DRBackup, related_name='restorations')
     instance = models.OneToOneField(Instance, related_name='+')
     tenant = models.ForeignKey(Tenant, related_name='+', help_text='Tenant for instance restoration')
