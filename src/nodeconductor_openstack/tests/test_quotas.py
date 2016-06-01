@@ -20,7 +20,7 @@ class ResourceQuotasTest(test.APITransactionTestCase):
         data = {'cores': 4, 'ram': 1024, 'disk': 20480}
 
         service_project_link = factories.OpenStackServiceProjectLinkFactory(service=service, project=self.project)
-        tenant = service_project_link.tenant
+        tenant = factories.TenantFactory(service_project_link=service_project_link)
         resource = factories.InstanceFactory(service_project_link=service_project_link, cores=data['cores'])
 
         self.assertEqual(tenant.quotas.get(name='instances').usage, 1)

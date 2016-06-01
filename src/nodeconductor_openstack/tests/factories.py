@@ -234,3 +234,22 @@ class BackupFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(self):
         return 'http://testserver' + reverse('openstack-backup-list')
+
+
+class TenantFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.Tenant
+
+    name = factory.Sequence(lambda n: 'tenant%s' % n)
+    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+
+    @classmethod
+    def get_url(cls, tenant=None):
+        if tenant is None:
+            tenant = SecurityGroupFactory()
+        return 'http://testserver' + reverse('openstack-tenant-detail', kwargs={'uuid': tenant.uuid})
+
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstack-tenant-list')

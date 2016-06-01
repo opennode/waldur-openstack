@@ -25,7 +25,7 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
         self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
             service=self.service, project=self.project)
-        self.tenant = self.service_project_link.tenant
+        self.tenant = factories.TenantFactory(service_project_link=self.service_project_link)
 
         self.valid_data = {
             'name': 'test_security_group',
@@ -114,7 +114,7 @@ class SecurityGroupUpdateTest(test.APITransactionTestCase):
         self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
         self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
             service=self.service, project=self.project)
-        self.tenant = self.service_project_link.tenant
+        self.tenant = factories.TenantFactory(service_project_link=self.service_project_link)
 
         self.security_group = factories.SecurityGroupFactory(
             service_project_link=self.service_project_link, state=SynchronizationStates.IN_SYNC)
