@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 import base64
+import itertools
 import json
 
 from django.db import models
@@ -19,7 +20,7 @@ from nodeconductor.core import models as core_models
 from nodeconductor.logging.loggers import LoggableMixin
 from nodeconductor.quotas.fields import QuotaField
 from nodeconductor.quotas.models import QuotaModelMixin
-from nodeconductor.structure import models as structure_models
+from nodeconductor.structure import models as structure_models, SupportedServices
 from nodeconductor.structure.utils import get_coordinates_by_ip, Coordinates
 
 from .backup import BackupBackend, BackupScheduleBackend
@@ -40,29 +41,42 @@ class OpenStackService(structure_models.Service):
         return 'openstack'
 
 
-class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
-
-    class Quotas(QuotaModelMixin.Quotas):
-        vcpu = QuotaField(default_limit=20, is_backend=True)
-        ram = QuotaField(default_limit=51200, is_backend=True)
-        storage = QuotaField(default_limit=1024000, is_backend=True)
-        instances = QuotaField(default_limit=30, is_backend=True)
-        security_group_count = QuotaField(default_limit=100, is_backend=True)
-        security_group_rule_count = QuotaField(default_limit=100, is_backend=True)
-        floating_ip_count = QuotaField(default_limit=50, is_backend=True)
+class OpenStackServiceProjectLink(structure_models.StructureModel, core_models.SerializableAbstractMixin,
+                                  core_models.DescendantMixin, LoggableMixin):
 
     service = models.ForeignKey(OpenStackService)
+    project = models.ForeignKey(structure_models.Project)
 
-    class Meta(structure_models.ServiceProjectLink.Meta):
+    class Meta(object):
+        unique_together = ('service', 'project')
         verbose_name = 'OpenStack service project link'
         verbose_name_plural = 'OpenStack service project links'
+
+    class Permissions(object):
+        customer_path = 'service__customer'
+        project_path = 'project'
+        project_group_path = 'project__project_groups'
 
     @classmethod
     def get_url_name(cls):
         return 'openstack-spl'
 
     def get_backend(self):
-        return super(OpenStackServiceProjectLink, self).get_backend(tenant_id=self.tenant_id)
+        return self.service.get_backend(tenant_id=self.tenant_id)
+
+    def get_log_fields(self):
+        return 'project', 'service'
+
+    def get_parents(self):
+        return [self.project, self.service]
+
+    def get_children(self):
+        return itertools.chain.from_iterable(
+            m.objects.filter(service_project_link=self) for m in
+            SupportedServices.get_related_models(self)['resources'])
+
+    def __str__(self):
+        return '{0} | {1}'.format(self.service.name, self.project.name)
 
     # XXX: temporary method, should be removed after instance will have tenant as field
     @property
@@ -386,7 +400,18 @@ class Backup(core_models.UuidMixin,
         pass
 
 
-class Tenant(core_models.RuntimeStateMixin, structure_models.PrivateCloudMixin, structure_models.NewResource):
+class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
+             structure_models.PrivateCloudMixin, structure_models.NewResource):
+
+    class Quotas(QuotaModelMixin.Quotas):
+        vcpu = QuotaField(default_limit=20, is_backend=True)
+        ram = QuotaField(default_limit=51200, is_backend=True)
+        storage = QuotaField(default_limit=1024000, is_backend=True)
+        instances = QuotaField(default_limit=30, is_backend=True)
+        security_group_count = QuotaField(default_limit=100, is_backend=True)
+        security_group_rule_count = QuotaField(default_limit=100, is_backend=True)
+        floating_ip_count = QuotaField(default_limit=50, is_backend=True)
+
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='tenants', on_delete=models.PROTECT)
 

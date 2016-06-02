@@ -575,7 +575,6 @@ class OpenStackBackend(ServiceBackend):
         nova = self.nova_client
         neutron = self.neutron_client
         cinder = self.cinder_client
-        service_project_link = tenant.service_project_link
 
         try:
             nova_quotas = nova.quotas.get(tenant_id=tenant.backend_id)
@@ -586,13 +585,13 @@ class OpenStackBackend(ServiceBackend):
                 neutron_exceptions.NeutronClientException) as e:
             six.reraise(OpenStackBackendError, e)
 
-        service_project_link.set_quota_limit('ram', nova_quotas.ram)
-        service_project_link.set_quota_limit('vcpu', nova_quotas.cores)
-        service_project_link.set_quota_limit('storage', self.gb2mb(cinder_quotas.gigabytes))
-        service_project_link.set_quota_limit('instances', nova_quotas.instances)
-        service_project_link.set_quota_limit('security_group_count', neutron_quotas['security_group'])
-        service_project_link.set_quota_limit('security_group_rule_count', neutron_quotas['security_group_rule'])
-        service_project_link.set_quota_limit('floating_ip_count', neutron_quotas['floatingip'])
+        tenant.set_quota_limit('ram', nova_quotas.ram)
+        tenant.set_quota_limit('vcpu', nova_quotas.cores)
+        tenant.set_quota_limit('storage', self.gb2mb(cinder_quotas.gigabytes))
+        tenant.set_quota_limit('instances', nova_quotas.instances)
+        tenant.set_quota_limit('security_group_count', neutron_quotas['security_group'])
+        tenant.set_quota_limit('security_group_rule_count', neutron_quotas['security_group_rule'])
+        tenant.set_quota_limit('floating_ip_count', neutron_quotas['floatingip'])
 
         try:
             volumes = cinder.volumes.list()
@@ -619,13 +618,13 @@ class OpenStackBackend(ServiceBackend):
                 neutron_exceptions.NeutronClientException) as e:
             six.reraise(OpenStackBackendError, e)
 
-        service_project_link.set_quota_usage('ram', ram)
-        service_project_link.set_quota_usage('vcpu', vcpu)
-        service_project_link.set_quota_usage('storage', sum(self.gb2mb(v.size) for v in volumes + snapshots))
-        service_project_link.set_quota_usage('instances', len(instances), fail_silently=True)
-        service_project_link.set_quota_usage('security_group_count', len(security_groups))
-        service_project_link.set_quota_usage('security_group_rule_count', len(sum([sg.rules for sg in security_groups], [])))
-        service_project_link.set_quota_usage('floating_ip_count', len(floating_ips))
+        tenant.set_quota_usage('ram', ram)
+        tenant.set_quota_usage('vcpu', vcpu)
+        tenant.set_quota_usage('storage', sum(self.gb2mb(v.size) for v in volumes + snapshots))
+        tenant.set_quota_usage('instances', len(instances), fail_silently=True)
+        tenant.set_quota_usage('security_group_count', len(security_groups))
+        tenant.set_quota_usage('security_group_rule_count', len(sum([sg.rules for sg in security_groups], [])))
+        tenant.set_quota_usage('floating_ip_count', len(floating_ips))
 
     @log_backend_action('pull floating IPs for tenant')
     def pull_tenant_floating_ips(self, tenant):
@@ -1413,7 +1412,7 @@ class OpenStackBackend(ServiceBackend):
             try:
                 self._extend_volume(cinder, volume, new_backend_size)
                 storage_delta = new_core_size - old_core_size
-                instance.service_project_link.add_quota_usage('storage', storage_delta)
+                instance.service_project_link.tenant.add_quota_usage('storage', storage_delta)
             except cinder_exceptions.OverLimit as e:
                 logger.warning(
                     'Failed to extend volume: exceeded quota limit while trying to extend volume %s',
@@ -1939,7 +1938,7 @@ class OpenStackBackend(ServiceBackend):
             for volume_id in volume_ids:
                 # create a temporary snapshot
                 snapshot = self._create_snapshot(volume_id, cinder)
-                service_project_link.add_quota_usage('storage', self.gb2mb(snapshot.size))
+                service_project_link.tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
                 snapshot_ids.append(snapshot.id)
 
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
@@ -1964,7 +1963,7 @@ class OpenStackBackend(ServiceBackend):
                 cinder.volume_snapshots.delete(snapshot_id)
 
                 if self._wait_for_snapshot_deletion(snapshot_id, cinder):
-                    service_project_link.add_quota_usage('storage', -self.gb2mb(size))
+                    service_project_link.tenant.add_quota_usage('storage', -self.gb2mb(size))
                     logger.info('Successfully deleted a snapshot %s', snapshot_id)
                 else:
                     logger.exception('Failed to delete snapshot %s', snapshot_id)
@@ -2008,7 +2007,7 @@ class OpenStackBackend(ServiceBackend):
                 promoted_volume_id = self.create_volume_from_snapshot(snapshot_id, prefix=prefix)
                 promoted_volume_ids.append(promoted_volume_id)
                 # volume size should be equal to a snapshot size
-                service_project_link.add_quota_usage('storage', self.gb2mb(snapshot.size))
+                service_project_link.tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
 
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             logger.exception('Failed to promote snapshots %s', ', '.join(snapshot_ids))

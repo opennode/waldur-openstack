@@ -79,7 +79,7 @@ def update_tenant_name_on_project_update(sender, instance=None, created=False, *
 
 
 def increase_quotas_usage_on_instance_creation(sender, instance=None, created=False, **kwargs):
-    add_quota = instance.service_project_link.add_quota_usage
+    add_quota = instance.service_project_link.tenant.add_quota_usage
     if created:
         add_quota('instances', 1)
         add_quota('ram', instance.ram)
@@ -92,7 +92,7 @@ def increase_quotas_usage_on_instance_creation(sender, instance=None, created=Fa
 
 
 def decrease_quotas_usage_on_instances_deletion(sender, instance=None, **kwargs):
-    add_quota = instance.service_project_link.add_quota_usage
+    add_quota = instance.service_project_link.tenant.add_quota_usage
     add_quota('instances', -1)
     add_quota('ram', -instance.ram)
     add_quota('vcpu', -instance.cores)
@@ -102,9 +102,9 @@ def decrease_quotas_usage_on_instances_deletion(sender, instance=None, **kwargs)
 def change_floating_ip_quota_on_status_change(sender, instance, created=False, **kwargs):
     floating_ip = instance
     if floating_ip.status != 'DOWN' and (created or floating_ip.tracker.previous('status') == 'DOWN'):
-        floating_ip.service_project_link.add_quota_usage('floating_ip_count', 1)
+        floating_ip.service_project_link.tenant.add_quota_usage('floating_ip_count', 1)
     if floating_ip.status == 'DOWN' and not created and floating_ip.tracker.previous('status') != 'DOWN':
-        floating_ip.service_project_link.add_quota_usage('floating_ip_count', -1)
+        floating_ip.service_project_link.tenant.add_quota_usage('floating_ip_count', -1)
 
 
 def log_backup_schedule_save(sender, instance, created=False, **kwargs):

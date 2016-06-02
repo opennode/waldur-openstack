@@ -9,6 +9,9 @@ from . import models
 class OpenStackServiceProjectLinkFilter(structure_filters.BaseServiceProjectLinkFilter):
     service = core_filters.URLFilter(view_name='openstack-detail', name='service__uuid')
 
+    class Meta(object):
+        model = models.OpenStackServiceProjectLink
+
 
 class InstanceFilter(structure_filters.BaseResourceFilter):
 

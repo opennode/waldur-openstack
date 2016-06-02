@@ -55,7 +55,7 @@ class TenantCreateExecutor(executors.CreateExecutor):
                 serialized_tenant, 'create_internal_network',
                 runtime_state='creating internal network for tenant'),
         ]
-        quotas = tenant.service_project_link.quotas.all()
+        quotas = tenant.quotas.all()
         quotas = {q.name: int(q.limit) if q.limit.is_integer() else q.limit for q in quotas}
         creation_tasks.append(tasks.BackendMethodTask().si(
             serialized_tenant, 'push_tenant_quotas', quotas,
