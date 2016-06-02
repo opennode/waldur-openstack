@@ -89,7 +89,23 @@ class ImageFactory(factory.DjangoModelFactory):
         return 'http://testserver' + reverse('openstack-image-list')
 
 
-class InstanceFactory(factory.DjangoModelFactory):
+class TenantMixin(object):
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        """Create an instance of the model, and save it to the database."""
+        manager = cls._get_manager(model_class)
+
+        if cls._meta.django_get_or_create:
+            return cls._get_or_create(model_class, *args, **kwargs)
+
+        tenant, _ = models.Tenant.objects.get_or_create(
+            service_project_link=kwargs['service_project_link'])
+        kwargs['tenant'] = tenant
+
+        return manager.create(*args, **kwargs)
+
+
+class InstanceFactory(TenantMixin, factory.DjangoModelFactory):
     class Meta(object):
         model = models.Instance
 
@@ -107,22 +123,8 @@ class InstanceFactory(factory.DjangoModelFactory):
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstack-instance-list')
 
-    @classmethod
-    def _create(cls, model_class, *args, **kwargs):
-        """Create an instance of the model, and save it to the database."""
-        manager = cls._get_manager(model_class)
 
-        if cls._meta.django_get_or_create:
-            return cls._get_or_create(model_class, *args, **kwargs)
-
-        tenant, _ = models.Tenant.objects.get_or_create(
-            service_project_link=kwargs['service_project_link'])
-        kwargs['tenant'] = tenant
-
-        return manager.create(*args, **kwargs)
-
-
-class SecurityGroupFactory(factory.DjangoModelFactory):
+class SecurityGroupFactory(TenantMixin, factory.DjangoModelFactory):
     class Meta(object):
         model = models.SecurityGroup
 

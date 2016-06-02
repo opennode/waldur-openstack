@@ -42,7 +42,7 @@ class OpenStackConfig(AppConfig):
 
         signals.post_save.connect(
             handlers.create_initial_security_groups,
-            sender=OpenStackServiceProjectLink,
+            sender=Tenant,
             dispatch_uid='nodeconductor_openstack.handlers.create_initial_security_groups',
         )
 

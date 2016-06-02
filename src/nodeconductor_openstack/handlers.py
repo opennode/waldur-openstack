@@ -31,7 +31,7 @@ def create_initial_security_groups(sender, instance=None, created=False, **kwarg
             logger.error(e)
 
 
-def create_security_group(spl, group):
+def create_security_group(tenant, group):
     sg_name = group.get('name')
     if sg_name in (None, ''):
         raise SecurityGroupCreateException(
@@ -44,7 +44,8 @@ def create_security_group(spl, group):
 
     sg_description = group.get('description', None)
     sg = SecurityGroup.objects.get_or_create(
-        service_project_link=spl,
+        service_project_link=tenant.service_project_link,
+        tenant=tenant,
         description=sg_description,
         name=sg_name)[0]
 
@@ -79,7 +80,7 @@ def update_tenant_name_on_project_update(sender, instance=None, created=False, *
 
 
 def increase_quotas_usage_on_instance_creation(sender, instance=None, created=False, **kwargs):
-    add_quota = instance.service_project_link.tenant.add_quota_usage
+    add_quota = instance.tenant.add_quota_usage
     if created:
         add_quota('instances', 1)
         add_quota('ram', instance.ram)
@@ -92,7 +93,7 @@ def increase_quotas_usage_on_instance_creation(sender, instance=None, created=Fa
 
 
 def decrease_quotas_usage_on_instances_deletion(sender, instance=None, **kwargs):
-    add_quota = instance.service_project_link.tenant.add_quota_usage
+    add_quota = instance.tenant.add_quota_usage
     add_quota('instances', -1)
     add_quota('ram', -instance.ram)
     add_quota('vcpu', -instance.cores)

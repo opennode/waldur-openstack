@@ -257,22 +257,32 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
     rules = NestedSecurityGroupRuleSerializer(many=True)
     service_project_link = NestedServiceProjectLinkSerializer(
         queryset=models.OpenStackServiceProjectLink.objects.all())
+    tenant = serializers.HyperlinkedRelatedField(
+        lookup_field='uuid',
+        view_name='openstack-tenant-detail',
+        queryset=models.Tenant.objects.all(),
+    )
 
     class Meta(object):
         model = models.SecurityGroup
-        fields = ('url', 'uuid', 'state', 'name', 'description', 'rules', 'service_project_link')
+        fields = ('url', 'uuid', 'state', 'name', 'description', 'rules',
+                  'service_project_link', 'tenant')
         read_only_fields = ('url', 'uuid')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'service_project_link': {'view_name': 'openstack-spl-detail'}
         }
         view_name = 'openstack-sgp-detail'
-        protected_fields = ('service_project_link',)
+        protected_fields = ('service_project_link', 'tenant')
 
     def validate(self, attrs):
         if self.instance is None:
             # Check security groups quotas on creation
-            tenant = attrs.get('service_project_link').tenant
+            tenant = attrs.get('tenant')
+            spl = attrs.get('service_project_link')
+            if tenant.service_project_link != spl:
+                raise serializers.ValidationError('Tenant does not belong to the service project link.')
+
             security_group_count_quota = tenant.quotas.get(name='security_group_count')
             if security_group_count_quota.is_exceeded(delta=1):
                 raise serializers.ValidationError('Can not create new security group - amount quota exceeded')
@@ -281,7 +291,7 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
                 raise serializers.ValidationError('Can not create new security group - rules amount quota exceeded')
         else:
             # Check security_groups quotas on update
-            tenant = self.instance.service_project_link.tenant
+            tenant = self.instance.tenant
             new_rules_count = len(attrs.get('rules', [])) - self.instance.rules.count()
             if new_rules_count > 0:
                 security_group_rule_count_quota = tenant.quotas.get(name='security_group_rule_count')
@@ -588,10 +598,17 @@ class InstanceImportSerializer(structure_serializers.BaseResourceImportSerialize
     class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
         model = models.Instance
         view_name = 'openstack-instance-detail'
+        fields = structure_serializers.BaseResourceImportSerializer.Meta.fields + ('tenant',)
+
+    tenant = serializers.HyperlinkedRelatedField(
+        queryset=models.Tenant.objects.all(),
+        view_name='openstack-tenant-detail',
+        lookup_field='uuid',
+        write_only=True)
 
     def create(self, validated_data):
-        spl = validated_data['service_project_link']
-        backend = spl.get_backend()
+        tenant = validated_data['tenant']
+        backend = tenant.get_backend()
 
         try:
             backend_instance = backend.get_instance(validated_data['backend_id'])
@@ -600,7 +617,7 @@ class InstanceImportSerializer(structure_serializers.BaseResourceImportSerialize
                 {'backend_id': "Can't import instance with ID %s. Reason: %s" % (validated_data['backend_id'], e)})
 
         backend_security_groups = backend_instance.nc_model_data.pop('security_groups')
-        security_groups = spl.security_groups.filter(name__in=backend_security_groups)
+        security_groups = tenant.security_groups.filter(name__in=backend_security_groups)
         if security_groups.count() != len(backend_security_groups):
             raise serializers.ValidationError(
                 {'backend_id': "Security groups for instance ID %s "

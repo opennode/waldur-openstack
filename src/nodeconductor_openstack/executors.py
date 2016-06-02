@@ -2,7 +2,7 @@ from celery import chain, group
 
 from nodeconductor.core import tasks, executors, utils
 
-from .tasks import (delete_tenant_with_spl, SecurityGroupCreationTask, PollRuntimeStateTask,
+from .tasks import (delete_tenant_with_spl, PollRuntimeStateTask,
                     CreateTemporarySnapshotTask, CreateTemporaryVolumeTask, CreateVolumeBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask)
@@ -12,8 +12,8 @@ class SecurityGroupCreateExecutor(executors.CreateExecutor):
 
     @classmethod
     def get_task_signature(cls, security_group, serialized_security_group, **kwargs):
-        return SecurityGroupCreationTask().si(
-            serialized_security_group, state_transition='begin_creating')
+        return tasks.BackendMethodTask().si(
+            serialized_security_group, 'create_security_group', state_transition='begin_creating')
 
 
 class SecurityGroupUpdateExecutor(executors.UpdateExecutor):
@@ -65,7 +65,7 @@ class TenantCreateExecutor(executors.CreateExecutor):
         # handle security groups
         # XXX: Create default security groups that was connected to SPL earlier.
         serialized_executor = utils.serialize_class(SecurityGroupCreateExecutor)
-        for security_group in tenant.service_project_link.security_groups.all():
+        for security_group in tenant.security_groups.all():
             serialized_security_group = utils.serialize_instance(security_group)
             creation_tasks.append(tasks.ExecutorTask().si(serialized_executor, serialized_security_group))
 

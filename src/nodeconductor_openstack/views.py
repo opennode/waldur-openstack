@@ -195,7 +195,11 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
         - instances that belong to a project where a user has a role.
         - instances that belong to a customer that a user owns.
+        """
+        return super(InstanceViewSet, self).list(request, *args, **kwargs)
 
+    def create(self, request, *args, **kwargs):
+        """
         A new instance can be created by users with project administrator role or with staff privilege (is_staff=True).
 
         Example of a valid request:
@@ -214,7 +218,8 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 "image": "http://example.com/api/openstack-images/1ee380602b6283c446ad9420b3230bf0/",
                 "flavor": "http://example.com/api/openstack-flavors/1ee385bc043249498cfeb8c7e3e079f0/",
                 "ssh_public_key": "http://example.com/api/keys/6fbd6b24246f4fb38715c29bafa2e5e7/",
-                "service_project_link": "http://example.com/api/openstack-service-project-link/674/".
+                "service_project_link": "http://example.com/api/openstack-service-project-link/674/",
+                "tenant": "http://example.com/api/openstack-tenants/33bf0f83d4b948119038d6e16f05c129/",
                 "data_volume_size": 1024,
                 "system_volume_size": 20480,
                 "security_groups": [
@@ -223,7 +228,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 ]
             }
         """
-        return super(InstanceViewSet, self).list(request, *args, **kwargs)
+        return super(InstanceViewSet, self).create(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
         """
@@ -272,14 +277,14 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
     def allocate_floating_ip(self, request, uuid=None):
         """
         In order to allocate floating IP, make **POST** request to
-        */api/openstack-service-project-link/<pk>/allocate_floating_ip/*.
+        */api/openstack-tenants/<pk>/allocate_floating_ip/*.
         Note that service project link should be in stable state and have external network.
         """
         instance = self.get_object()
         kwargs = {'uuid': instance.tenant.uuid.hex}
         url = reverse('openstack-tenant-detail', kwargs=kwargs, request=request) + 'allocate_floating_ip/'
-        response = request_api(request, url, 'POST')
-        return response.Response(response.json(), response.status_code)
+        resp = request_api(request, url, 'POST')
+        return response.Response(resp.json(), resp.status_code)
 
     allocate_floating_ip.title = 'Allocate floating IP'
 
@@ -393,9 +398,13 @@ class SecurityGroupViewSet(StateExecutorViewSet):
 
     def list(self, request, *args, **kwargs):
         """
-        To get a list of Security Groups and security group rules,
-        run **GET** against *api/openstack-security-groups/* as authenticated user.
+        To get a list of security groups and security group rules,
+        run **GET** against */api/openstack-security-groups/* as authenticated user.
+        """
+        return super(SecurityGroupViewSet, self).list(request, *args, **kwargs)
 
+    def create(self, request, *args, **kwargs):
+        """
         To create a new security group, issue a **POST** with security group details to */api/openstack-security-groups/*.
         This will create new security group and start its synchronization with OpenStack.
 
@@ -427,14 +436,14 @@ class SecurityGroupViewSet(StateExecutorViewSet):
                     }
                 ],
                 "service_project_link": {
-                    "project": "http://example.com/api/project/6c9b01c251c24174a6691a1f894fae31/",
-                    "service": "http://example.com/api/openstack/1ee385bc043249498cfeb8c7e3e079f0/"
-                }
+                    "url": "http://example.com/api/openstack-service-project-link/6c9b01c251c24174a6691a1f894fae31/",
+                },
+                "tenant": "http://example.com/api/openstack-tenants/33bf0f83d4b948119038d6e16f05c129/"
             }
         """
-        return super(SecurityGroupViewSet, self).list(request, *args, **kwargs)
+        return super(SecurityGroupViewSet, self).create(request, *args, **kwargs)
 
-    def retrieve(self, request, *args, **kwargs):
+    def update(self, request, *args, **kwargs):
         """
         Security group name, description and rules can be updated. To execute update request make **PATCH**
         request with details to */api/openstack-security-groups/<security-group-uuid>/*.
@@ -464,12 +473,16 @@ class SecurityGroupViewSet(StateExecutorViewSet):
                     }
                 ],
             }
-
-        To schedule security group deletion - issue **DELETE** request against
-        */api/openstack-security-groups/<security-group-uuid>/*. Endpoint will return 202 if deletion
-        was scheduled successfully.
         """
-        return super(SecurityGroupViewSet, self).retrieve(request, *args, **kwargs)
+        return super(SecurityGroupViewSet, self).update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        To schedule security group deletion - issue **DELETE** request against
+        */api/openstack-security-groups/<security-group-uuid>/*.
+        Endpoint will return 202 if deletion was scheduled successfully.
+        """
+        return super(SecurityGroupViewSet, self).destroy(request, *args, **kwargs)
 
 
 class IpMappingViewSet(viewsets.ModelViewSet):
