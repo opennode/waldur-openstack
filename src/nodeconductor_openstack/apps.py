@@ -18,6 +18,7 @@ class OpenStackConfig(AppConfig):
         from nodeconductor.cost_tracking import CostTrackingRegister
         from nodeconductor.structure import SupportedServices
         from nodeconductor.structure.models import Project
+        from nodeconductor.quotas.models import Quota
         from . import handlers
 
         OpenStackServiceProjectLink = self.get_model('OpenStackServiceProjectLink')
@@ -92,4 +93,10 @@ class OpenStackConfig(AppConfig):
                 handlers.create_host_for_instance,
                 sender=Instance,
                 dispatch_uid='nodeconductor.template.handlers.create_host_for_instance',
+            )
+
+            signals.post_save.connect(
+                handlers.check_quota_threshold_breach,
+                sender=Quota,
+                dispatch_uid='nodeconductor.quotas.handlers.check_quota_threshold_breach',
             )

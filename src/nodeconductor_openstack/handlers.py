@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 
 from . import executors
 from .log import event_logger
-from .models import SecurityGroup, SecurityGroupRule, OpenStackServiceProjectLink, Instance
+from .models import SecurityGroup, SecurityGroupRule, OpenStackServiceProjectLink, Instance, Tenant
 from .tasks import register_instance_in_zabbix
 
 
@@ -141,3 +141,24 @@ def create_host_for_instance(sender, instance, name, source, target, **kwargs):
     """ Add Zabbix host to OpenStack instance on creation """
     if source == Instance.States.PROVISIONING and target == Instance.States.ONLINE:
         register_instance_in_zabbix.delay(instance.uuid.hex)
+
+
+# TODO: move this handler to itacloud assembly
+def check_quota_threshold_breach(sender, instance, **kwargs):
+    quota = instance
+    alert_threshold = 0.8
+
+    if quota.scope is not None and quota.is_exceeded(threshold=alert_threshold):
+        if isinstance(quota.scope, Tenant):
+            tenant = quota.scope
+            event_logger.openstack_tenant_quota.warning(
+                '{quota_name} quota threshold has been reached for tenant {tenant_name}.',
+                event_type='quota_threshold_reached',
+                event_context={
+                    'quota': quota,
+                    'tenant': tenant,
+                    'service': tenant.service_project_link.service,
+                    'project': tenant.service_project_link.project,
+                    'project_group': tenant.service_project_link.project.project_groups.first(),
+                    'threshold': alert_threshold * quota.limit,
+                })
