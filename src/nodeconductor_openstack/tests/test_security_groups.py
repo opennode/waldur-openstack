@@ -142,7 +142,7 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
 
     def test_security_group_tenant_can_not_be_updated(self):
         new_tenant = factories.TenantFactory(service_project_link=self.service_project_link)
-        new_tenant_url = factories.OpenStackServiceProjectLinkFactory.get_url(new_tenant)
+        new_tenant_url = factories.TenantFactory.get_url(new_tenant)
 
         self.client.force_authenticate(self.admin)
         self.client.patch(self.url, data={'tenant': {'url': new_tenant_url}})
