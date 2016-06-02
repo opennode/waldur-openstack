@@ -89,34 +89,12 @@ class ImageFactory(factory.DjangoModelFactory):
         return 'http://testserver' + reverse('openstack-image-list')
 
 
-class TenantFactory(factory.DjangoModelFactory):
-    class Meta(object):
-        model = models.Tenant
-
-    name = factory.Sequence(lambda n: 'tenant%s' % n)
-    state = models.Tenant.States.OK
-    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
-    external_network_id = factory.Sequence(lambda n: 'external_network_id%s' % n)
-
-    @classmethod
-    def get_url(cls, tenant=None, action=None):
-        if tenant is None:
-            tenant = TenantFactory()
-        url = 'http://testserver' + reverse('openstack-tenant-detail', kwargs={'uuid': tenant.uuid.hex})
-        return url if action is None else url + action + '/'
-
-    @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstack-tenant-list')
-
-
 class InstanceFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.Instance
 
     name = factory.Sequence(lambda n: 'instance%s' % n)
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
-    tenant = factory.SubFactory(TenantFactory)
 
     @classmethod
     def get_url(cls, instance=None, action=None):
@@ -281,3 +259,24 @@ class BackupFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(self):
         return 'http://testserver' + reverse('openstack-backup-list')
+
+
+class TenantFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.Tenant
+
+    name = factory.Sequence(lambda n: 'tenant%s' % n)
+    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+    state = models.Tenant.States.OK
+    external_network_id = factory.Sequence(lambda n: 'external_network_id%s' % n)
+
+    @classmethod
+    def get_url(cls, tenant=None, action=None):
+        if tenant is None:
+            tenant = TenantFactory()
+        url = 'http://testserver' + reverse('openstack-tenant-detail', kwargs={'uuid': tenant.uuid.hex})
+        return url if action is None else url + action + '/'
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstack-tenant-list')
