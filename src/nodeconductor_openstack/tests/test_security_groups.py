@@ -148,7 +148,7 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
         self.client.patch(self.url, data={'tenant': {'url': new_tenant_url}})
 
         reread_security_group = models.SecurityGroup.objects.get(pk=self.security_group.pk)
-        self.assertNotEqual(new_tenant, reread_security_group.service_project_link)
+        self.assertNotEqual(new_tenant, reread_security_group.tenant)
 
     def test_security_group_rules_can_not_be_updated_if_rules_quota_is_over_limit(self):
         self.tenant.set_quota_limit('security_group_rule_count', 0)
