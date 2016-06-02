@@ -151,11 +151,12 @@ def check_quota_threshold_breach(sender, instance, **kwargs):
     if quota.scope is not None and quota.is_exceeded(threshold=alert_threshold):
         if isinstance(quota.scope, Tenant):
             tenant = quota.scope
-            event_logger.quota.warning(
-                '{quota_name} quota threshold has been reached for project {project_name}.',
+            event_logger.openstack_tenant_quota.warning(
+                '{quota_name} quota threshold has been reached for tenant {tenant_name}.',
                 event_type='quota_threshold_reached',
                 event_context={
                     'quota': quota,
+                    'tenant': tenant,
                     'service': tenant.service_project_link.service,
                     'project': tenant.service_project_link.project,
                     'project_group': tenant.service_project_link.project.project_groups.first(),

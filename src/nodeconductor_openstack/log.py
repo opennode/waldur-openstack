@@ -43,11 +43,12 @@ class InstanceVolumeChangeEventLogger(EventLogger):
 
 
 # TODO: move this handler to itacloud assembly
-class QuotaEventLogger(EventLogger):
+class TenantQuotaLogger(EventLogger):
     quota = 'quotas.Quota'
     service = 'structure.Service'
     project = 'structure.Project'
     project_group = 'structure.ProjectGroup'
+    tenant = 'openstack.Tenant'
     threshold = float
 
     class Meta:
@@ -58,4 +59,4 @@ class QuotaEventLogger(EventLogger):
 event_logger.register('openstack_backup', BackupEventLogger)
 event_logger.register('openstack_flavor', InstanceFlavorChangeEventLogger)
 event_logger.register('openstack_volume', InstanceVolumeChangeEventLogger)
-event_logger.register('quota', QuotaEventLogger)
+event_logger.register('openstack_tenant_quota', TenantQuotaLogger)
