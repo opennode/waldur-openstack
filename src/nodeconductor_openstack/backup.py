@@ -169,7 +169,7 @@ class BackupBackend(object):
         # create a copy of the volumes to be used by a new VM
         try:
             cloned_volumes_ids = backend.promote_snapshots_to_volumes(
-                service_project_link=instance.service_project_link,
+                tenant=instance.tenant,
                 snapshot_ids=snapshot_ids,
                 prefix='Restored volume'
             )

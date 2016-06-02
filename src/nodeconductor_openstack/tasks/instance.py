@@ -3,7 +3,7 @@ import logging
 from celery import shared_task
 
 from nodeconductor.core.tasks import save_error_message, transition, throttle
-from ..models import Instance, FloatingIP, Tenant
+from ..models import Instance, FloatingIP
 
 
 logger = logging.getLogger(__name__)

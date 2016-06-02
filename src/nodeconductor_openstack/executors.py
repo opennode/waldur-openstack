@@ -2,7 +2,7 @@ from celery import chain, group
 
 from nodeconductor.core import tasks, executors, utils
 
-from .tasks import (delete_tenant_with_spl, PollRuntimeStateTask,
+from .tasks import (PollRuntimeStateTask,
                     CreateTemporarySnapshotTask, CreateTemporaryVolumeTask, CreateVolumeBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask)
@@ -110,19 +110,6 @@ class TenantDeleteExecutor(executors.DeleteExecutor):
                 serialized_tenant, 'cleanup_tenant', dryrun=False, state_transition='begin_deleting')
         else:
             return tasks.StateTransitionTask().si(serialized_tenant, state_transition='begin_deleting')
-
-
-# Temporary. Should be deleted when instance will have direct link to tenant.
-class SPLTenantDeleteExecutor(TenantDeleteExecutor):
-    """ Delete tenant and SPL together """
-
-    @classmethod
-    def get_success_signature(cls, instance, serialized_instance, **kwargs):
-        return delete_tenant_with_spl.si(serialized_instance)
-
-    @classmethod
-    def get_failure_signature(cls, instance, serialized_instance, force=False, **kwargs):
-        return delete_tenant_with_spl.si(serialized_instance)
 
 
 class TenantAllocateFloatingIPExecutor(executors.ActionExecutor):

@@ -17,11 +17,9 @@ class OpenStackConfig(AppConfig):
     def ready(self):
         from nodeconductor.cost_tracking import CostTrackingRegister
         from nodeconductor.structure import SupportedServices
-        from nodeconductor.structure.models import Project
         from nodeconductor.quotas.models import Quota
         from . import handlers
 
-        OpenStackServiceProjectLink = self.get_model('OpenStackServiceProjectLink')
         Instance = self.get_model('Instance')
         FloatingIP = self.get_model('FloatingIP')
         BackupSchedule = self.get_model('BackupSchedule')
@@ -63,11 +61,6 @@ class OpenStackConfig(AppConfig):
             sender=FloatingIP,
             dispatch_uid='nodeconductor_openstack.handlers.change_floating_ip_quota_on_status_change',
         )
-        signals.post_save.connect(
-            handlers.update_tenant_name_on_project_update,
-            sender=Project,
-            dispatch_uid='nodeconductor_openstack.handlers.update_tenant_name_on_project_update',
-        )
 
         signals.post_save.connect(
             handlers.log_backup_schedule_save,
@@ -79,12 +72,6 @@ class OpenStackConfig(AppConfig):
             handlers.log_backup_schedule_delete,
             sender=BackupSchedule,
             dispatch_uid='nodeconductor_openstack.handlers.log_backup_schedule_delete',
-        )
-
-        signals.post_save.connect(
-            handlers.autocreate_spl_tenant,
-            sender=OpenStackServiceProjectLink,
-            dispatch_uid='nodeconductor_openstack.handlers.autocreate_spl_tenant',
         )
 
         # TODO: this should be moved to itacloud assembly application

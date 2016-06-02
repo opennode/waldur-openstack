@@ -318,12 +318,6 @@ class OpenStackBackend(ServiceBackend):
         # Safe key name length must be less than 17 chars due to limit of full key name to 50 chars.
         return re.sub(r'[^-a-zA-Z0-9 _]+', '_', key_name)[:17]
 
-    def add_ssh_key(self, ssh_key, service_project_link):
-        if service_project_link.tenant is not None:
-            key_name = self.get_key_name(ssh_key)
-            self.get_or_create_ssh_key_for_tenant(
-                service_project_link.tenant, key_name, ssh_key.fingerprint, ssh_key.public_key)
-
     def get_or_create_ssh_key_for_tenant(self, tenant, key_name, fingerprint, public_key):
         nova = self.nova_client
 
@@ -342,10 +336,6 @@ class OpenStackBackend(ServiceBackend):
         else:
             # Found a key with the same fingerprint, skip adding
             logger.debug('Skipped propagating ssh public key %s to backend', key_name)
-
-    def remove_ssh_key(self, ssh_key, service_project_link):
-        if service_project_link.tenant is not None:
-            self.remove_ssh_key_from_tenant(service_project_link.tenant, ssh_key.name, ssh_key.fingerprint)
 
     @log_backend_action()
     def remove_ssh_key_from_tenant(self, tenant, key_name, fingerprint):
@@ -627,11 +617,10 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action('pull floating IPs for tenant')
     def pull_tenant_floating_ips(self, tenant):
-        service_project_link = tenant.service_project_link
         neutron = self.neutron_client
 
         try:
-            nc_floating_ips = {ip.backend_id: ip for ip in service_project_link.floating_ips.all()}
+            nc_floating_ips = {ip.backend_id: ip for ip in tenant.floating_ips.all()}
             try:
                 backend_floating_ips = {
                     ip['id']: ip
@@ -652,7 +641,7 @@ class OpenStackBackend(ServiceBackend):
 
                 for ip_id in backend_ids - nc_ids:
                     ip = backend_floating_ips[ip_id]
-                    created_ip = service_project_link.floating_ips.create(
+                    created_ip = tenant.floating_ips.create(
                         status=ip['status'],
                         backend_id=ip['id'],
                         address=ip['floating_ip_address'],
@@ -986,7 +975,6 @@ class OpenStackBackend(ServiceBackend):
             backend_flavor = nova.flavors.get(backend_flavor_id)
 
             # verify if the internal network to connect to exists
-            service_project_link = instance.service_project_link
             tenant = instance.tenant
             try:
                 neutron.show_network(tenant.internal_network_id)
@@ -997,10 +985,9 @@ class OpenStackBackend(ServiceBackend):
 
             if not skip_external_ip_assignment:
                 # TODO: check availability and quota
-                # TODO: migrate to tenant.floating_ips
-                if not service_project_link.floating_ips.filter(status='DOWN').exists():
+                if not tenant.floating_ips.filter(status='DOWN').exists():
                     self.allocate_floating_ip_address(tenant)
-                floating_ip = service_project_link.floating_ips.filter(status='DOWN').first()
+                floating_ip = tenant.floating_ips.filter(status='DOWN').first()
                 instance.external_ips = floating_ip.address
                 floating_ip.status = 'BOOKED'
                 floating_ip.save(update_fields=['status'])
@@ -1148,101 +1135,6 @@ class OpenStackBackend(ServiceBackend):
                 instance.data_volume_size = instance_data['data_volume_size']
                 instance.save()
                 logger.debug('Instance %s (PK: %s) has been successfully pulled from OpenStack.', instance, instance.pk)
-
-    # XXX: This method should be deleted after tenant separation from SPL.
-    def cleanup(self, dryrun=True):
-        if not self.tenant_id:
-            logger.info("Nothing to cleanup, tenant_id of %s is not set" % self)
-            return
-
-        # floatingips
-        neutron = self.neutron_admin_client
-        floatingips = neutron.list_floatingips(tenant_id=self.tenant_id)
-        if floatingips:
-            for floatingip in floatingips['floatingips']:
-                logger.info("Deleting floating IP %s from tenant %s", floatingip['id'], self.tenant_id)
-                if not dryrun:
-                    try:
-                        neutron.delete_floatingip(floatingip['id'])
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Floating IP %s is already gone from tenant %s", floatingip['id'], self.tenant_id)
-
-        # ports
-        ports = neutron.list_ports(tenant_id=self.tenant_id)
-        if ports:
-            for port in ports['ports']:
-                logger.info("Deleting port %s from tenant %s", port['id'], self.tenant_id)
-                if not dryrun:
-                    try:
-                        neutron.remove_interface_router(port['device_id'], {'port_id': port['id']})
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Port %s is already gone from tenant %s", port['id'], self.tenant_id)
-
-        # routers
-        routers = neutron.list_routers(tenant_id=self.tenant_id)
-        if routers:
-            for router in routers['routers']:
-                logger.info("Deleting router %s from tenant %s", router['id'], self.tenant_id)
-                if not dryrun:
-                    try:
-                        neutron.delete_router(router['id'])
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Router %s is already gone from tenant %s", router['id'], self.tenant_id)
-
-        # networks
-        networks = neutron.list_networks(tenant_id=self.tenant_id)
-        if networks:
-            for network in networks['networks']:
-                for subnet in network['subnets']:
-                    logger.info("Deleting subnetwork %s from tenant %s", subnet, self.tenant_id)
-                    if not dryrun:
-                        try:
-                            neutron.delete_subnet(subnet)
-                        except neutron_exceptions.NotFound:
-                            logger.info("Subnetwork %s is already gone from tenant %s", subnet, self.tenant_id)
-
-                logger.info("Deleting network %s from tenant %s", network['id'], self.tenant_id)
-                if not dryrun:
-                    try:
-                        neutron.delete_network(network['id'])
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Network %s is already gone from tenant %s", network['id'], self.tenant_id)
-
-        # security groups
-        nova = self.nova_client
-        sgroups = nova.security_groups.list()
-        for sgroup in sgroups:
-            logger.info("Deleting security group %s from tenant %s", sgroup.id, self.tenant_id)
-            if not dryrun:
-                sgroup.delete()
-
-        # servers (instances)
-        servers = nova.servers.list()
-        for server in servers:
-            logger.info("Deleting server %s from tenant %s", server.id, self.tenant_id)
-            if not dryrun:
-                server.delete()
-
-        # snapshots
-        cinder = self.cinder_client
-        snapshots = cinder.volume_snapshots.list()
-        for snapshot in snapshots:
-            logger.info("Deleting snapshots %s from tenant %s", snapshot.id, self.tenant_id)
-            if not dryrun:
-                snapshot.delete()
-
-        # volumes
-        volumes = cinder.volumes.list()
-        for volume in volumes:
-            logger.info("Deleting volume %s from tenant %s", volume.id, self.tenant_id)
-            if not dryrun:
-                volume.delete()
-
-        # tenant
-        keystone = self.keystone_admin_client
-        logger.info("Deleting tenant %s", self.tenant_id)
-        if not dryrun:
-            keystone.tenants.delete(self.tenant_id)
 
     @log_backend_action()
     def cleanup_tenant(self, tenant, dryrun=True):
@@ -1409,7 +1301,7 @@ class OpenStackBackend(ServiceBackend):
             try:
                 self._extend_volume(cinder, volume, new_backend_size)
                 storage_delta = new_core_size - old_core_size
-                instance.service_project_link.tenant.add_quota_usage('storage', storage_delta)
+                instance.tenant.add_quota_usage('storage', storage_delta)
             except cinder_exceptions.OverLimit as e:
                 logger.warning(
                     'Failed to extend volume: exceeded quota limit while trying to extend volume %s',
@@ -1717,8 +1609,7 @@ class OpenStackBackend(ServiceBackend):
         except (neutron_exceptions.NeutronClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            # TODO: migrate to tenant.floating_ips
-            tenant.service_project_link.floating_ips.create(
+            tenant.floating_ips.create(
                 status='DOWN',
                 address=ip_address['floating_ip_address'],
                 backend_id=ip_address['id'],
@@ -1745,12 +1636,10 @@ class OpenStackBackend(ServiceBackend):
         logger.debug('About to add external ip %s to instance %s',
                      instance.external_ips, instance.uuid)
 
-        service_project_link = instance.service_project_link
         tenant = instance.tenant
 
         try:
-            # TODO: migrate to tenant.floating_ips
-            floating_ip = service_project_link.floating_ips.get(
+            floating_ip = tenant.floating_ips.get(
                 status__in=('BOOKED', 'DOWN'),
                 address=instance.external_ips,
                 backend_network_id=tenant.external_network_id
@@ -1922,8 +1811,7 @@ class OpenStackBackend(ServiceBackend):
                 event_type='resource_deletion_succeeded',
                 event_context={'resource': instance})
 
-            # TODO: migrate to tenant.floating_ips
-            if instance.service_project_link.floating_ips.filter(address=instance.external_ips).update(status='DOWN'):
+            if instance.tenant.floating_ips.filter(address=instance.external_ips).update(status='DOWN'):
                 logger.info('Successfully released floating ip %s from instance %s',
                             instance.external_ips, instance.uuid)
 
@@ -1993,18 +1881,18 @@ class OpenStackBackend(ServiceBackend):
 
         return volume_id
 
-    def promote_snapshots_to_volumes(self, service_project_link, snapshot_ids, prefix='Promoted volume'):
+    def promote_snapshots_to_volumes(self, tenant, snapshot_ids, prefix='Promoted volume'):
         cinder = self.cinder_client
         logger.debug('About to promote snapshots %s', ', '.join(snapshot_ids))
+        promoted_volume_ids = []
         try:
-            promoted_volume_ids = []
             for snapshot_id in snapshot_ids:
                 # volume
                 snapshot = cinder.volume_snapshots.get(snapshot_id)
                 promoted_volume_id = self.create_volume_from_snapshot(snapshot_id, prefix=prefix)
                 promoted_volume_ids.append(promoted_volume_id)
                 # volume size should be equal to a snapshot size
-                service_project_link.tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
+                tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
 
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             logger.exception('Failed to promote snapshots %s', ', '.join(snapshot_ids))
