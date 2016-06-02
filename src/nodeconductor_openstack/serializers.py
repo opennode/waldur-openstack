@@ -12,6 +12,7 @@ from taggit.models import Tag
 from nodeconductor.core import models as core_models
 from nodeconductor.core import serializers as core_serializers
 from nodeconductor.core import utils as core_utils
+from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.fields import JsonField, MappedChoiceField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
@@ -81,7 +82,7 @@ class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkS
         model = models.OpenStackServiceProjectLink
         view_name = 'openstack-spl-detail'
         fields = structure_serializers.BaseServiceProjectLinkSerializer.Meta.fields + (
-            'tenant_id', 'external_network_id', 'internal_network_id', 'state'
+            'tenant_id', 'state'
         )
         extra_kwargs = {
             'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},
@@ -210,10 +211,10 @@ class AssignFloatingIpSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
-        if not self.instance.service_project_link.external_network_id:
+        if not self.instance.tenant.external_network_id:
             raise serializers.ValidationError(
                 "External network ID of the service project link is missing.")
-        elif self.instance.service_project_link.tenant.state != core_models.StateMixin.States.OK:
+        elif self.instance.tenant.state != core_models.StateMixin.States.OK:
             raise serializers.ValidationError(
                 "Service project link of instance should be in stable state.")
 
@@ -404,6 +405,9 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
     service_project_link = serializers.PrimaryKeyRelatedField(
         queryset=models.OpenStackServiceProjectLink.objects.all())
 
+    tenant = serializers.PrimaryKeyRelatedField(
+        queryset=models.Tenant.objects.all())
+
     flavor = serializers.HyperlinkedRelatedField(
         view_name='openstack-flavor-detail',
         lookup_field='uuid',
@@ -419,7 +423,7 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
         model = models.Instance
         fields = (
             'name', 'description',
-            'service_project_link',
+            'service_project_link', 'tenant',
             'flavor', 'min_ram', 'min_disk',
             'key_name', 'key_fingerprint',
             'system_volume_id', 'system_volume_size',
@@ -467,12 +471,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset=models.OpenStackServiceProjectLink.objects.all())
 
     tenant = serializers.HyperlinkedRelatedField(
-        source='service_project_link.tenant',
         view_name='openstack-tenant-detail',
-        read_only=True,
+        queryset=models.Tenant.objects.all(),
         lookup_field='uuid')
 
-    tenant_name = serializers.ReadOnlyField(source='service_project_link.tenant.name')
+    tenant_name = serializers.ReadOnlyField(source='tenant.name')
 
     flavor = serializers.HyperlinkedRelatedField(
         view_name='openstack-flavor-detail',
@@ -503,7 +506,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             'tenant', 'tenant_name',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment', 'tenant'
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + ('flavor_disk',)
 
@@ -522,6 +525,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         settings = service_project_link.service.settings
         flavor = attrs['flavor']
         image = attrs['image']
+        tenant = attrs['tenant']
 
         floating_ip_count_quota = service_project_link.tenant.quotas.get(name='floating_ip_count')
         if floating_ip_count_quota.is_exceeded(delta=1):
@@ -532,6 +536,9 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         if any([flavor.settings != settings, image.settings != settings]):
             raise serializers.ValidationError(
                 "Flavor and image must belong to the same service settings as service project link.")
+
+        if tenant.service_project_link != service_project_link:
+            raise serializers.ValidationError("Tenant must belong to the same service project link as instance.")
 
         if image.min_ram > flavor.ram:
             raise serializers.ValidationError(
@@ -549,13 +556,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     "security groups have to belong to same project and service".format(security_group.name))
 
         if not attrs['skip_external_ip_assignment']:
-            tenant = service_project_link.tenant
-            if tenant is None:
-                missed_net = not settings.get_option('external_network_id')
-            else:
-                missed_net = tenant.state == core_models.StateMixin.States.OK and not tenant.external_network_id
-
-            if missed_net:
+            if tenant.state == core_models.StateMixin.States.OK and not tenant.external_network_id:
                 raise serializers.ValidationError(
                     "Cannot assign external IP if service project link has no external network")
 
@@ -903,7 +904,7 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
 
     def create(self, validated_data):
         source_instance = validated_data['source_instance']
-        validated_data['tenant'] = source_instance.service_project_link.tenant
+        validated_data['tenant'] = source_instance.tenant
         validated_data['service_project_link'] = source_instance.service_project_link
         validated_data['metadata'] = {
             'source_instance_name': source_instance.name,

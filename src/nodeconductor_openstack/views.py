@@ -96,14 +96,6 @@ class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkV
     serializer_class = serializers.ServiceProjectLinkSerializer
     filter_class = filters.OpenStackServiceProjectLinkFilter
 
-    serializers = {
-        'external_network': serializers.ExternalNetworkSerializer,
-    }
-
-    def get_serializer_class(self):
-        serializer = self.serializers.get(self.action)
-        return serializer or super(OpenStackServiceProjectLinkViewSet, self).get_serializer_class()
-
     def list(self, request, *args, **kwargs):
         """
         In order to be able to provision OpenStack resources, it must first be linked to a project. To do that,
@@ -128,71 +120,6 @@ class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkV
         To remove a link, issue DELETE to URL of the corresponding connection as stuff user or customer owner.
         """
         return super(OpenStackServiceProjectLinkViewSet, self).list(request, *args, **kwargs)
-
-    # XXX: This method should be moved to tenant endpoint.
-    #      Also it should be replaced by two methods - create external network and delete external network.
-    @decorators.detail_route(methods=['post', 'delete'])
-    def external_network(self, request, pk=None):
-        """
-        In order to create external network a person with admin role or staff should issue a **POST**
-        request to */api/openstack-service-project-link/<pk>/external_network/*.
-        The body of the request should consist of following parameters:
-
-        - vlan_id (required if vxlan_id is not provided) - VLAN ID of the external network.
-        - vxlan_id (required if vlan_id is not provided) - VXLAN ID of the external network.
-        - network_ip (required) - network IP address for floating IP range.
-        - network_prefix (required) - prefix of the network address for the floating IP range.
-        - ips_count (optional) - number of floating IPs to create automatically.
-
-        Example of a valid request (token is user specific):
-
-        .. code-block:: http
-
-            POST /api/openstack-service-project-link/1/external_network/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-            {
-                "vlan_id": "a325e56a-4689-4d10-abdb-f35918125af7",
-                "network_ip": "10.7.122.0",
-                "network_prefix": "26",
-                "ips_count": "6"
-            }
-
-        In order to delete external network, a person with admin role or staff should issue a **DELETE** request
-        to */api/openstack-service-project-link/<pk>/external_network/* without any parameters in the request body.
-        """
-        spl = self.get_object()
-        tenant = spl.tenant
-
-        if not tenant or tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException("Tenant should be in state OK.")
-
-        if request.method == 'DELETE':
-            return self._delete_external_network(request, tenant)
-        else:
-            return self._create_external_network(request, tenant)
-
-    def _create_external_network(self, request, tenant):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        executors.TenantCreateExternalNetworkExecutor.execute(tenant, external_network_data=serializer.data)
-        return response.Response(
-            {'detail': 'External network creation has been scheduled.'},
-            status=status.HTTP_202_ACCEPTED)
-
-    def _delete_external_network(self, request, tenant):
-        if tenant.external_network_id:
-            executors.TenantDeleteExternalNetworkExecutor.execute(tenant)
-            return response.Response(
-                {'detail': 'External network deletion has been scheduled.'},
-                status=status.HTTP_202_ACCEPTED)
-        else:
-            return response.Response(
-                {'detail': 'External network does not exist.'},
-                status=status.HTTP_400_BAD_REQUEST)
 
     def destroy(self, request, *args, **kwargs):
         """ If OpenStack SPL has connected tenant - destroy operation will trigger tenant deletion. """
@@ -244,24 +171,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
     on instance in incorrect state, a validation error will be returned.
 
     The UI can poll for updates to provide feedback after submitting one of the longer running operations.
-
-    In a DB, state is stored encoded with a symbol. States are:
-
-    - PROVISIONING_SCHEDULED = 1
-    - PROVISIONING = 2
-    - ONLINE = 3
-    - OFFLINE = 4
-    - STARTING_SCHEDULED = 5
-    - STARTING = 6
-    - STOPPING_SCHEDULED = 7
-    - STOPPING = 8
-    - ERRED = 9
-    - DELETION_SCHEDULED = 10
-    - DELETING = 11
-    - RESIZING_SCHEDULED = 13
-    - RESIZING = 14
-    - RESTARTING_SCHEDULED = 15
-    - RESTARTING = 16
 
     Any modification of an instance in unstable or PROVISIONING_SCHEDULED state is prohibited
     and will fail with 409 response code. Assuming stable states are ONLINE and OFFLINE.
@@ -366,9 +275,8 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         */api/openstack-service-project-link/<pk>/allocate_floating_ip/*.
         Note that service project link should be in stable state and have external network.
         """
-        # TODO: Move method after migration from service project link to tenant resource.
         instance = self.get_object()
-        kwargs = {'uuid': instance.service_project_link.tenant.uuid.hex}
+        kwargs = {'uuid': instance.tenant.uuid.hex}
         url = reverse('openstack-tenant-detail', kwargs=kwargs, request=request) + 'allocate_floating_ip/'
         response = request_api(request, url, 'POST')
         return response.Response(response.json(), response.status_code)
@@ -942,28 +850,17 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     delete_executor = executors.TenantDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
-    @decorators.detail_route(methods=['post'])
-    def allocate_floating_ip(self, request, uuid=None):
-        tenant = self.get_object()
+    serializers = {
+        'set_quotas': serializers.TenantQuotaSerializer,
+        'external_network': serializers.ExternalNetworkSerializer,
+    }
 
-        if not tenant or tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException("Tenant should be in state OK.")
-
-        if not tenant.external_network_id:
-            return response.Response(
-                {'detail': 'Tenant should have an external network ID.'},
-                status=status.HTTP_409_CONFLICT)
-
-        executors.TenantAllocateFloatingIPExecutor.execute(tenant)
-
-        return response.Response(
-            {'detail': 'Floating IP allocation has been scheduled.'},
-            status=status.HTTP_202_ACCEPTED)
-
-    allocate_floating_ip.title = 'Allocate floating IP'
+    def get_serializer_class(self):
+        serializer = self.serializers.get(self.action)
+        return serializer or super(TenantViewSet, self).get_serializer_class()
 
     @decorators.detail_route(methods=['post'])
-    def set_quotas(self, request, **kwargs):
+    def set_quotas(self, request, uuid=None):
         """
         A quota can be set for a particular tenant. Only staff users can do that.
         In order to set quota submit **POST** request to */api/openstack-tenants/<uuid>/set_quotas/*.
@@ -990,10 +887,9 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         .. code-block:: http
 
-            POST /api/openstack-tenants/3e44bd2b5a0a46a99632ec3ee50f0ccd/set_quotas/ HTTP/1.1
+            POST /api/openstack-tenants/c84d653b9ec92c6cbac41c706593e66f567a7fa4/set_quotas/ HTTP/1.1
             Content-Type: application/json
             Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
             Host: example.com
 
             {
@@ -1005,9 +901,9 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                 "security_group_rule_count": 100
             }
 
-        Response code of a successful request is **202 ACCEPTED**. In case tenant is in a non-stable status,
-        the response would be **409 CONFLICT**. In this case REST client is advised to repeat the request
-        after some time. On successful completion the task will synchronize quotas with the backend.
+        Response code of a successful request is **202 ACCEPTED**. In case tenant is in a non-stable status, the response
+        would be **409 CONFLICT**. In this case REST client is advised to repeat the request after some time.
+        On successful completion the task will synchronize quotas with the backend.
         """
         if not request.user.is_staff:
             raise exceptions.PermissionDenied()
@@ -1016,7 +912,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if tenant.state != models.Tenant.States.OK:
             raise IncorrectStateException("Tenant should be in state OK.")
 
-        serializer = serializers.TenantQuotaSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         quotas = dict(serializer.validated_data)
@@ -1026,6 +922,88 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         return response.Response(
             {'detail': 'Quota update has been scheduled'}, status=status.HTTP_202_ACCEPTED)
+
+    @decorators.detail_route(methods=['post'])
+    def allocate_floating_ip(self, request, uuid=None):
+        tenant = self.get_object()
+
+        if tenant.state != models.Tenant.States.OK:
+            raise IncorrectStateException("Tenant should be in state OK.")
+
+        if not tenant.external_network_id:
+            return response.Response(
+                {'detail': 'Tenant should have an external network ID.'},
+                status=status.HTTP_409_CONFLICT)
+
+        executors.TenantAllocateFloatingIPExecutor.execute(tenant)
+
+        return response.Response(
+            {'detail': 'Floating IP allocation has been scheduled.'},
+            status=status.HTTP_202_ACCEPTED)
+
+    allocate_floating_ip.title = 'Allocate floating IP'
+
+    # TODO: replace by two methods - create external network and delete external network.
+    @decorators.detail_route(methods=['post', 'delete'])
+    def external_network(self, request, uuid=None):
+        """
+        In order to create external network a user with admin role or staff should issue a **POST**
+        request to */api/openstack-tenants/<uuid>/external_network/*.
+        The body of the request should consist of following parameters:
+
+        - vlan_id (required if vxlan_id is not provided) - VLAN ID of the external network.
+        - vxlan_id (required if vlan_id is not provided) - VXLAN ID of the external network.
+        - network_ip (required) - network IP address for floating IP range.
+        - network_prefix (required) - prefix of the network address for the floating IP range.
+        - ips_count (optional) - number of floating IPs to create automatically.
+
+        Example of a valid request (token is user specific):
+
+        .. code-block:: http
+
+            POST /api/openstack-tenants/c84d653b9ec92c6cbac41c706593e66f567a7fa4/external_network/ HTTP/1.1
+            Content-Type: application/json
+            Accept: application/json
+            Host: example.com
+
+            {
+                "vlan_id": "a325e56a-4689-4d10-abdb-f35918125af7",
+                "network_ip": "10.7.122.0",
+                "network_prefix": "26",
+                "ips_count": "6"
+            }
+
+        In order to delete external network, a user with admin role or staff should issue a **DELETE** request
+        to */api/openstack-tenants/<uuid>/external_network/* without any parameters in the request body.
+        """
+        tenant = self.get_object()
+
+        if tenant.state != models.Tenant.States.OK:
+            raise IncorrectStateException("Tenant should be in state OK.")
+
+        if request.method == 'DELETE':
+            return self._delete_external_network(request, tenant)
+        else:
+            return self._create_external_network(request, tenant)
+
+    def _create_external_network(self, request, tenant):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        executors.TenantCreateExternalNetworkExecutor.execute(tenant, external_network_data=serializer.data)
+        return response.Response(
+            {'detail': 'External network creation has been scheduled.'},
+            status=status.HTTP_202_ACCEPTED)
+
+    def _delete_external_network(self, request, tenant):
+        if tenant.external_network_id:
+            executors.TenantDeleteExternalNetworkExecutor.execute(tenant)
+            return response.Response(
+                {'detail': 'External network deletion has been scheduled.'},
+                status=status.HTTP_202_ACCEPTED)
+        else:
+            return response.Response(
+                {'detail': 'External network does not exist.'},
+                status=status.HTTP_400_BAD_REQUEST)
 
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,

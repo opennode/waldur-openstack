@@ -989,17 +989,17 @@ class OpenStackBackend(ServiceBackend):
 
             # verify if the internal network to connect to exists
             service_project_link = instance.service_project_link
-            # XXX: In the future instance should depend on tenant. Now SPL can have only one tenant.
-            tenant = service_project_link.tenant
+            tenant = instance.tenant
             try:
-                neutron.show_network(service_project_link.internal_network_id)
+                neutron.show_network(tenant.internal_network_id)
             except neutron_exceptions.NeutronClientException:
                 logger.exception('Internal network with id of %s was not found',
-                                 service_project_link.internal_network_id)
+                                 tenant.internal_network_id)
                 raise OpenStackBackendError('Unable to find network to attach instance to')
 
             if not skip_external_ip_assignment:
                 # TODO: check availability and quota
+                # TODO: migrate to tenant.floating_ips
                 if not service_project_link.floating_ips.filter(status='DOWN').exists():
                     self.allocate_floating_ip_address(tenant)
                 floating_ip = service_project_link.floating_ips.filter(status='DOWN').first()
@@ -1071,12 +1071,12 @@ class OpenStackBackend(ServiceBackend):
                     },
                 ],
                 nics=[
-                    {'net-id': service_project_link.internal_network_id}
+                    {'net-id': tenant.internal_network_id}
                 ],
                 key_name=backend_public_key.name if backend_public_key is not None else None,
                 security_groups=security_group_ids,
             )
-            availability_zone = service_project_link.availability_zone
+            availability_zone = tenant.availability_zone
             if availability_zone:
                 server_create_parameters['availability_zone'] = availability_zone
             if instance.user_data:
@@ -1116,6 +1116,7 @@ class OpenStackBackend(ServiceBackend):
                 if instance.security_groups.filter(security_group__name=bsg.name).exists():
                     continue
                 try:
+                    # TODO: migrate to tenant.security_groups
                     security_group = service_project_link.security_groups.get(name=bsg.name)
                 except models.SecurityGroup.DoesNotExist:
                     logger.error(
@@ -1136,9 +1137,8 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action('pull instances for tenant')
     def pull_tenant_instances(self, tenant):
-        spl = tenant.service_project_link
         States = models.Instance.States
-        for instance in spl.instances.filter(state__in=[States.ONLINE, States.OFFLINE]):
+        for instance in tenant.instances.filter(state__in=[States.ONLINE, States.OFFLINE]):
             try:
                 instance_data = self.get_instance(instance.backend_id).nc_model_data
             except OpenStackBackendError as e:
@@ -1560,8 +1560,6 @@ class OpenStackBackend(ServiceBackend):
     @log_backend_action('create external network for tenant')
     def create_external_network(self, tenant, neutron, network_ip, network_prefix,
                                 vlan_id=None, vxlan_id=None, ips_count=None):
-        service_project_link = tenant.service_project_link
-
         if tenant.external_network_id:
             self.connect_tenant_to_external_network(tenant, tenant.external_network_id)
 
@@ -1571,7 +1569,7 @@ class OpenStackBackend(ServiceBackend):
         network_name = 'nc-{0}-ext-net'.format(uuid.uuid4().hex)
         network = {
             'name': network_name,
-            'tenant_id': service_project_link.tenant_id,
+            'tenant_id': tenant.backend_id,
             'router:external': True,
             # XXX: provider:physical_network should be configurable.
             'provider:physical_network': 'physnet1'
@@ -1597,8 +1595,8 @@ class OpenStackBackend(ServiceBackend):
         cidr = '{0}/{1}'.format(network_ip, network_prefix)
 
         subnet_data = {
-            'network_id': service_project_link.external_network_id,
-            'tenant_id': service_project_link.tenant_id,
+            'network_id': tenant.external_network_id,
+            'tenant_id': tenant.backend_id,
             'cidr': cidr,
             'name': subnet_name,
             'ip_version': 4,
@@ -1612,7 +1610,7 @@ class OpenStackBackend(ServiceBackend):
 
         # Floating IPs creation
         floating_ip = {
-            'floating_network_id': service_project_link.external_network_id,
+            'floating_network_id': tenant.external_network_id,
         }
 
         if vlan_id is not None and ips_count is not None:
@@ -1621,7 +1619,7 @@ class OpenStackBackend(ServiceBackend):
                 logger.info('Floating ip %s for external network %s has been created.',
                             ip['floating_ip_address'], network_name)
 
-        return service_project_link.external_network_id
+        return tenant.external_network_id
 
     def detect_external_network(self, tenant):
         neutron = self.neutron_admin_client
@@ -1722,6 +1720,7 @@ class OpenStackBackend(ServiceBackend):
         except (neutron_exceptions.NeutronClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
         else:
+            # TODO: migrate to tenant.floating_ips
             tenant.service_project_link.floating_ips.create(
                 status='DOWN',
                 address=ip_address['floating_ip_address'],
@@ -1750,11 +1749,14 @@ class OpenStackBackend(ServiceBackend):
                      instance.external_ips, instance.uuid)
 
         service_project_link = instance.service_project_link
+        tenant = instance.tenant
+
         try:
+            # TODO: migrate to tenant.floating_ips
             floating_ip = service_project_link.floating_ips.get(
                 status__in=('BOOKED', 'DOWN'),
                 address=instance.external_ips,
-                backend_network_id=service_project_link.external_network_id
+                backend_network_id=tenant.external_network_id
             )
             server.add_floating_ip(address=instance.external_ips, fixed_address=instance.internal_ips)
         except (
@@ -1923,11 +1925,12 @@ class OpenStackBackend(ServiceBackend):
                 event_type='resource_deletion_succeeded',
                 event_context={'resource': instance})
 
+            # TODO: migrate to tenant.floating_ips
             if instance.service_project_link.floating_ips.filter(address=instance.external_ips).update(status='DOWN'):
                 logger.info('Successfully released floating ip %s from instance %s',
                             instance.external_ips, instance.uuid)
 
-    def create_snapshots(self, service_project_link, volume_ids, prefix='Cloned volume'):
+    def create_snapshots(self, tenant, volume_ids, prefix='Cloned volume'):
         cinder = self.cinder_client
         logger.debug('About to snapshot volumes %s', ', '.join(volume_ids))
         try:
@@ -1935,7 +1938,7 @@ class OpenStackBackend(ServiceBackend):
             for volume_id in volume_ids:
                 # create a temporary snapshot
                 snapshot = self._create_snapshot(volume_id, cinder)
-                service_project_link.tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
+                tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
                 snapshot_ids.append(snapshot.id)
 
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
@@ -1945,7 +1948,7 @@ class OpenStackBackend(ServiceBackend):
             logger.info('Successfully created snapshots %s for volumes.', ', '.join(snapshot_ids))
         return snapshot_ids
 
-    def delete_snapshots(self, service_project_link, snapshot_ids):
+    def delete_snapshots(self, tenant, snapshot_ids):
         cinder = self.cinder_client
         logger.debug('About to delete volumes %s ', ', '.join(snapshot_ids))
         try:
@@ -1960,7 +1963,7 @@ class OpenStackBackend(ServiceBackend):
                 cinder.volume_snapshots.delete(snapshot_id)
 
                 if self._wait_for_snapshot_deletion(snapshot_id, cinder):
-                    service_project_link.tenant.add_quota_usage('storage', -self.gb2mb(size))
+                    tenant.add_quota_usage('storage', -self.gb2mb(size))
                     logger.info('Successfully deleted a snapshot %s', snapshot_id)
                 else:
                     logger.exception('Failed to delete snapshot %s', snapshot_id)
