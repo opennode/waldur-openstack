@@ -292,10 +292,6 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
         else:
             # Check security_groups quotas on update
             tenant = self.instance.tenant
-            spl = self.instance.service_project_link
-            if tenant.service_project_link != spl:
-                raise serializers.ValidationError('Tenant does not belong to the service project link.')
-
             new_rules_count = len(attrs.get('rules', [])) - self.instance.rules.count()
             if new_rules_count > 0:
                 security_group_rule_count_quota = tenant.quotas.get(name='security_group_rule_count')
