@@ -862,8 +862,8 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @decorators.detail_route(methods=['post'])
     def set_quotas(self, request, uuid=None):
         """
-        A project quota can be set for a particular tenant. Only staff users can do that.
-        In order to set quota submit **POST** request to */api/openstack-tenant/<uuid>/set_quotas/*.
+        A quota can be set for a particular tenant. Only staff users can do that.
+        In order to set quota submit **POST** request to */api/openstack-tenants/<uuid>/set_quotas/*.
         The quota values are propagated to the backend.
 
         The following quotas are supported. All values are expected to be integers:
@@ -887,7 +887,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         .. code-block:: http
 
-            POST /api/openstack-tenant/c84d653b9ec92c6cbac41c706593e66f567a7fa4/set_quotas/ HTTP/1.1
+            POST /api/openstack-tenants/c84d653b9ec92c6cbac41c706593e66f567a7fa4/set_quotas/ HTTP/1.1
             Content-Type: application/json
             Accept: application/json
             Host: example.com
@@ -901,7 +901,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                 "security_group_rule_count": 100
             }
 
-        Response code of a successful request is **202 ACCEPTED**. In case link is in a non-stable status, the response
+        Response code of a successful request is **202 ACCEPTED**. In case tenant is in a non-stable status, the response
         would be **409 CONFLICT**. In this case REST client is advised to repeat the request after some time.
         On successful completion the task will synchronize quotas with the backend.
         """
@@ -917,7 +917,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         quotas = dict(serializer.validated_data)
         for quota_name, limit in quotas.items():
-            tenant.service_project_link.set_quota_limit(quota_name, limit)
+            tenant.set_quota_limit(quota_name, limit)
         executors.TenantPushQuotasExecutor.execute(tenant, quotas=quotas)
 
         return response.Response(
@@ -948,7 +948,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     def external_network(self, request, uuid=None):
         """
         In order to create external network a user with admin role or staff should issue a **POST**
-        request to */api/openstack-tenant/<uuid>/external_network/*.
+        request to */api/openstack-tenants/<uuid>/external_network/*.
         The body of the request should consist of following parameters:
 
         - vlan_id (required if vxlan_id is not provided) - VLAN ID of the external network.
@@ -961,7 +961,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         .. code-block:: http
 
-            POST /api/openstack-tenant/c84d653b9ec92c6cbac41c706593e66f567a7fa4/external_network/ HTTP/1.1
+            POST /api/openstack-tenants/c84d653b9ec92c6cbac41c706593e66f567a7fa4/external_network/ HTTP/1.1
             Content-Type: application/json
             Accept: application/json
             Host: example.com
@@ -974,7 +974,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             }
 
         In order to delete external network, a user with admin role or staff should issue a **DELETE** request
-        to */api/openstack-tenant/<uuid>/external_network/* without any parameters in the request body.
+        to */api/openstack-tenants/<uuid>/external_network/* without any parameters in the request body.
         """
         tenant = self.get_object()
 
