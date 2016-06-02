@@ -33,9 +33,6 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
         self.valid_data = {
             'name': 'test_security_group',
             'description': 'test security_group description',
-            'service_project_link': {
-                'url': factories.OpenStackServiceProjectLinkFactory.get_url(self.service_project_link),
-            },
             'tenant': factories.TenantFactory.get_url(self.tenant),
             'rules': [
                 {
@@ -85,8 +82,8 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
 
             mocked_execute.assert_called_once_with(security_group, async=True)
 
-    def test_security_group_raises_validation_error_on_wrong_membership_in_request(self):
-        del self.valid_data['service_project_link']['url']
+    def test_security_group_raises_validation_error_on_wrong_tenant_in_request(self):
+        del self.valid_data['tenant']
 
         self.client.force_authenticate(self.admin)
         response = self.client.post(self.url, data=self.valid_data)
@@ -143,15 +140,15 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
-    def test_security_group_service_project_link_can_not_be_updated(self):
-        new_spl = factories.OpenStackServiceProjectLinkFactory(project=self.project)
-        new_spl_url = factories.OpenStackServiceProjectLinkFactory.get_url(new_spl)
+    def test_security_group_tenant_can_not_be_updated(self):
+        new_tenant = factories.TenantFactory(service_project_link=self.service_project_link)
+        new_tenant_url = factories.OpenStackServiceProjectLinkFactory.get_url(new_tenant)
 
         self.client.force_authenticate(self.admin)
-        self.client.patch(self.url, data={'service_project_link': {'url': new_spl_url}})
+        self.client.patch(self.url, data={'tenant': {'url': new_tenant_url}})
 
         reread_security_group = models.SecurityGroup.objects.get(pk=self.security_group.pk)
-        self.assertEqual(self.service_project_link, reread_security_group.service_project_link)
+        self.assertNotEqual(new_tenant, reread_security_group.service_project_link)
 
     def test_security_group_rules_can_not_be_updated_if_rules_quota_is_over_limit(self):
         self.tenant.set_quota_limit('security_group_rule_count', 0)
