@@ -2209,6 +2209,7 @@ class OpenStackBackend(ServiceBackend):
                 volume_id=volume_backup.source_volume.backend_id,
                 name=volume_backup.name,
                 description=volume_backup.description,
+                container=volume_backup.tenant.backend_id,
             )
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
