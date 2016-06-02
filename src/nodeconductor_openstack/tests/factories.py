@@ -116,7 +116,7 @@ class InstanceFactory(factory.DjangoModelFactory):
             return cls._get_or_create(model_class, *args, **kwargs)
 
         if not models.Tenant.objects.filter(service_project_link=kwargs['service_project_link']):
-            TenantFactory(service_project_link=kwargs['service_project_link'])
+            kwargs['tenant'] = TenantFactory(service_project_link=kwargs['service_project_link'])
 
         return manager.create(*args, **kwargs)
 
