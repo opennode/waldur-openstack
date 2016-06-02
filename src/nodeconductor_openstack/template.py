@@ -23,6 +23,8 @@ class NestedHyperlinkedRelatedField(serializers.HyperlinkedRelatedField):
 class InstanceProvisionTemplateForm(ResourceTemplateForm):
     service = forms.ModelChoiceField(
         label="OpenStack service", queryset=models.OpenStackService.objects.all(), required=False)
+    tenant = forms.ModelChoiceField(
+        label="OpenStack tenant", queryset=models.Tenant.objects.all(), required=False)
 
     flavor = forms.ModelChoiceField(label="Flavor", queryset=models.Flavor.objects.all(), required=False)
     image = forms.ModelChoiceField(label="Image", queryset=models.Image.objects.all(), required=False)
@@ -39,13 +41,19 @@ class InstanceProvisionTemplateForm(ResourceTemplateForm):
     skip_external_ip_assignment = forms.BooleanField(required=False)
 
     class Meta(ResourceTemplateForm.Meta):
-        fields = ResourceTemplateForm.Meta.fields + ('service', 'project', 'flavor', 'image', 'data_volume_size',
-                                                     'system_volume_size')
+        fields = ResourceTemplateForm.Meta.fields + ('service', 'tenant', 'project', 'flavor', 'image',
+                                                     'data_volume_size', 'system_volume_size')
 
     class Serializer(BaseResourceTemplateSerializer):
         service = serializers.HyperlinkedRelatedField(
             view_name='openstack-detail',
             queryset=models.OpenStackService.objects.all(),
+            lookup_field='uuid',
+            required=False,
+        )
+        tenant = serializers.HyperlinkedRelatedField(
+            view_name='openstack-tenant-detail',
+            queryset=models.Tenant.objects.all(),
             lookup_field='uuid',
             required=False,
         )

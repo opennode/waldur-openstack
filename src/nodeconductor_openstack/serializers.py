@@ -311,9 +311,6 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
         return security_group
 
     def update(self, instance, validated_data):
-        if instance.state != models.SecurityGroup.States.OK:
-            raise IncorrectStateException("Security group should be in state OK.")
-
         rules = validated_data.pop('rules', [])
         new_rules = [rule for rule in rules if rule.id is None]
         existed_rules = set([rule for rule in rules if rule.id is not None])

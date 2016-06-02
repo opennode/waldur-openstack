@@ -254,7 +254,7 @@ class Instance(structure_models.VirtualMachineMixin,
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
 
     tracker = FieldTracker()
-    tenant = models.ForeignKey('Tenant', related_name='instances', null=True)
+    tenant = models.ForeignKey('Tenant', related_name='instances')
 
     def get_backend(self):
         return self.tenant.get_backend()
