@@ -571,7 +571,6 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action('pull quotas for tenant')
     def pull_tenant_quotas(self, tenant):
-        # XXX: backend quotas should be moved to tenant from SPL in future.
         nova = self.nova_client
         neutron = self.neutron_client
         cinder = self.cinder_client
@@ -680,7 +679,6 @@ class OpenStackBackend(ServiceBackend):
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
         nova = self.nova_client
-        service_project_link = tenant.service_project_link
 
         try:
             try:
@@ -694,14 +692,14 @@ class OpenStackBackend(ServiceBackend):
             unsynchronized_groups = []
             # list of nc security groups that do not exist in openstack
 
-            extra_groups = service_project_link.security_groups.exclude(
+            extra_groups = tenant.security_groups.exclude(
                 backend_id__in=[g.id for g in backend_security_groups],
             )
 
             with transaction.atomic():
                 for backend_group in backend_security_groups:
                     try:
-                        nc_group = service_project_link.security_groups.get(backend_id=backend_group.id)
+                        nc_group = tenant.security_groups.get(backend_id=backend_group.id)
                         if not self._are_security_groups_equal(backend_group, nc_group):
                             unsynchronized_groups.append(backend_group)
                     except models.SecurityGroup.DoesNotExist:
@@ -715,7 +713,7 @@ class OpenStackBackend(ServiceBackend):
 
                 # synchronizing unsynchronized security groups
                 for backend_group in unsynchronized_groups:
-                    nc_security_group = service_project_link.security_groups.get(backend_id=backend_group.id)
+                    nc_security_group = tenant.security_groups.get(backend_id=backend_group.id)
                     if backend_group.name != nc_security_group.name:
                         nc_security_group.name = backend_group.name
                         nc_security_group.state = StateMixin.States.OK
@@ -726,7 +724,7 @@ class OpenStackBackend(ServiceBackend):
 
                 # creating non-existed security groups
                 for backend_group in nonexistent_groups:
-                    nc_security_group = service_project_link.security_groups.create(
+                    nc_security_group = tenant.security_groups.create(
                         backend_id=backend_group.id,
                         name=backend_group.name,
                         state=StateMixin.States.OK
@@ -1116,12 +1114,11 @@ class OpenStackBackend(ServiceBackend):
                 if instance.security_groups.filter(security_group__name=bsg.name).exists():
                     continue
                 try:
-                    # TODO: migrate to tenant.security_groups
-                    security_group = service_project_link.security_groups.get(name=bsg.name)
+                    security_group = tenant.security_groups.get(name=bsg.name)
                 except models.SecurityGroup.DoesNotExist:
                     logger.error(
-                        'SPL %s (PK: %s) does not have security group "%s", but its instance %s (PK: %s) has.' %
-                        (service_project_link, service_project_link.pk, bsg.name, instance, instance.pk)
+                        'Tenant %s (PK: %s) does not have security group "%s", but its instance %s (PK: %s) has.' %
+                        (tenant, tenant.pk, bsg.name, instance, instance.pk)
                     )
                 else:
                     instance.security_groups.create(security_group=security_group)

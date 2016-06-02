@@ -10,9 +10,7 @@ from .. import models
 from . import factories
 
 
-@ddt
-class SecurityGroupCreateTest(test.APITransactionTestCase):
-
+class BaseSecurityGroupTest(test.APITransactionTestCase):
     def setUp(self):
         self.staff = structure_factories.UserFactory(is_staff=True)
         self.owner = structure_factories.UserFactory()
@@ -27,12 +25,18 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
             service=self.service, project=self.project)
         self.tenant = factories.TenantFactory(service_project_link=self.service_project_link)
 
+
+@ddt
+class SecurityGroupCreateTest(BaseSecurityGroupTest):
+    def setUp(self):
+        super(SecurityGroupCreateTest, self).setUp()
         self.valid_data = {
             'name': 'test_security_group',
             'description': 'test security_group description',
             'service_project_link': {
                 'url': factories.OpenStackServiceProjectLinkFactory.get_url(self.service_project_link),
             },
+            'tenant': factories.TenantFactory.get_url(self.tenant),
             'rules': [
                 {
                     'protocol': 'tcp',
@@ -100,24 +104,14 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
 
-class SecurityGroupUpdateTest(test.APITransactionTestCase):
+class SecurityGroupUpdateTest(BaseSecurityGroupTest):
 
     def setUp(self):
-        self.staff = structure_factories.UserFactory(is_staff=True)
-        self.owner = structure_factories.UserFactory()
-        self.admin = structure_factories.UserFactory()
-
-        self.customer = structure_factories.CustomerFactory()
-        self.customer.add_user(self.owner, structure_models.CustomerRole.OWNER)
-        self.service = factories.OpenStackServiceFactory(customer=self.customer)
-        self.project = structure_factories.ProjectFactory(customer=self.customer)
-        self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
-        self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
-            service=self.service, project=self.project)
-        self.tenant = factories.TenantFactory(service_project_link=self.service_project_link)
-
+        super(SecurityGroupUpdateTest, self).setUp()
         self.security_group = factories.SecurityGroupFactory(
-            service_project_link=self.service_project_link, state=SynchronizationStates.IN_SYNC)
+            service_project_link=self.service_project_link,
+            tenant=self.tenant,
+            state=SynchronizationStates.IN_SYNC)
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
     def test_project_administrator_can_update_security_group_rules(self):
@@ -216,23 +210,14 @@ class SecurityGroupUpdateTest(test.APITransactionTestCase):
         self.assertTrue(self.security_group.rules.filter(**new_rule_data).exists())
 
 
-class SecurityGroupDeleteTest(test.APITransactionTestCase):
+class SecurityGroupDeleteTest(BaseSecurityGroupTest):
 
     def setUp(self):
-        self.staff = structure_factories.UserFactory(is_staff=True)
-        self.owner = structure_factories.UserFactory()
-        self.admin = structure_factories.UserFactory()
-
-        self.customer = structure_factories.CustomerFactory()
-        self.customer.add_user(self.owner, structure_models.CustomerRole.OWNER)
-        self.service = factories.OpenStackServiceFactory(customer=self.customer)
-        self.project = structure_factories.ProjectFactory(customer=self.customer)
-        self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
-        self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
-            service=self.service, project=self.project)
-
+        super(SecurityGroupDeleteTest, self).setUp()
         self.security_group = factories.SecurityGroupFactory(
-            service_project_link=self.service_project_link, state=SynchronizationStates.IN_SYNC)
+            service_project_link=self.service_project_link,
+            tenant=self.tenant,
+            state=SynchronizationStates.IN_SYNC)
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
     def test_project_administrator_can_delete_security_group(self):
@@ -254,21 +239,14 @@ class SecurityGroupDeleteTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
 
-class SecurityGroupRetreiveTest(test.APITransactionTestCase):
+class SecurityGroupRetreiveTest(BaseSecurityGroupTest):
 
     def setUp(self):
-        self.admin = structure_factories.UserFactory()
-        self.user = structure_factories.UserFactory()
-        self.staff = structure_factories.UserFactory(is_staff=True)
-
-        self.customer = structure_factories.CustomerFactory()
-        self.customer.add_user(self.user, structure_models.CustomerRole.OWNER)
-        self.service = factories.OpenStackServiceFactory(customer=self.customer)
-        self.project = structure_factories.ProjectFactory()
-        self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
-        self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
-            service=self.service, project=self.project)
-        self.security_group = factories.SecurityGroupFactory(service_project_link=self.service_project_link)
+        super(SecurityGroupRetreiveTest, self).setUp()
+        self.security_group = factories.SecurityGroupFactory(
+            service_project_link=self.service_project_link,
+            tenant=self.tenant
+        )
 
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
@@ -279,6 +257,6 @@ class SecurityGroupRetreiveTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_user_cannot_access_security_groups_of_instances_not_connected_to_him(self):
-        self.client.force_authenticate(user=self.user)
+        self.client.force_authenticate(user=structure_factories.UserFactory())
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

@@ -128,6 +128,7 @@ class SecurityGroup(core_models.UuidMixin,
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='security_groups')
+    tenant = models.ForeignKey('Tenant', related_name='security_groups')
 
     backend_id = models.CharField(max_length=128, blank=True)
 
@@ -135,7 +136,7 @@ class SecurityGroup(core_models.UuidMixin,
         return '%s (%s)' % (self.name, self.service_project_link)
 
     def get_backend(self):
-        return self.service_project_link.get_backend()
+        return self.tenant.get_backend()
 
     @classmethod
     def get_url_name(cls):
