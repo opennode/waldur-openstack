@@ -405,6 +405,9 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
     service_project_link = serializers.PrimaryKeyRelatedField(
         queryset=models.OpenStackServiceProjectLink.objects.all())
 
+    tenant = serializers.PrimaryKeyRelatedField(
+        queryset=models.Tenant.objects.all())
+
     flavor = serializers.HyperlinkedRelatedField(
         view_name='openstack-flavor-detail',
         lookup_field='uuid',
@@ -420,7 +423,7 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
         model = models.Instance
         fields = (
             'name', 'description',
-            'service_project_link',
+            'service_project_link', 'tenant',
             'flavor', 'min_ram', 'min_disk',
             'key_name', 'key_fingerprint',
             'system_volume_id', 'system_volume_size',

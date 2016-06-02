@@ -1930,7 +1930,7 @@ class OpenStackBackend(ServiceBackend):
                 logger.info('Successfully released floating ip %s from instance %s',
                             instance.external_ips, instance.uuid)
 
-    def create_snapshots(self, service_project_link, volume_ids, prefix='Cloned volume'):
+    def create_snapshots(self, tenant, volume_ids, prefix='Cloned volume'):
         cinder = self.cinder_client
         logger.debug('About to snapshot volumes %s', ', '.join(volume_ids))
         try:
@@ -1938,7 +1938,7 @@ class OpenStackBackend(ServiceBackend):
             for volume_id in volume_ids:
                 # create a temporary snapshot
                 snapshot = self._create_snapshot(volume_id, cinder)
-                service_project_link.tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
+                tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
                 snapshot_ids.append(snapshot.id)
 
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
@@ -1948,7 +1948,7 @@ class OpenStackBackend(ServiceBackend):
             logger.info('Successfully created snapshots %s for volumes.', ', '.join(snapshot_ids))
         return snapshot_ids
 
-    def delete_snapshots(self, service_project_link, snapshot_ids):
+    def delete_snapshots(self, tenant, snapshot_ids):
         cinder = self.cinder_client
         logger.debug('About to delete volumes %s ', ', '.join(snapshot_ids))
         try:
@@ -1963,7 +1963,7 @@ class OpenStackBackend(ServiceBackend):
                 cinder.volume_snapshots.delete(snapshot_id)
 
                 if self._wait_for_snapshot_deletion(snapshot_id, cinder):
-                    service_project_link.tenant.add_quota_usage('storage', -self.gb2mb(size))
+                    tenant.add_quota_usage('storage', -self.gb2mb(size))
                     logger.info('Successfully deleted a snapshot %s', snapshot_id)
                 else:
                     logger.exception('Failed to delete snapshot %s', snapshot_id)

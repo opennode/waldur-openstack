@@ -258,6 +258,7 @@ class BackupFactory(factory.DjangoModelFactory):
         self.metadata.update(
             {
                 'service_project_link': self.instance.service_project_link.pk,
+                'tenant': self.instance.tenant.pk,
                 'name': 'original.vm.name',
                 'system_snapshot_id': self.instance.system_volume_id,
                 'system_snapshot_size': self.instance.system_volume_size,
@@ -280,23 +281,3 @@ class BackupFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(self):
         return 'http://testserver' + reverse('openstack-backup-list')
-
-
-class TenantFactory(factory.DjangoModelFactory):
-    class Meta(object):
-        model = models.Tenant
-
-    name = factory.Sequence(lambda n: 'tenant%s' % n)
-    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
-    state = models.Tenant.States.OK
-
-    @classmethod
-    def get_url(cls, tenant=None):
-        if tenant is None:
-            tenant = SecurityGroupFactory()
-        return 'http://testserver' + reverse('openstack-tenant-detail', kwargs={'uuid': tenant.uuid})
-
-
-    @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstack-tenant-list')

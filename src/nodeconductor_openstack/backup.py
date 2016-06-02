@@ -95,6 +95,7 @@ class BackupBackend(object):
         metadata = {
             'name': instance.name,
             'service_project_link': instance.service_project_link.pk,
+            'tenant': instance.tenant.pk,
             'system_volume_id': instance.system_volume_id,
             'system_volume_size': instance.system_volume_size,
             'data_volume_id': instance.data_volume_id,
@@ -112,9 +113,9 @@ class BackupBackend(object):
 
     def create(self):
         instance = self.backup.instance
-        spl = instance.service_project_link
-        quota_errors = spl.tenant.validate_quota_change({
-            'storage': instance.system_volume_size + instance.data_volume_size})
+        quota_errors = instance.tenant.validate_quota_change({
+            'storage': instance.system_volume_size + instance.data_volume_size
+        })
 
         if quota_errors:
             raise BackupError('No space for instance %s backup' % instance.uuid.hex)
@@ -122,7 +123,7 @@ class BackupBackend(object):
         try:
             backend = instance.get_backend()
             snapshots = backend.create_snapshots(
-                service_project_link=spl,
+                tenant=instance.tenant,
                 volume_ids=[instance.system_volume_id, instance.data_volume_id],
                 prefix='Instance %s backup: ' % instance.uuid,
             )
@@ -145,7 +146,7 @@ class BackupBackend(object):
         try:
             backend = instance.get_backend()
             backend.delete_snapshots(
-                service_project_link=instance.service_project_link,
+                tenant=instance.tenant,
                 snapshot_ids=[metadata['system_snapshot_id'], metadata['data_snapshot_id']],
             )
         except ServiceBackendError as e:
