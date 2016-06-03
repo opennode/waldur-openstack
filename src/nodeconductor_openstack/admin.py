@@ -1,3 +1,5 @@
+import urllib
+
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.core.urlresolvers import reverse
@@ -5,10 +7,16 @@ from django.core.urlresolvers import reverse
 from nodeconductor.core.admin import ExecutorAdminAction
 from nodeconductor.structure import admin as structure_admin
 
-from . import executors
+from . import executors, models
 from .forms import BackupScheduleForm, InstanceForm
-from .models import OpenStackService, OpenStackServiceProjectLink, Instance, \
-                    Backup, BackupSchedule, Tenant, Flavor, Image
+
+
+def _get_obj_admin_url(obj):
+    return reverse('admin:%s_%s_change' % (obj._meta.app_label, obj._meta.model_name), args=[obj.id])
+
+
+def _get_list_admin_url(model):
+    return reverse('admin:%s_%s_changelist' % (model._meta.app_label, model._meta.model_name))
 
 
 class ServiceProjectLinkAdmin(structure_admin.ServiceProjectLinkAdmin):
@@ -29,8 +37,7 @@ class ServiceProjectLinkAdmin(structure_admin.ServiceProjectLinkAdmin):
     def get_tenant(self, obj):
         tenant = obj.tenant
         if tenant is not None:
-            url = reverse('admin:%s_%s_change' % (tenant._meta.app_label, tenant._meta.model_name), args=[tenant.id])
-            return '<a href="%s">%s</a>' % (url, tenant.name)
+            return '<a href="%s">%s</a>' % (_get_obj_admin_url(tenant), tenant.name)
         return
 
     get_tenant.short_description = 'Tenant'
@@ -63,7 +70,7 @@ class TenantAdmin(structure_admin.ResourceAdmin):
         """ Execute action with tenant that is in state OK """
 
         def validate(self, tenant):
-            if tenant.state != Tenant.States.OK:
+            if tenant.state != models.Tenant.States.OK:
                 raise ValidationError('Tenant has to be in state OK to pull security groups.')
 
     class PullSecurityGroups(OKTenantAction):
@@ -106,7 +113,7 @@ class TenantAdmin(structure_admin.ResourceAdmin):
         short_description = 'Pull'
 
         def validate(self, tenant):
-            if tenant.state not in (Tenant.States.OK, Tenant.States.ERRED):
+            if tenant.state not in (models.Tenant.States.OK, models.Tenant.States.ERRED):
                 raise ValidationError('Tenant has to be OK or erred.')
 
     pull = Pull()
@@ -122,11 +129,107 @@ class ImageAdmin(admin.ModelAdmin):
     list_display = ('name', 'min_disk', 'min_ram')
 
 
-admin.site.register(Instance, InstanceAdmin)
-admin.site.register(Tenant, TenantAdmin)
-admin.site.register(Flavor, FlavorAdmin)
-admin.site.register(Image, ImageAdmin)
-admin.site.register(OpenStackService, structure_admin.ServiceAdmin)
-admin.site.register(OpenStackServiceProjectLink, ServiceProjectLinkAdmin)
-admin.site.register(Backup, BackupAdmin)
-admin.site.register(BackupSchedule, BackupScheduleAdmin)
+class TenantResourceAdmin(structure_admin.ResourceAdmin):
+    """ Admin model for resources that are connected to tenant.
+
+        Expects that resource has attribute `tenant`.
+    """
+    list_display = structure_admin.ResourceAdmin.list_display + ('get_tenant', )
+    list_filter = structure_admin.ResourceAdmin.list_filter + ('tenant', )
+
+    def get_tenant(self, obj):
+        tenant = obj.tenant
+        return '<a href="%s">%s</a>' % (_get_obj_admin_url(tenant), tenant.name)
+
+    get_tenant.short_description = 'Tenant'
+    get_tenant.allow_tags = True
+
+
+class VolumeAdmin(TenantResourceAdmin):
+    pass
+
+
+class SnapshotAdmin(TenantResourceAdmin):
+    pass
+
+
+class VolumeBackupAdmin(TenantResourceAdmin):
+    list_display = TenantResourceAdmin.list_display + ('get_source_volume', 'get_restorations')
+
+    def get_source_volume(self, obj):
+        source_volume = obj.source_volume
+        if source_volume:
+            return '<a href="%s">%s</a>' % (_get_obj_admin_url(source_volume), source_volume.name)
+        return
+
+    get_source_volume.short_description = 'Source volume'
+    get_source_volume.allow_tags = True
+
+    def get_restorations(self, obj):
+        url = _get_list_admin_url(models.VolumeBackupRestoration)
+        url += '?' + urllib.urlencode({'volume_backup_id__exact': obj.id})
+        return '<a href="%s">restorations (%s)</a>' % (url, obj.restorations.count())
+
+    get_restorations.short_description = 'Restorations'
+    get_restorations.allow_tags = True
+
+
+class VolumeBackupRestorationAdmin(admin.ModelAdmin):
+    list_filter = ('tenant', )
+    list_display = ('uuid', 'volume_backup', 'mirorred_volume_backup', 'volume', 'get_tenant')
+
+    def get_tenant(self, obj):
+        tenant = obj.tenant
+        return '<a href="%s">%s</a>' % (_get_obj_admin_url(tenant), tenant.name)
+
+    get_tenant.short_description = 'Tenant'
+    get_tenant.allow_tags = True
+
+
+class DRBackupAdmin(TenantResourceAdmin):
+    list_display = TenantResourceAdmin.list_display + ('get_volume_backups', 'get_restorations')
+
+    def get_volume_backups(self, obj):
+        text = ''
+        for vb in obj.volume_backups.all():
+            text += '<a href="%s">%s</a><br>' % (_get_obj_admin_url(vb), vb.name)
+        return text
+
+    get_volume_backups.short_description = 'Volume backups'
+    get_volume_backups.allow_tags = True
+
+    def get_restorations(self, obj):
+        url = _get_list_admin_url(models.DRBackupRestoration)
+        url += '?' + urllib.urlencode({'dr_backup_id__exact': obj.id})
+        return '<a href="%s">restorations (%s)</a>' % (url, obj.restorations.count())
+
+    get_restorations.short_description = 'Restorations'
+    get_restorations.allow_tags = True
+
+
+class DRBackupRestorationAdmin(admin.ModelAdmin):
+    list_filter = ('tenant', )
+    list_display = ('uuid', 'dr_backup', 'instance', 'get_tenant')
+
+    def get_tenant(self, obj):
+        tenant = obj.tenant
+        return '<a href="%s">%s</a>' % (_get_obj_admin_url(tenant), tenant.name)
+
+    get_tenant.short_description = 'Tenant'
+    get_tenant.allow_tags = True
+
+
+admin.site.register(models.Instance, InstanceAdmin)
+admin.site.register(models.Tenant, TenantAdmin)
+admin.site.register(models.Flavor, FlavorAdmin)
+admin.site.register(models.Image, ImageAdmin)
+admin.site.register(models.OpenStackService, structure_admin.ServiceAdmin)
+admin.site.register(models.OpenStackServiceProjectLink, ServiceProjectLinkAdmin)
+admin.site.register(models.Backup, BackupAdmin)
+admin.site.register(models.BackupSchedule, BackupScheduleAdmin)
+admin.site.register(models.Volume, VolumeAdmin)
+admin.site.register(models.Snapshot, SnapshotAdmin)
+admin.site.register(models.VolumeBackup, VolumeBackupAdmin)
+admin.site.register(models.VolumeBackupRestoration, VolumeBackupRestorationAdmin)
+admin.site.register(models.DRBackup, DRBackupAdmin)
+admin.site.register(models.DRBackupRestoration, DRBackupRestorationAdmin)

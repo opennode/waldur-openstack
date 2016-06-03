@@ -83,9 +83,26 @@ PERMISSION_LOGICS = (
         ],
         any_permission=True,
     )),
+    ('openstack.VolumeBackupRestoration', FilteredCollaboratorsPermissionLogic(
+        collaborators_query=[
+            'volume_backup__service_project_link__service__customer__roles__permission_group__user',
+            'volume_backup__service_project_link__project__roles__permission_group__user',
+            'volume_backup__service_project_link__project__project_groups__roles__permission_group__user',
+        ],
+        collaborators_filter=[
+            {'volume_backup__service_project_link__service__customer__roles__role_type':
+             structure_models.CustomerRole.OWNER},
+            {'volume_backup__service_project_link__project__roles__role_type':
+             structure_models.ProjectRole.ADMINISTRATOR},
+            {'volume_backup__service_project_link__project__project_groups__roles__permission_group__user':
+             structure_models.ProjectGroupRole.MANAGER},
+        ],
+        any_permission=True,
+    )),
     ('openstack.Instance', structure_perms.resource_permission_logic),
     ('openstack.Tenant', structure_perms.resource_permission_logic),
     ('openstack.Volume', structure_perms.resource_permission_logic),
+    ('openstack.VolumeBackup', structure_perms.resource_permission_logic),
     ('openstack.Snapshot', structure_perms.resource_permission_logic),
     ('openstack.DRBackup', structure_perms.resource_permission_logic),
     ('openstack.Flavor', StaffPermissionLogic(any_permission=True)),
