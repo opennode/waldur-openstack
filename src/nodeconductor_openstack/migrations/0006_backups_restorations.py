@@ -67,7 +67,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='snapshot',
             name='source_volume',
-            field=models.ForeignKey(related_name='shapshots', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Volume', null=True),
+            field=models.ForeignKey(related_name='snapshots', on_delete=django.db.models.deletion.SET_NULL, to='openstack.Volume', null=True),
         ),
         migrations.AlterField(
             model_name='volumebackup',

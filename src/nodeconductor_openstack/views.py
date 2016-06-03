@@ -877,6 +877,8 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         - vcpu - maximal number of virtual cores for allocation.
         - security_group_count - maximal number of created security groups.
         - security_group_rule_count - maximal number of created security groups rules.
+        - volumes - maximal number of created volumes.
+        - snapshots - maximal number of created snapshots.
 
         It is possible to update quotas by one or by submitting all the fields in one request.
         NodeConductor will attempt to update the provided quotas. Please note, that if provided quotas are
@@ -901,7 +903,9 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                 "storage": 1000000,
                 "vcpu": 30,
                 "security_group_count": 100,
-                "security_group_rule_count": 100
+                "security_group_rule_count": 100,
+                "volumes": 10,
+                "snapshots": 20
             }
 
         Response code of a successful request is **202 ACCEPTED**. In case tenant is in a non-stable status, the response

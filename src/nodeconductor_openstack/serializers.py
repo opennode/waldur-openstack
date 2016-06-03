@@ -12,7 +12,6 @@ from taggit.models import Tag
 from nodeconductor.core import models as core_models
 from nodeconductor.core import serializers as core_serializers
 from nodeconductor.core import utils as core_utils
-from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.fields import JsonField, MappedChoiceField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
@@ -81,6 +80,8 @@ class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkS
 
 class TenantQuotaSerializer(serializers.Serializer):
     instances = serializers.IntegerField(min_value=1, required=False)
+    volumes = serializers.IntegerField(min_value=1, required=False)
+    snapshots = serializers.IntegerField(min_value=1, required=False)
     ram = serializers.IntegerField(min_value=1, required=False)
     vcpu = serializers.IntegerField(min_value=1, required=False)
     storage = serializers.IntegerField(min_value=1, required=False)

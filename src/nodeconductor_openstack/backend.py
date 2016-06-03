@@ -519,16 +519,6 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action('push quotas for tenant')
     def push_tenant_quotas(self, tenant, quotas):
-        if 'instances' in quotas:
-            # convert instances quota to volumes and snapshots.
-            quotas_ratios = getattr(django_settings, 'NODECONDUCTOR_OPENSTACK', {}).get(
-                'OPENSTACK_QUOTAS_INSTANCE_RATIOS', {})
-            volume_ratio = quotas_ratios.get('volumes', 4)
-            snapshots_ratio = quotas_ratios.get('snapshots', 20)
-
-            quotas['volumes'] = volume_ratio * quotas['instances']
-            quotas['snapshots'] = snapshots_ratio * quotas['instances']
-
         cinder_quotas = {
             'gigabytes': self.mb2gb(quotas.get('storage')) if 'storage' in quotas else None,
             'volumes': quotas.get('volumes'),
@@ -577,6 +567,8 @@ class OpenStackBackend(ServiceBackend):
         tenant.set_quota_limit('ram', nova_quotas.ram)
         tenant.set_quota_limit('vcpu', nova_quotas.cores)
         tenant.set_quota_limit('storage', self.gb2mb(cinder_quotas.gigabytes))
+        tenant.set_quota_limit('snapshots', cinder_quotas.snapshots)
+        tenant.set_quota_limit('volumes', cinder_quotas.volumes)
         tenant.set_quota_limit('instances', nova_quotas.instances)
         tenant.set_quota_limit('security_group_count', neutron_quotas['security_group'])
         tenant.set_quota_limit('security_group_rule_count', neutron_quotas['security_group_rule'])
@@ -610,6 +602,8 @@ class OpenStackBackend(ServiceBackend):
         tenant.set_quota_usage('ram', ram)
         tenant.set_quota_usage('vcpu', vcpu)
         tenant.set_quota_usage('storage', sum(self.gb2mb(v.size) for v in volumes + snapshots))
+        tenant.set_quota_usage('volumes', len(volumes))
+        tenant.set_quota_usage('snapshots', len(snapshots))
         tenant.set_quota_usage('instances', len(instances), fail_silently=True)
         tenant.set_quota_usage('security_group_count', len(security_groups))
         tenant.set_quota_usage('security_group_rule_count', len(sum([sg.rules for sg in security_groups], [])))
