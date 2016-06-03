@@ -4,9 +4,8 @@ import logging
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
-from . import executors
 from .log import event_logger
-from .models import SecurityGroup, SecurityGroupRule, OpenStackServiceProjectLink, Instance, Tenant
+from .models import SecurityGroup, SecurityGroupRule, Instance, Tenant
 from .tasks import register_instance_in_zabbix
 
 
@@ -65,20 +64,6 @@ def create_security_group(tenant, group):
     return sg
 
 
-def update_tenant_name_on_project_update(sender, instance=None, created=False, **kwargs):
-    project = instance
-    if created:
-        return
-
-    for spl in OpenStackServiceProjectLink.objects.filter(project=project):
-        tenant = spl.tenant
-        if tenant is None or tenant.state != tenant.States.OK:
-            continue
-        tenant.name = spl.get_tenant_name()
-        tenant.save()
-        executors.TenantUpdateExecutor().execute(tenant, updated_fields=['name'])
-
-
 def increase_quotas_usage_on_instance_creation(sender, instance=None, created=False, **kwargs):
     add_quota = instance.tenant.add_quota_usage
     if created:
@@ -102,10 +87,11 @@ def decrease_quotas_usage_on_instances_deletion(sender, instance=None, **kwargs)
 
 def change_floating_ip_quota_on_status_change(sender, instance, created=False, **kwargs):
     floating_ip = instance
+    add_quota = floating_ip.tenant.add_quota_usage
     if floating_ip.status != 'DOWN' and (created or floating_ip.tracker.previous('status') == 'DOWN'):
-        floating_ip.service_project_link.tenant.add_quota_usage('floating_ip_count', 1)
+        add_quota('floating_ip_count', 1)
     if floating_ip.status == 'DOWN' and not created and floating_ip.tracker.previous('status') != 'DOWN':
-        floating_ip.service_project_link.tenant.add_quota_usage('floating_ip_count', -1)
+        add_quota('floating_ip_count', -1)
 
 
 def log_backup_schedule_save(sender, instance, created=False, **kwargs):
@@ -126,15 +112,6 @@ def log_backup_schedule_delete(sender, instance, **kwargs):
         'Backup schedule for {resource_name} has been deleted.',
         event_type='resource_backup_schedule_deletion_succeeded',
         event_context={'resource': instance.instance})
-
-
-def autocreate_spl_tenant(sender, instance, created=False, **kwargs):
-    if created and instance.service.settings.get_option('autocreate_tenants'):
-        tenant = instance.create_tenant()
-        # TODO: Migrate to on_commit hook
-        # Execute Celery task only after transaction commits
-        # Need countdown to make sure that tenant will exist in database on task execution
-        executors.TenantCreateExecutor.execute(tenant, countdown=2)
 
 
 # TODO: move this handler to itacloud assembly

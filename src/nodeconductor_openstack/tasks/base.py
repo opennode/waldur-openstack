@@ -50,14 +50,6 @@ def nova_wait_for_server_status(client, server_id, status):
     return server.status == status
 
 
-@shared_task
-def delete_tenant_with_spl(serialized_tenant):
-    tenant = deserialize_instance(serialized_tenant)
-    spl = tenant.service_project_link
-    tenant.delete()
-    spl.delete()
-
-
 # TODO: move this signal to itacloud assembly application
 @shared_task
 def register_instance_in_zabbix(instance_uuid):

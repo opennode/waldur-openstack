@@ -20,6 +20,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
     def test_user_cannot_assign_floating_ip_to_instance_in_unstable_state(self):
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
+            tenant=self.tenant,
             status='DOWN',
             backend_network_id=self.tenant.external_network_id
         )
@@ -36,12 +37,13 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
                              'Performing assign_floating_ip operation is not allowed for resource in its current state')
             self.assertFalse(mocked_task.called)
 
-    def test_user_cannot_assign_floating_ip_to_instance_with_spl_without_external_network_id(self):
+    def test_user_cannot_assign_floating_ip_to_instance_with_tenant_without_external_network_id(self):
         self.tenant.external_network_id = ''
         self.tenant.save()
 
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
+            tenant=self.tenant,
             status='DOWN')
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
@@ -56,13 +58,14 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
                              ['External network ID of the service project link is missing.'])
             self.assertFalse(mocked_task.called)
 
-    def test_user_cannot_assign_floating_ip_to_instance_with_link_in_unstable_state(self):
+    def test_user_cannot_assign_floating_ip_to_instance_with_tenant_in_unstable_state(self):
         self.tenant.external_network_id = '12345'
         self.tenant.state = Tenant.States.ERRED
         self.tenant.save()
 
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
+            tenant=self.tenant,
             status='DOWN',
             backend_network_id=self.tenant.external_network_id
         )
@@ -98,6 +101,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
 
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
+            tenant=self.tenant,
             status='ACTIVE',
             backend_network_id=self.tenant.external_network_id
         )
@@ -113,7 +117,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
             self.assertEqual(response.data['floating_ip'], ['Floating IP status must be DOWN.'])
             self.assertFalse(mocked_task.called)
 
-    def test_user_cannot_assign_ip_from_different_link_to_the_instance(self):
+    def test_user_cannot_assign_ip_from_different_tenant_to_the_instance(self):
         self.tenant.external_network_id = '12345'
         self.tenant.save()
 
@@ -137,6 +141,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
 
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
+            tenant=self.tenant,
             status='DOWN',
             backend_network_id=self.tenant.external_network_id
         )
@@ -158,6 +163,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
 
         floating_ip = factories.FloatingIPFactory(
             service_project_link=self.spl,
+            tenant=self.tenant,
             status='DOWN',
             backend_network_id=self.tenant.external_network_id
         )

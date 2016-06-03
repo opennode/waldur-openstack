@@ -71,19 +71,9 @@ class ImageSerializer(structure_serializers.BasePropertySerializer):
 
 class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkSerializer):
 
-    state = serializers.SerializerMethodField()
-
-    def get_state(self, obj):
-        if obj.tenant:
-            return obj.tenant.human_readable_state
-        return None
-
     class Meta(structure_serializers.BaseServiceProjectLinkSerializer.Meta):
         model = models.OpenStackServiceProjectLink
         view_name = 'openstack-spl-detail'
-        fields = structure_serializers.BaseServiceProjectLinkSerializer.Meta.fields + (
-            'tenant_id', 'state'
-        )
         extra_kwargs = {
             'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},
         }
@@ -238,10 +228,11 @@ class FloatingIPSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = models.FloatingIP
-        fields = ('url', 'uuid', 'status', 'address',
+        fields = ('url', 'uuid', 'status', 'address', 'tenant',
                   'service_project_link', 'backend_id', 'backend_network_id')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
+            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
         }
         view_name = 'openstack-fip-detail'
 
@@ -441,6 +432,7 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         flavor = attrs['flavor']
         spl = attrs['service_project_link']
+        tenant = attrs['tenant']
 
         if flavor.settings != spl.service.settings:
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
@@ -453,7 +445,7 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
             'ram': flavor.ram,
         }
 
-        quota_errors = spl.tenant.validate_quota_change(quota_usage)
+        quota_errors = tenant.validate_quota_change(quota_usage)
         if quota_errors:
             raise serializers.ValidationError(
                 'One or more quotas are over limit: \n' + '\n'.join(quota_errors))
@@ -530,7 +522,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         image = attrs['image']
         tenant = attrs['tenant']
 
-        floating_ip_count_quota = service_project_link.tenant.quotas.get(name='floating_ip_count')
+        floating_ip_count_quota = tenant.quotas.get(name='floating_ip_count')
         if floating_ip_count_quota.is_exceeded(delta=1):
             raise serializers.ValidationError({
                 'service_project_link': 'Can not allocate floating IP - quota has been filled'}
@@ -658,7 +650,7 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
             if value.disk < self.instance.flavor_disk:
                 raise serializers.ValidationError("New flavor disk should be greater than the previous value.")
 
-            quota_errors = spl.tenant.validate_quota_change({
+            quota_errors = self.instance.tenant.validate_quota_change({
                 'vcpu': value.cores - self.instance.cores,
                 'ram': value.ram - self.instance.ram,
             })
@@ -673,7 +665,7 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
                 raise serializers.ValidationError(
                     "Disk size must be strictly greater than the current one")
 
-            quota_errors = self.instance.service_project_link.tenant.validate_quota_change({
+            quota_errors = self.instance.tenant.validate_quota_change({
                 'storage': value - self.instance.data_volume_size,
             })
             if quota_errors:
