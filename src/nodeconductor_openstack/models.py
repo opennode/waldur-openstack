@@ -388,6 +388,8 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
         security_group_count = QuotaField(default_limit=100, is_backend=True)
         security_group_rule_count = QuotaField(default_limit=100, is_backend=True)
         floating_ip_count = QuotaField(default_limit=50, is_backend=True)
+        volumes = QuotaField(default_limit=50, is_backend=True)
+        snapshots = QuotaField(default_limit=50, is_backend=True)
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='tenants', on_delete=models.PROTECT)
@@ -470,10 +472,10 @@ class VolumeBackupRestoration(core_models.UuidMixin, TimeStampedModel):
 
 class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
-        OpenStackServiceProjectLink, related_name='shapshots', on_delete=models.PROTECT)
-    tenant = models.ForeignKey(Tenant, related_name='shapshots')
+        OpenStackServiceProjectLink, related_name='snapshots', on_delete=models.PROTECT)
+    tenant = models.ForeignKey(Tenant, related_name='snapshots')
     # TODO: protect source_volume after NC-1410 implementation
-    source_volume = models.ForeignKey(Volume, related_name='shapshots', null=True, on_delete=models.SET_NULL)
+    source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.SET_NULL)
     size = models.PositiveIntegerField(help_text='Size in MiB')
     metadata = JSONField(blank=True)
 

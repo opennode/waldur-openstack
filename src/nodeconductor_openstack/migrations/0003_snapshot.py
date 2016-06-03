@@ -38,9 +38,9 @@ class Migration(migrations.Migration):
                 ('start_time', models.DateTimeField(null=True, blank=True)),
                 ('size', models.PositiveIntegerField(help_text='Size in MiB')),
                 ('metadata', jsonfield.fields.JSONField(blank=True)),
-                ('service_project_link', models.ForeignKey(related_name='shapshots', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink')),
+                ('service_project_link', models.ForeignKey(related_name='snapshots', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink')),
                 ('tags', taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags')),
-                ('volume', models.ForeignKey(related_name='shapshots', to='openstack.Volume')),
+                ('volume', models.ForeignKey(related_name='snapshots', to='openstack.Volume')),
             ],
             options={
                 'abstract': False,

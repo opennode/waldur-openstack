@@ -71,13 +71,13 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='snapshot',
             name='source_volume',
-            field=models.ForeignKey(related_name='shapshots', on_delete=django.db.models.deletion.PROTECT, default=1, to='openstack.Volume'),
+            field=models.ForeignKey(related_name='snapshots', on_delete=django.db.models.deletion.PROTECT, default=1, to='openstack.Volume'),
             preserve_default=False,
         ),
         migrations.AddField(
             model_name='snapshot',
             name='tenant',
-            field=models.ForeignKey(related_name='shapshots', default=1, to='openstack.Tenant'),
+            field=models.ForeignKey(related_name='snapshots', default=1, to='openstack.Tenant'),
             preserve_default=False,
         ),
         migrations.AddField(
