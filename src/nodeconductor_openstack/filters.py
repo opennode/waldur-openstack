@@ -74,6 +74,8 @@ class SecurityGroupFilter(django_filters.FilterSet):
             'project',
             'service_project_link',
             'state',
+            'settings_uuid',
+            'tenant_uuid',
         ]
 
 
