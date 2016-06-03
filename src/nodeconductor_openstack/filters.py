@@ -60,6 +60,9 @@ class SecurityGroupFilter(django_filters.FilterSet):
         name='service_project_link__pk',
         lookup_field='pk',
     )
+    tenant_uuid = django_filters.CharFilter(
+        name='tenant__uuid'
+    )
     state = core_filters.StateFilter()
 
     class Meta(object):
@@ -71,6 +74,8 @@ class SecurityGroupFilter(django_filters.FilterSet):
             'project',
             'service_project_link',
             'state',
+            'settings_uuid',
+            'tenant_uuid',
         ]
 
 
