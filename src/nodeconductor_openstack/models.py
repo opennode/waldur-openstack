@@ -423,12 +423,19 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
         return self.tenant.get_backend()
 
 
+@python_2_unicode_compatible
 class VolumeBackupRecord(core_models.UuidMixin, models.Model):
     """ Record that corresponds backup in swift.
         Several backups from OpenStack can be related to one record.
     """
     service = models.CharField(max_length=200)
     details = JSONField(blank=True)
+
+    def __str__(self):
+        name = '%s %s' % (self.details.get('display_name'), self.details.get('volume_id'))
+        if not name.strip():
+            return '(no data)'
+        return name
 
 
 class VolumeBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
