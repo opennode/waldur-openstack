@@ -2,6 +2,25 @@ from nodeconductor.core.permissions import FilteredCollaboratorsPermissionLogic,
 from nodeconductor.structure import models as structure_models, perms as structure_perms
 
 
+def openstack_permission_logic(prefix):
+    return FilteredCollaboratorsPermissionLogic(
+        collaborators_query=[
+            '%s__service_project_link__project__customer__roles__permission_group__user' % prefix,
+            '%s__service_project_link__project__roles__permission_group__user' % prefix,
+            '%s__service_project_link__project__project_groups__roles__permission_group__user' % prefix,
+        ],
+        collaborators_filter=[
+            {'%s__service_project_link__project__customer__roles__role_type' % prefix:
+             structure_models.CustomerRole.OWNER},
+            {'%s__service_project_link__project__roles__role_type' % prefix:
+             structure_models.ProjectRole.ADMINISTRATOR},
+            {'%s__service_project_link__project__project_groups__roles__permission_group__user' % prefix:
+             structure_models.ProjectGroupRole.MANAGER},
+        ],
+        any_permission=True,
+    )
+
+
 PERMISSION_LOGICS = (
     ('openstack.OpenStackService', structure_perms.service_permission_logic),
     ('openstack.OpenStackServiceProjectLink', structure_perms.service_project_link_permission_logic),
@@ -19,86 +38,11 @@ PERMISSION_LOGICS = (
         ],
         any_permission=True,
     )),
-    ('openstack.SecurityGroupRule', FilteredCollaboratorsPermissionLogic(
-        collaborators_query=[
-            'security_group__service_project_link__service__customer__roles__permission_group__user',
-            'security_group__service_project_link__project__roles__permission_group__user',
-            'security_group__service_project_link__project__project_groups__roles__permission_group__user',
-        ],
-        collaborators_filter=[
-            {'security_group__service_project_link__service__customer__roles__role_type':
-             structure_models.CustomerRole.OWNER},
-            {'security_group__service_project_link__project__roles__role_type':
-             structure_models.ProjectRole.ADMINISTRATOR},
-            {'security_group__service_project_link__project__project_groups__roles__permission_group__user':
-             structure_models.ProjectGroupRole.MANAGER},
-        ],
-        any_permission=True,
-    )),
-    ('openstack.BackupSchedule', FilteredCollaboratorsPermissionLogic(
-        collaborators_query=[
-            'instance__service_project_link__service__customer__roles__permission_group__user',
-            'instance__service_project_link__project__roles__permission_group__user',
-            'instance__service_project_link__project__project_groups__roles__permission_group__user',
-        ],
-        collaborators_filter=[
-            {'instance__service_project_link__service__customer__roles__role_type':
-             structure_models.CustomerRole.OWNER},
-            {'instance__service_project_link__project__roles__role_type':
-             structure_models.ProjectRole.ADMINISTRATOR},
-            {'instance__service_project_link__project__project_groups__roles__permission_group__user':
-             structure_models.ProjectGroupRole.MANAGER},
-        ],
-        any_permission=True,
-    )),
-    ('openstack.Backup', FilteredCollaboratorsPermissionLogic(
-        collaborators_query=[
-            'instance__service_project_link__service__customer__roles__permission_group__user',
-            'instance__service_project_link__project__roles__permission_group__user',
-            'instance__service_project_link__project__project_groups__roles__permission_group__user',
-        ],
-        collaborators_filter=[
-            {'instance__service_project_link__service__customer__roles__role_type':
-             structure_models.CustomerRole.OWNER},
-            {'instance__service_project_link__project__roles__role_type':
-             structure_models.ProjectRole.ADMINISTRATOR},
-            {'instance__service_project_link__project__project_groups__roles__permission_group__user':
-             structure_models.ProjectGroupRole.MANAGER},
-        ],
-        any_permission=True,
-    )),
-    ('openstack.DRBackupRestoration', FilteredCollaboratorsPermissionLogic(
-        collaborators_query=[
-            'dr_backup__service_project_link__service__customer__roles__permission_group__user',
-            'dr_backup__service_project_link__project__roles__permission_group__user',
-            'dr_backup__service_project_link__project__project_groups__roles__permission_group__user',
-        ],
-        collaborators_filter=[
-            {'dr_backup__service_project_link__service__customer__roles__role_type':
-             structure_models.CustomerRole.OWNER},
-            {'dr_backup__service_project_link__project__roles__role_type':
-             structure_models.ProjectRole.ADMINISTRATOR},
-            {'dr_backup__service_project_link__project__project_groups__roles__permission_group__user':
-             structure_models.ProjectGroupRole.MANAGER},
-        ],
-        any_permission=True,
-    )),
-    ('openstack.VolumeBackupRestoration', FilteredCollaboratorsPermissionLogic(
-        collaborators_query=[
-            'volume_backup__service_project_link__service__customer__roles__permission_group__user',
-            'volume_backup__service_project_link__project__roles__permission_group__user',
-            'volume_backup__service_project_link__project__project_groups__roles__permission_group__user',
-        ],
-        collaborators_filter=[
-            {'volume_backup__service_project_link__service__customer__roles__role_type':
-             structure_models.CustomerRole.OWNER},
-            {'volume_backup__service_project_link__project__roles__role_type':
-             structure_models.ProjectRole.ADMINISTRATOR},
-            {'volume_backup__service_project_link__project__project_groups__roles__permission_group__user':
-             structure_models.ProjectGroupRole.MANAGER},
-        ],
-        any_permission=True,
-    )),
+    ('openstack.SecurityGroupRule', openstack_permission_logic('security_group')),
+    ('openstack.BackupSchedule', openstack_permission_logic('instance')),
+    ('openstack.Backup', openstack_permission_logic('instance')),
+    ('openstack.DRBackupRestoration', openstack_permission_logic('dr_backup')),
+    ('openstack.VolumeBackupRestoration', openstack_permission_logic('volume_backup')),
     ('openstack.Instance', structure_perms.resource_permission_logic),
     ('openstack.Tenant', structure_perms.resource_permission_logic),
     ('openstack.Volume', structure_perms.resource_permission_logic),
