@@ -228,10 +228,11 @@ class FloatingIPSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = models.FloatingIP
-        fields = ('url', 'uuid', 'status', 'address',
+        fields = ('url', 'uuid', 'status', 'address', 'tenant',
                   'service_project_link', 'backend_id', 'backend_network_id')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
+            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
         }
         view_name = 'openstack-fip-detail'
 

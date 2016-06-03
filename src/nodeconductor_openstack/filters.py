@@ -103,6 +103,9 @@ class FloatingIPFilter(django_filters.FilterSet):
         name='service_project_link__pk',
         lookup_field='pk',
     )
+    tenant_uuid = django_filters.CharFilter(
+        name='tenant__uuid',
+    )
 
     class Meta(object):
         model = models.FloatingIP
@@ -111,6 +114,7 @@ class FloatingIPFilter(django_filters.FilterSet):
             'service',
             'status',
             'service_project_link',
+            'tenant_uuid'
         ]
 
 
