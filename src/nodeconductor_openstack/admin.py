@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.urlresolvers import reverse
 
 from nodeconductor.core.admin import ExecutorAdminAction
+from nodeconductor.quotas.admin import QuotaInline
 from nodeconductor.structure import admin as structure_admin
 
 from . import executors, models
@@ -55,6 +56,7 @@ class TenantAdmin(structure_admin.ResourceAdmin):
 
     actions = ('pull', 'detect_external_networks', 'allocate_floating_ip', 'pull_security_groups',
                'pull_floating_ips', 'pull_quotas')
+    inlines = [QuotaInline]
 
     class OKTenantAction(ExecutorAdminAction):
         """ Execute action with tenant that is in state OK """
