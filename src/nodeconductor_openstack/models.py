@@ -1,13 +1,10 @@
 from __future__ import unicode_literals
 
-import base64
 import itertools
-import json
 
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.exceptions import ValidationError
-from django.template.defaultfilters import slugify
 from django.utils.encoding import python_2_unicode_compatible, force_text
 from django_fsm import transition, FSMIntegerField
 from jsonfield import JSONField
