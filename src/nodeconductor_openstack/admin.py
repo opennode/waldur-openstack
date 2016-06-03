@@ -20,8 +20,7 @@ def _get_list_admin_url(model):
 
 
 class ServiceProjectLinkAdmin(structure_admin.ServiceProjectLinkAdmin):
-    list_display = structure_admin.ServiceProjectLinkAdmin.list_display + ('get_tenant',)
-    readonly_fields = ('get_service_settings_username', 'get_service_settings_password', 'get_tenant') + \
+    readonly_fields = ('get_service_settings_username', 'get_service_settings_password') + \
         structure_admin.ServiceProjectLinkAdmin.readonly_fields
 
     def get_service_settings_username(self, obj):
@@ -33,15 +32,6 @@ class ServiceProjectLinkAdmin(structure_admin.ServiceProjectLinkAdmin):
         return obj.service.settings.password
 
     get_service_settings_password.short_description = 'Password'
-
-    def get_tenant(self, obj):
-        tenant = obj.tenant
-        if tenant is not None:
-            return '<a href="%s">%s</a>' % (_get_obj_admin_url(tenant), tenant.name)
-        return
-
-    get_tenant.short_description = 'Tenant'
-    get_tenant.allow_tags = True
 
 
 class BackupAdmin(admin.ModelAdmin):

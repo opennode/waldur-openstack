@@ -14,9 +14,13 @@ class OpenStackServiceProjectLinkFilter(structure_filters.BaseServiceProjectLink
 
 
 class InstanceFilter(structure_filters.BaseResourceFilter):
+    tenant_uuid = django_filters.CharFilter(
+        name='tenant__uuid',
+    )
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Instance
+        fields = structure_filters.BaseResourceFilter.Meta.fields + ('tenant_uuid',)
         order_by = structure_filters.BaseResourceFilter.Meta.order_by + [
             'ram',
             '-ram',
@@ -60,6 +64,9 @@ class SecurityGroupFilter(django_filters.FilterSet):
         name='service_project_link__pk',
         lookup_field='pk',
     )
+    tenant_uuid = django_filters.CharFilter(
+        name='tenant__uuid'
+    )
     state = core_filters.StateFilter()
 
     class Meta(object):
@@ -71,6 +78,8 @@ class SecurityGroupFilter(django_filters.FilterSet):
             'project',
             'service_project_link',
             'state',
+            'settings_uuid',
+            'tenant_uuid',
         ]
 
 
@@ -103,6 +112,9 @@ class FloatingIPFilter(django_filters.FilterSet):
         name='service_project_link__pk',
         lookup_field='pk',
     )
+    tenant_uuid = django_filters.CharFilter(
+        name='tenant__uuid',
+    )
 
     class Meta(object):
         model = models.FloatingIP
@@ -111,6 +123,7 @@ class FloatingIPFilter(django_filters.FilterSet):
             'service',
             'status',
             'service_project_link',
+            'tenant_uuid'
         ]
 
 

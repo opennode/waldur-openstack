@@ -71,19 +71,9 @@ class ImageSerializer(structure_serializers.BasePropertySerializer):
 
 class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkSerializer):
 
-    state = serializers.SerializerMethodField()
-
-    def get_state(self, obj):
-        if obj.tenant:
-            return obj.tenant.human_readable_state
-        return None
-
     class Meta(structure_serializers.BaseServiceProjectLinkSerializer.Meta):
         model = models.OpenStackServiceProjectLink
         view_name = 'openstack-spl-detail'
-        fields = structure_serializers.BaseServiceProjectLinkSerializer.Meta.fields + (
-            'tenant_id', 'state'
-        )
         extra_kwargs = {
             'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},
         }
@@ -238,10 +228,11 @@ class FloatingIPSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = models.FloatingIP
-        fields = ('url', 'uuid', 'status', 'address',
+        fields = ('url', 'uuid', 'status', 'address', 'tenant',
                   'service_project_link', 'backend_id', 'backend_network_id')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
+            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
         }
         view_name = 'openstack-fip-detail'
 
@@ -255,33 +246,25 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
         read_only=True,
     )
     rules = NestedSecurityGroupRuleSerializer(many=True)
-    service_project_link = NestedServiceProjectLinkSerializer(
-        queryset=models.OpenStackServiceProjectLink.objects.all())
-    tenant = serializers.HyperlinkedRelatedField(
-        lookup_field='uuid',
-        view_name='openstack-tenant-detail',
-        queryset=models.Tenant.objects.all(),
-    )
+    service_project_link = NestedServiceProjectLinkSerializer(read_only=True)
 
     class Meta(object):
         model = models.SecurityGroup
         fields = ('url', 'uuid', 'state', 'name', 'description', 'rules',
                   'service_project_link', 'tenant')
-        read_only_fields = ('url', 'uuid')
+        read_only_fields = ('url', 'uuid',)
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'service_project_link': {'view_name': 'openstack-spl-detail'}
+            'service_project_link': {'view_name': 'openstack-spl-detail'},
+            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
         }
         view_name = 'openstack-sgp-detail'
-        protected_fields = ('service_project_link', 'tenant')
+        protected_fields = ('tenant',)
 
     def validate(self, attrs):
         if self.instance is None:
             # Check security groups quotas on creation
             tenant = attrs.get('tenant')
-            spl = attrs.get('service_project_link')
-            if tenant.service_project_link != spl:
-                raise serializers.ValidationError('Tenant does not belong to the service project link.')
 
             security_group_count_quota = tenant.quotas.get(name='security_group_count')
             if security_group_count_quota.is_exceeded(delta=1):
@@ -298,7 +281,6 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
                 if security_group_rule_count_quota.is_exceeded(delta=new_rules_count):
                     raise serializers.ValidationError(
                         'Can not update new security group rules - rules amount quota exceeded')
-
         return attrs
 
     def validate_rules(self, value):
@@ -313,6 +295,8 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
 
     def create(self, validated_data):
         rules = validated_data.pop('rules', [])
+        tenant = validated_data['tenant']
+        validated_data['service_project_link'] = tenant.service_project_link
         with transaction.atomic():
             security_group = super(SecurityGroupSerializer, self).create(validated_data)
             for rule in rules:
@@ -448,6 +432,7 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         flavor = attrs['flavor']
         spl = attrs['service_project_link']
+        tenant = attrs['tenant']
 
         if flavor.settings != spl.service.settings:
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
@@ -460,7 +445,7 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
             'ram': flavor.ram,
         }
 
-        quota_errors = spl.tenant.validate_quota_change(quota_usage)
+        quota_errors = tenant.validate_quota_change(quota_usage)
         if quota_errors:
             raise serializers.ValidationError(
                 'One or more quotas are over limit: \n' + '\n'.join(quota_errors))
@@ -537,7 +522,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         image = attrs['image']
         tenant = attrs['tenant']
 
-        floating_ip_count_quota = service_project_link.tenant.quotas.get(name='floating_ip_count')
+        floating_ip_count_quota = tenant.quotas.get(name='floating_ip_count')
         if floating_ip_count_quota.is_exceeded(delta=1):
             raise serializers.ValidationError({
                 'service_project_link': 'Can not allocate floating IP - quota has been filled'}
@@ -665,7 +650,7 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
             if value.disk < self.instance.flavor_disk:
                 raise serializers.ValidationError("New flavor disk should be greater than the previous value.")
 
-            quota_errors = spl.tenant.validate_quota_change({
+            quota_errors = self.instance.tenant.validate_quota_change({
                 'vcpu': value.cores - self.instance.cores,
                 'ram': value.ram - self.instance.ram,
             })
@@ -680,7 +665,7 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
                 raise serializers.ValidationError(
                     "Disk size must be strictly greater than the current one")
 
-            quota_errors = self.instance.service_project_link.tenant.validate_quota_change({
+            quota_errors = self.instance.tenant.validate_quota_change({
                 'storage': value - self.instance.data_volume_size,
             })
             if quota_errors:

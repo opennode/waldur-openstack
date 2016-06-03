@@ -61,9 +61,6 @@ class OpenStackServiceProjectLink(structure_models.StructureModel, core_models.S
     def get_url_name(cls):
         return 'openstack-spl'
 
-    def get_backend(self):
-        return self.service.get_backend(tenant_id=self.tenant_id)
-
     def get_log_fields(self):
         return 'project', 'service'
 
@@ -77,31 +74,6 @@ class OpenStackServiceProjectLink(structure_models.StructureModel, core_models.S
 
     def __str__(self):
         return '{0} | {1}'.format(self.service.name, self.project.name)
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
-    def tenant(self):
-        if not hasattr(self, '_tenant'):
-            self._tenant = self.tenants.first()
-        return self._tenant
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
-    def tenant_id(self):
-        return self.tenant.backend_id if self.tenant else None
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    def get_tenant_name(self):
-        proj = self.project
-        return '%(project_name)s-%(project_uuid)s' % {
-            'project_name': ''.join([c for c in proj.name if ord(c) < 128])[:15],
-            'project_uuid': proj.uuid.hex[:4]
-        }
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    def create_tenant(self):
-        name = self.get_tenant_name()
-        return Tenant.objects.create(name=name, service_project_link=self, user_username=slugify(name)[:30] + '-user')
 
 
 class Flavor(LoggableMixin, structure_models.ServiceProperty):
@@ -226,6 +198,7 @@ class FloatingIP(core_models.UuidMixin):
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='floating_ips')
+    tenant = models.ForeignKey('Tenant', related_name='floating_ips')
 
     address = models.GenericIPAddressField(protocol='IPv4')
     status = models.CharField(max_length=30)
@@ -233,6 +206,9 @@ class FloatingIP(core_models.UuidMixin):
     backend_network_id = models.CharField(max_length=255, editable=False)
 
     tracker = FieldTracker()
+
+    def get_backend(self):
+        return self.tenant.get_backend()
 
 
 class Instance(structure_models.VirtualMachineMixin,
