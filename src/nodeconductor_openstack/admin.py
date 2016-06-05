@@ -40,7 +40,12 @@ class ServiceProjectLinkAdmin(structure_admin.ServiceProjectLinkAdmin):
 class BackupAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'kept_until')
     list_filter = ('uuid', 'state')
-    list_display = ('uuid', 'instance', 'state')
+    list_display = ('uuid', 'instance', 'state', 'project')
+
+    def project(self, obj):
+        return obj.instance.service_project_link.project
+
+    project.short_description = 'Project'
 
 
 class BackupScheduleAdmin(admin.ModelAdmin):
