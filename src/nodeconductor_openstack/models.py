@@ -38,39 +38,23 @@ class OpenStackService(structure_models.Service):
         return 'openstack'
 
 
-class OpenStackServiceProjectLink(structure_models.StructureModel, core_models.SerializableAbstractMixin,
-                                  core_models.DescendantMixin, LoggableMixin):
+class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
     service = models.ForeignKey(OpenStackService)
-    project = models.ForeignKey(structure_models.Project)
 
-    class Meta(object):
-        unique_together = ('service', 'project')
+    class Meta(structure_models.ServiceProjectLink.Meta):
         verbose_name = 'OpenStack service project link'
         verbose_name_plural = 'OpenStack service project links'
-
-    class Permissions(object):
-        customer_path = 'service__customer'
-        project_path = 'project'
-        project_group_path = 'project__project_groups'
 
     @classmethod
     def get_url_name(cls):
         return 'openstack-spl'
 
-    def get_log_fields(self):
-        return 'project', 'service'
-
-    def get_parents(self):
-        return [self.project, self.service]
-
-    def get_children(self):
-        return itertools.chain.from_iterable(
-            m.objects.filter(service_project_link=self) for m in
-            SupportedServices.get_related_models(self)['resources'])
-
-    def __str__(self):
-        return '{0} | {1}'.format(self.service.name, self.project.name)
+    # XXX: Hack for statistics: return quotas of tenants as quotas of SPLs.
+    @classmethod
+    def get_sum_of_quotas_as_dict(cls, spls, quota_names=None, fields=['usage', 'limit']):
+        tenants = Tenant.objects.filter(service_project_link__in=spls)
+        return Tenant.get_sum_of_quotas_as_dict(tenants, quota_names=quota_names, fields=fields)
 
 
 class Flavor(LoggableMixin, structure_models.ServiceProperty):
