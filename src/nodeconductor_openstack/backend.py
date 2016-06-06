@@ -710,7 +710,8 @@ class OpenStackBackend(ServiceBackend):
                     nc_security_group = tenant.security_groups.create(
                         backend_id=backend_group.id,
                         name=backend_group.name,
-                        state=StateMixin.States.OK
+                        state=StateMixin.States.OK,
+                        service_project_link=tenant.service_project_link,
                     )
                     self.pull_security_group_rules(nc_security_group)
                     logger.debug('Created new security group %s (PK: %s).',
