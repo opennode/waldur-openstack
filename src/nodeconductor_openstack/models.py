@@ -311,6 +311,9 @@ class BackupSchedule(core_models.UuidMixin,
         help_text='Retention time in days')  # if 0 - backup will be kept forever
     maximal_number_of_backups = models.PositiveSmallIntegerField()
 
+    def __str__(self):
+        return 'BackupSchedule of %s. Active: %s' % (self.instance, self.is_active)
+
     @classmethod
     def get_url_name(cls):
         return 'openstack-schedule'
@@ -363,6 +366,9 @@ class Backup(core_models.UuidMixin,
     )
 
     objects = BackupManager()
+
+    def __str__(self):
+        return 'Backup of %s (%s)' % (self.instance, self.state)
 
     def get_backend(self):
         return BackupBackend(self)
