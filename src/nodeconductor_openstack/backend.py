@@ -639,7 +639,8 @@ class OpenStackBackend(ServiceBackend):
                         status=ip['status'],
                         backend_id=ip['id'],
                         address=ip['floating_ip_address'],
-                        backend_network_id=ip['floating_network_id']
+                        backend_network_id=ip['floating_network_id'],
+                        service_project_link=tenant.service_project_link
                     )
                     logger.info('Created new floating IP port %s in database', created_ip.uuid)
 
@@ -1608,7 +1609,8 @@ class OpenStackBackend(ServiceBackend):
                 status='DOWN',
                 address=ip_address['floating_ip_address'],
                 backend_id=ip_address['id'],
-                backend_network_id=ip_address['floating_network_id']
+                backend_network_id=ip_address['floating_network_id'],
+                service_project_link=tenant.service_project_link
             )
 
     def assign_floating_ip_to_instance(self, instance, floating_ip):
