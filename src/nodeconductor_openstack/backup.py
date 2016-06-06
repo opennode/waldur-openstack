@@ -50,10 +50,10 @@ class BackupScheduleBackend(object):
         """
         states = self.schedule.backups.model.States
         exclude_states = (states.DELETING, states.DELETED, states.ERRED)
-        backups_count = self.schedule.backups.exclude(state__in=exclude_states).count()
-        extra_backups_count = backups_count - self.schedule.maximal_number_of_backups
+        stable_backups = self.schedule.backups.exclude(state__in=exclude_states)
+        extra_backups_count = stable_backups.count() - self.schedule.maximal_number_of_backups
         if extra_backups_count > 0:
-            for backup in self.schedule.backups.order_by('created_at')[:extra_backups_count]:
+            for backup in stable_backups.order_by('created_at')[:extra_backups_count]:
                 backend = backup.get_backend()
                 backend.start_deletion()
 
