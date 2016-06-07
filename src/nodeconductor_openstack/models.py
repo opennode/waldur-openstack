@@ -1,7 +1,5 @@
 from __future__ import unicode_literals
 
-import itertools
-
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.exceptions import ValidationError
@@ -17,7 +15,7 @@ from nodeconductor.core import models as core_models
 from nodeconductor.logging.loggers import LoggableMixin
 from nodeconductor.quotas.fields import QuotaField
 from nodeconductor.quotas.models import QuotaModelMixin
-from nodeconductor.structure import models as structure_models, SupportedServices
+from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.utils import get_coordinates_by_ip, Coordinates
 
 from .backup import BackupBackend, BackupScheduleBackend
