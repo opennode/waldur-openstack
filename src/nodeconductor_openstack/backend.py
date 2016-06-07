@@ -7,7 +7,6 @@ import re
 import time
 import uuid
 
-from django.conf import settings as django_settings
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.db import transaction
 from django.utils import six, dateparse, timezone
@@ -210,7 +209,6 @@ class OpenStackBackend(ServiceBackend):
 
         # Cache session in the object
         attr_name = 'admin_session' if admin else 'session'
-        client = getattr(self, attr_name, None)
         if hasattr(self, attr_name):
             client = getattr(self, attr_name)
         else:
@@ -248,14 +246,10 @@ class OpenStackBackend(ServiceBackend):
             return True
 
     def sync(self):
-        # Migration status:
-        # [x] pull_flavors()
-        # [x] pull_images()
-        # [ ] pull_service_statistics() (TODO: NC-640)
-
         try:
             self.pull_flavors()
             self.pull_images()
+            self.pull_stats()
         except (nova_exceptions.ClientException, glance_exceptions.ClientException) as e:
             logger.exception('Failed to synchronize OpenStack service %s', self.settings.backend_url)
             six.reraise(OpenStackBackendError, e)
@@ -2159,3 +2153,48 @@ class OpenStackBackend(ServiceBackend):
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException, KeyError) as e:
             six.reraise(OpenStackBackendError, e)
         return volume_backup
+
+    def pull_stats(self):
+        nova = self.nova_admin_client
+        stats = nova.hypervisor_stats.statistics()
+
+        self.settings.set_quota_limit(self.settings.Quotas.openstack_vcpu, stats.vcpus)
+        self.settings.set_quota_usage(self.settings.Quotas.openstack_vcpu, stats.vcpus_used)
+
+        self.settings.set_quota_limit(self.settings.Quotas.openstack_ram, stats.memory_mb)
+        self.settings.set_quota_usage(self.settings.Quotas.openstack_ram, stats.memory_mb_used)
+
+        self.settings.set_quota_usage(self.settings.Quotas.openstack_storage, self.get_storage_usage())
+
+    def get_storage_usage(self):
+        cinder = self.cinder_admin_client
+
+        try:
+            volumes = cinder.volumes.list()
+            snapshots = cinder.volume_snapshots.list()
+        except cinder_exceptions.ClientException  as e:
+            six.reraise(OpenStackBackendError, e)
+
+        storage = sum(self.gb2mb(v.size) for v in volumes + snapshots)
+        return storage
+
+    def get_stats(self):
+        tenants = models.Tenant.objects.filter(service_project_link__service__settings=self.settings)
+        quota_names = ('vcpu', 'ram', 'storage')
+        quota_values = models.Tenant.get_sum_of_quotas_as_dict(
+            tenants, quota_names=quota_names, fields=['limit'])
+        quota_stats = {
+            'vcpu_quota': quota_values.get('vcpu', -1.0),
+            'ram_quota': quota_values.get('ram', -1.0),
+            'storage_quota': quota_values.get('storage', -1.0)
+        }
+
+        stats = {}
+        for quota in self.settings.quotas.all():
+            name = quota.name.replace('openstack_', '')
+            if name not in quota_names:
+                continue
+            stats[name] = quota.limit
+            stats[name + '_usage'] = quota.usage
+        stats.update(quota_stats)
+        return stats

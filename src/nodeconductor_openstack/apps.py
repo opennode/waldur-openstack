@@ -38,6 +38,18 @@ class OpenStackConfig(AppConfig):
         from .template import InstanceProvisionTemplateForm
         TemplateRegistry.register(InstanceProvisionTemplateForm)
 
+        from nodeconductor.structure.models import ServiceSettings
+        from nodeconductor.quotas.fields import QuotaField
+
+        for resource in ('vcpu', 'ram', 'storage'):
+            ServiceSettings.add_quota_field(
+                name='openstack_%s' % resource,
+                quota_field=QuotaField(
+                    creation_condition=lambda service_settings:
+                        service_settings.type == OpenStackConfig.service_name
+                )
+            )
+
         signals.post_save.connect(
             handlers.create_initial_security_groups,
             sender=Tenant,
