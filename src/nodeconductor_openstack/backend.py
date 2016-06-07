@@ -2164,8 +2164,19 @@ class OpenStackBackend(ServiceBackend):
         self.settings.set_quota_limit(self.settings.Quotas.openstack_ram, stats.memory_mb)
         self.settings.set_quota_usage(self.settings.Quotas.openstack_ram, stats.memory_mb_used)
 
-        self.settings.set_quota_limit(self.settings.Quotas.openstack_storage, self.gb2mb(stats.local_gb))
-        self.settings.set_quota_usage(self.settings.Quotas.openstack_storage, self.gb2mb(stats.local_gb_used))
+        self.settings.set_quota_usage(self.settings.Quotas.openstack_storage, self.get_storage_usage())
+
+    def get_storage_usage(self):
+        cinder = self.cinder_admin_client
+
+        try:
+            volumes = cinder.volumes.list()
+            snapshots = cinder.volume_snapshots.list()
+        except cinder_exceptions.ClientException  as e:
+            six.reraise(OpenStackBackendError, e)
+
+        storage = sum(self.gb2mb(v.size) for v in volumes + snapshots)
+        return storage
 
     def get_stats(self):
         tenants = models.Tenant.objects.filter(service_project_link__service__settings=self.settings)
