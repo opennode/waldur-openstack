@@ -2,7 +2,7 @@ from nodeconductor.logging.loggers import EventLogger, event_logger
 
 
 class BackupEventLogger(EventLogger):
-    resource = 'structure.Resource'
+    resource = 'openstack.Instance'
 
     class Meta:
         event_types = ('resource_backup_creation_scheduled',
@@ -22,7 +22,7 @@ class BackupEventLogger(EventLogger):
 
 
 class InstanceFlavorChangeEventLogger(EventLogger):
-    resource = 'structure.Resource'
+    resource = 'openstack.Instance'
     flavor = 'openstack.Flavor'
 
     class Meta:
@@ -32,7 +32,7 @@ class InstanceFlavorChangeEventLogger(EventLogger):
 
 
 class InstanceVolumeChangeEventLogger(EventLogger):
-    resource = 'structure.Resource'
+    resource = 'openstack.Instance'
     volume_size = int
 
     class Meta:
