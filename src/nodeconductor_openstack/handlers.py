@@ -64,27 +64,6 @@ def create_security_group(tenant, group):
     return sg
 
 
-def increase_quotas_usage_on_instance_creation(sender, instance=None, created=False, **kwargs):
-    add_quota = instance.tenant.add_quota_usage
-    if created:
-        add_quota('instances', 1)
-        add_quota('ram', instance.ram)
-        add_quota('vcpu', instance.cores)
-        add_quota('storage', instance.disk)
-    else:
-        add_quota('ram', instance.ram - instance.tracker.previous('ram'))
-        add_quota('vcpu', instance.cores - instance.tracker.previous('cores'))
-        add_quota('storage', instance.disk - instance.tracker.previous('disk'))
-
-
-def decrease_quotas_usage_on_instances_deletion(sender, instance=None, **kwargs):
-    add_quota = instance.tenant.add_quota_usage
-    add_quota('instances', -1)
-    add_quota('ram', -instance.ram)
-    add_quota('vcpu', -instance.cores)
-    add_quota('storage', -instance.disk)
-
-
 def change_floating_ip_quota_on_status_change(sender, instance, created=False, **kwargs):
     floating_ip = instance
     add_quota = floating_ip.tenant.add_quota_usage

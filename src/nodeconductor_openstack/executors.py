@@ -3,7 +3,6 @@ from celery import chain, group
 from nodeconductor.core import tasks, executors, utils
 
 from .tasks import (PollRuntimeStateTask,
-                    CreateTemporarySnapshotTask, CreateTemporaryVolumeTask, CreateVolumeBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask)
 
@@ -288,46 +287,46 @@ class DRBackupCreateExecutor(executors.BaseChordExecutor):
 
     @classmethod
     def get_task_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
-        instance = dr_backup.source_instance
         creation_tasks = [tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_creating')]
-        for volume_id in (instance.system_volume_id, instance.data_volume_id):
+        for volume_backup in dr_backup.volume_backups.all():
+            tmp_volume = volume_backup.source_volume
+            tmp_snapshot = tmp_volume.source_snapshot
+            serialzied_tmp_volume = utils.serialize_instance(tmp_volume)
+            serialized_tmp_snapshot = utils.serialize_instance(tmp_snapshot)
+            serialized_volume_backup = utils.serialize_instance(volume_backup)
+
             creation_tasks.append(chain(
-                # 0. Temporary step. Import volume based instance volume_id.
-                #    Should be removed after NC-1410 implementation.
-                tasks.IndependentBackendMethodTask().si(serialized_dr_backup, 'import_volume', volume_id),
-                # 1. Create temporary snapshot from existing volume.
-                CreateTemporarySnapshotTask().s(serialized_dr_backup),
-                # 2. Create snapshot on backend.
-                tasks.BackendMethodTask().s('create_snapshot', force=True, state_transition='begin_creating'),
-                PollRuntimeStateTask().s(
+                # 1. Create temporary snapshot on backend.
+                tasks.BackendMethodTask().si(
+                    serialized_tmp_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'),
+                PollRuntimeStateTask().si(
+                    serialized_tmp_snapshot,
                     backend_pull_method='pull_snapshot_runtime_state',
                     success_state='available',
                     erred_state='error',
                 ).set(countdown=10),
-                tasks.StateTransitionTask().s(state_transition='set_ok'),
-                # 3. Create volume from snapshot.
-                CreateTemporaryVolumeTask().s(serialized_dr_backup),
-                # 4. Create volume on backend.
-                tasks.BackendMethodTask().s(
-                    'create_volume', state_transition='begin_creating'),
-                PollRuntimeStateTask().s(
+                tasks.StateTransitionTask().si(serialized_tmp_snapshot, state_transition='set_ok'),
+                # 2. Create temporary volume on backend.
+                tasks.BackendMethodTask().si(
+                    serialzied_tmp_volume, 'create_volume', state_transition='begin_creating'),
+                PollRuntimeStateTask().si(
+                    serialzied_tmp_volume,
                     backend_pull_method='pull_volume_runtime_state',
                     success_state='available',
                     erred_state='error',
                 ).set(countdown=30),
-                tasks.StateTransitionTask().s(state_transition='set_ok'),
-                # 5. Create volume_backup from volume
-                CreateVolumeBackupTask().s(serialized_dr_backup),
-                # 6. Create volume_backup on backend
-                tasks.BackendMethodTask().s(
-                    'create_volume_backup', state_transition='begin_creating'),
-                PollRuntimeStateTask().s(
+                tasks.StateTransitionTask().si(serialzied_tmp_volume, state_transition='set_ok'),
+                # 3. Create volume_backup on backend
+                tasks.BackendMethodTask().si(
+                    serialized_volume_backup, 'create_volume_backup', state_transition='begin_creating'),
+                PollRuntimeStateTask().si(
+                    serialized_volume_backup,
                     backend_pull_method='pull_volume_backup_runtime_state',
                     success_state='available',
                     erred_state='error',
                 ).set(countdown=50),
-                tasks.BackendMethodTask().s('pull_volume_backup_record'),
-                tasks.StateTransitionTask().s(state_transition='set_ok'),
+                tasks.BackendMethodTask().si(serialized_volume_backup, 'pull_volume_backup_record'),
+                tasks.StateTransitionTask().si(serialized_volume_backup, state_transition='set_ok'),
             ))
         return group(creation_tasks)
 

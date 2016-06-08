@@ -241,6 +241,20 @@ class Instance(structure_models.VirtualMachineMixin,
             if hostname:
                 return get_coordinates_by_ip(hostname)
 
+    def increase_backend_quotas_usage(self, validate=True):
+        add_quota = self.tenant.add_quota_usage
+        add_quota('instances', 1)
+        add_quota('ram', self.ram)
+        add_quota('vcpu', self.cores)
+        add_quota('storage', self.disk)
+
+    def decrease_backend_quotas_usage(self):
+        add_quota = self.tenant.add_quota_usage
+        add_quota('instances', -1)
+        add_quota('ram', -self.ram)
+        add_quota('vcpu', -self.cores)
+        add_quota('storage', -self.disk)
+
 
 class InstanceSecurityGroup(models.Model):
 
@@ -369,6 +383,7 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
         vcpu = QuotaField(default_limit=20, is_backend=True)
         ram = QuotaField(default_limit=51200, is_backend=True)
         storage = QuotaField(default_limit=1024000, is_backend=True)
+        backup_storage = QuotaField(default_limit=1024000, is_backend=True)
         instances = QuotaField(default_limit=30, is_backend=True)
         security_group_count = QuotaField(default_limit=100, is_backend=True)
         security_group_rule_count = QuotaField(default_limit=100, is_backend=True)
@@ -409,6 +424,14 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
     def get_backend(self):
         return self.tenant.get_backend()
 
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(Tenant.Quotas.volumes, 1, validate=validate)
+        self.tenant.add_quota_usage(Tenant.Quotas.storage, self.size, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(Tenant.Quotas.volumes, -1)
+        self.tenant.add_quota_usage(Tenant.Quotas.storage, -self.size)
+
 
 @python_2_unicode_compatible
 class VolumeBackupRecord(core_models.UuidMixin, models.Model):
@@ -436,6 +459,12 @@ class VolumeBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
 
     def get_backend(self):
         return self.tenant.get_backend()
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(Tenant.Quotas.backup_storage, self.size, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(Tenant.Quotas.backup_storage, -self.size)
 
 
 # For now this model has no endpoint, so there is not need to add permissions definition.
@@ -466,6 +495,14 @@ class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
 
     def get_backend(self):
         return self.tenant.get_backend()
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(Tenant.Quotas.snapshots, 1, validate=validate)
+        self.tenant.add_quota_usage(Tenant.Quotas.storage, self.size, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(Tenant.Quotas.snapshots, -1)
+        self.tenant.add_quota_usage(Tenant.Quotas.storage, -self.size)
 
 
 # XXX: This model is itacloud specific, it should be moved to assembly
