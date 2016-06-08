@@ -1242,6 +1242,7 @@ class OpenStackBackend(ServiceBackend):
             except keystone_exceptions.ClientException as e:
                 six.reraise(OpenStackBackendError, e)
 
+    # XXX: we need to use one method for instance deletion.
     def cleanup_instance(self, backend_id=None, external_ips=None, internal_ips=None,
                          system_volume_id=None, data_volume_id=None):
         # instance
@@ -1811,6 +1812,7 @@ class OpenStackBackend(ServiceBackend):
             if instance.tenant.floating_ips.filter(address=instance.external_ips).update(status='DOWN'):
                 logger.info('Successfully released floating ip %s from instance %s',
                             instance.external_ips, instance.uuid)
+        instance.decrease_backend_quotas_usage()
 
     def create_snapshots(self, tenant, volume_ids, prefix='Cloned volume'):
         cinder = self.cinder_client
@@ -1984,6 +1986,7 @@ class OpenStackBackend(ServiceBackend):
             cinder.volumes.delete(volume.backend_id)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
+        volume.decrease_backend_quotas_usage()
 
     def import_volume(self, backend_volume_id):
         """ Restore NC Volume instance based on backend data. """
@@ -2072,6 +2075,7 @@ class OpenStackBackend(ServiceBackend):
             cinder.volume_snapshots.delete(snapshot.backend_id)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
+        snapshot.decrease_backend_quotas_usage()
 
     @log_backend_action()
     def update_snapshot(self, snapshot):
@@ -2135,6 +2139,9 @@ class OpenStackBackend(ServiceBackend):
             cinder_v2.backups.delete(volume_backup.backend_id)
         except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
             six.reraise(OpenStackBackendError, e)
+        if volume_backup.record:
+            volume_backup.record.delete()
+            volume_backup.decrease_backend_quotas_usage()
 
     @log_backend_action()
     def import_volume_backup_from_record(self, volume_backup):

@@ -45,18 +45,6 @@ class OpenStackConfig(AppConfig):
         )
 
         signals.post_save.connect(
-            handlers.increase_quotas_usage_on_instance_creation,
-            sender=Instance,
-            dispatch_uid='nodeconductor_openstack.handlers.increase_quotas_usage_on_instance_creation',
-        )
-
-        signals.post_delete.connect(
-            handlers.decrease_quotas_usage_on_instances_deletion,
-            sender=Instance,
-            dispatch_uid='nodeconductor_openstack.handlers.decrease_quotas_usage_on_instances_deletion',
-        )
-
-        signals.post_save.connect(
             handlers.change_floating_ip_quota_on_status_change,
             sender=FloatingIP,
             dispatch_uid='nodeconductor_openstack.handlers.change_floating_ip_quota_on_status_change',

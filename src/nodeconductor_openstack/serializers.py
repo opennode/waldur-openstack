@@ -85,6 +85,7 @@ class TenantQuotaSerializer(serializers.Serializer):
     ram = serializers.IntegerField(min_value=1, required=False)
     vcpu = serializers.IntegerField(min_value=1, required=False)
     storage = serializers.IntegerField(min_value=1, required=False)
+    backup_storage = serializers.IntegerField(min_value=1, required=False)
     security_group_count = serializers.IntegerField(min_value=1, required=False)
     security_group_rule_count = serializers.IntegerField(min_value=1, required=False)
 
@@ -638,7 +639,7 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
         return fields
 
     def get_filtered_field_names(self):
-        return 'flavor',
+        return ('flavor',)
 
     def validate_flavor(self, value):
         if value is not None:
@@ -787,7 +788,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
             'tenant', 'source_snapshot', 'size', 'bootable', 'metadata', 'image', 'image_metadata', 'type'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'image_metadata', 'bootable'
+            'image_metadata', 'bootable', 'source_snapshot'
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'tenant', 'size', 'type', 'image'
@@ -861,10 +862,6 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
-    def validate(self, attrs):
-        # TODO: add tenant quota validation (NC-1405)
-        return attrs
-
     def create(self, validated_data):
         source_volume = validated_data['source_volume']
         validated_data['service_project_link'] = source_volume.service_project_link
@@ -905,6 +902,7 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
+    @transaction.atomic
     def create(self, validated_data):
         source_instance = validated_data['source_instance']
         validated_data['tenant'] = source_instance.tenant
@@ -916,7 +914,62 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
             'source_instance_min_disk': source_instance.min_disk,
             'source_instance_min_ram': source_instance.min_ram,
         }
-        return super(DRBackupSerializer, self).create(validated_data)
+        dr_backup = super(DRBackupSerializer, self).create(validated_data)
+        # Import instance volumes to NC. Temporary. Should be removed after NC-1410 implementation.
+        instance = dr_backup.source_instance
+        backend = instance.get_backend()
+        volumes = [backend.import_volume(vid) for vid in (instance.system_volume_id, instance.data_volume_id)]
+        dr_backup.instance_volumes.add(*volumes)
+
+        for volume in volumes:
+            # Create temporary snapshot volume for instance volume.
+            snapshot = models.Snapshot.objects.create(
+                source_volume=volume,
+                tenant=volume.tenant,
+                service_project_link=volume.service_project_link,
+                size=volume.size,
+                name='Temporary snapshot for volume: %s' % volume.name,
+                description='Part of DR backup %s' % dr_backup.name,
+                metadata={'source_volume_name': volume.name, 'source_volume_description': volume.description},
+            )
+            snapshot.increase_backend_quotas_usage()
+            dr_backup.temporary_snapshots.add(snapshot)
+
+            # Create temporary volume from snapshot.
+            tmp_volume = models.Volume.objects.create(
+                service_project_link=snapshot.service_project_link,
+                tenant=snapshot.tenant,
+                source_snapshot=snapshot,
+                metadata=snapshot.metadata,
+                name='Temporary copy for volume: %s' % volume.name,
+                description='Part of DR backup %s' % dr_backup.name,
+                size=snapshot.size,
+            )
+            tmp_volume.increase_backend_quotas_usage()
+            dr_backup.temporary_volumes.add(tmp_volume)
+
+            # Create backup for temporary volume.
+            volume_backup = models.VolumeBackup.objects.create(
+                name=volume.name,
+                description=volume.description,
+                source_volume=tmp_volume,
+                tenant=dr_backup.tenant,
+                size=volume.size,
+                service_project_link=dr_backup.service_project_link,
+                metadata={
+                    'source_volume_name': volume.name,
+                    'source_volume_description': volume.description,
+                    'source_volume_bootable': volume.bootable,
+                    'source_volume_size': volume.size,
+                    'source_volume_metadata': volume.metadata,
+                    'source_volume_image_metadata': volume.image_metadata,
+                    'source_volume_type': volume.type,
+                }
+            )
+            volume_backup.increase_backend_quotas_usage()
+            dr_backup.volume_backups.add(volume_backup)
+
+        return dr_backup
 
 
 class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
@@ -967,12 +1020,14 @@ class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
             name=dr_backup.metadata['source_instance_name'],
             description=dr_backup.metadata['source_instance_description'],
             service_project_link=tenant.service_project_link,
+            tenant=tenant,
             flavor_disk=flavor.disk,
             flavor_name=flavor.name,
             cores=flavor.cores,
             ram=flavor.ram,
             disk=sum([volume_backup.size for volume_backup in dr_backup.volume_backups.all()]),
         )
+        instance.increase_backend_quotas_usage()
         validated_data['instance'] = instance
         dr_backup_restoration = super(DRBackupRestorationSerializer, self).create(validated_data)
         # restoration for each backuped volume.
@@ -986,7 +1041,10 @@ class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
                 size=volume_backup.size,
                 image_metadata=volume_backup.metadata['source_volume_image_metadata'],
             )
+            volume.increase_backend_quotas_usage()
             # temporary imported backup
+            # no need to increase quotas for mirrored backup - it is just link
+            # to the existed record in swift
             mirorred_volume_backup = models.VolumeBackup.objects.create(
                 tenant=tenant,
                 service_project_link=tenant.service_project_link,

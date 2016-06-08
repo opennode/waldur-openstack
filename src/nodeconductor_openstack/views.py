@@ -347,6 +347,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 "disk_size": 1024
             }
         """
+        # TODO: refactor resizing with executors.
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -358,6 +359,9 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
         # Serializer makes sure that exactly one of the branches will match
         if flavor is not None:
+            # TODO: Move quotas update to serialzer.
+            instance.tenant.add_quota_usage('ram', flavor.ram - instance.ram)
+            instance.tenant.add_quota_usage('vcpu', flavor.cores - instance.cores)
             send_task('openstack', 'change_flavor')(instance.uuid.hex, flavor_uuid=flavor.uuid.hex)
             event_logger.openstack_flavor.info(
                 'Virtual machine {resource_name} has been scheduled to change flavor.',
@@ -365,6 +369,8 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 event_context={'resource': instance, 'flavor': flavor}
             )
         else:
+            # TODO: Move quotas update to serialzer.
+            instance.tenant.add_quota_usage('storage', new_size - instance.disk)
             send_task('openstack', 'extend_disk')(instance.uuid.hex, disk_size=new_size)
             event_logger.openstack_volume.info(
                 'Virtual machine {resource_name} has been scheduled to extend disk.',
