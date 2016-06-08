@@ -13,8 +13,8 @@ from django.contrib.contenttypes.models import ContentType
 from nodeconductor.structure.models import ServiceSettings
 from nodeconductor.template.models import TemplateGroup, Template
 
-from . import Types, models
-from .apps import OpenStackConfig
+from ... import Types, models
+from ...apps import OpenStackConfig
 
 
 class Command(BaseCommand):
