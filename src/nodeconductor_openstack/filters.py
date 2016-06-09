@@ -176,3 +176,12 @@ class BackupFilter(django_filters.FilterSet):
             'instance',
             'project',
         )
+
+
+class DRBackupFilter(structure_filters.BaseResourceFilter):
+    source_instance_uuid = django_filters.CharFilter(name='source_instance__uuid')
+    source_instance = core_filters.URLFilter(view_name='openstack-instance-detail', name='source_instance__uuid')
+
+    class Meta(structure_filters.BaseResourceFilter.Meta):
+        model = models.DRBackup
+        fields = structure_filters.BaseResourceFilter.Meta.fields + ('source_instance_uuid', 'source_instance')

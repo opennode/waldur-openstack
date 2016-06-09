@@ -1048,7 +1048,7 @@ class DRBackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     serializer_class = serializers.DRBackupSerializer
     create_executor = executors.DRBackupCreateExecutor
     delete_executor = executors.DRBackupDeleteExecutor
-    filter_class = structure_filters.BaseResourceStateFilter
+    filter_class = filters.DRBackupFilter
 
     def perform_update(self, serializer):
         # Update do not make any changes at backend, so there is no executor
