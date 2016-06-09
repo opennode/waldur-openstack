@@ -333,15 +333,18 @@ class InstanceSecurityGroupSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
+    url = serializers.HyperlinkedRelatedField(
+        source='security_group',
+        lookup_field='uuid',
+        view_name='openstack-sgp-detail',
+        queryset=models.SecurityGroup.objects.all(),
+    )
     state = serializers.ReadOnlyField(source='security_group.human_readable_state')
     description = serializers.ReadOnlyField(source='security_group.description')
 
     class Meta(object):
         model = models.InstanceSecurityGroup
         fields = ('url', 'name', 'rules', 'description', 'state')
-        extra_kwargs = {
-            'url': {'source': 'security_group', 'view_name': 'openstack-sgp-detail', 'lookup_field': 'uuid'},
-        }
         view_name = 'openstack-sgp-detail'
 
 
