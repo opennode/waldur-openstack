@@ -28,8 +28,6 @@ def delete_expired_backups():
         backend.start_deletion()
     for dr_backup in DRBackup.objects.filter(kept_until__lt=timezone.now(), state=DRBackup.States.OK):
         executors.DRBackupDeleteExecutor.execute(dr_backup)
-    for dr_backup in DRBackup.objects.filter(kept_until__lt=timezone.now(), state=DRBackup.States.ERRED):
-        executors.DRBackupDeleteExecutor.execute(dr_backup, force=True)
 
 
 @shared_task(name='nodeconductor.openstack.backup_start_create')
@@ -70,10 +68,11 @@ def backup_create(backup_uuid):
         backend = backup.get_backend()
         backup.metadata = backend.create()
         backup.save()
-    except BackupError:
+    except BackupError as e:
         logger.exception('Failed to perform backup for instance: %s', backup.instance)
         schedule = backup.backup_schedule
         if schedule:
+            schedule.runtime_state = 'Failed to execute backup for %s. Error: %s' % (backup.instance, e)
             schedule.is_active = False
             schedule.save()
 

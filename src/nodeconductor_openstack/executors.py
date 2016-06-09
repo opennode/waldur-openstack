@@ -287,7 +287,6 @@ class DRBackupCreateExecutor(executors.BaseChordExecutor):
 
     @classmethod
     def get_task_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
-        print 'Inside executor'
         creation_tasks = [tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_creating')]
         for volume_backup in dr_backup.volume_backups.all():
             tmp_volume = volume_backup.source_volume

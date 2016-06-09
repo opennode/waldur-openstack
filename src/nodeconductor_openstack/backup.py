@@ -98,12 +98,11 @@ class BackupScheduleBackend(object):
     def _delate_dr_backups(self):
         from . import executors
         states = self.schedule.dr_backups.model.States
-        stable_dr_backups = self.schedule.dr_backups.filter(state__in=(states.OK, states.ERRED))
+        stable_dr_backups = self.schedule.dr_backups.filter(state=states.OK)
         extra_backups_count = stable_dr_backups.count() - self.schedule.maximal_number_of_backups
         if extra_backups_count > 0:
             for dr_backup in stable_dr_backups.order_by('created')[:extra_backups_count]:
-                force = dr_backup.state == states.ERRED
-                executors.DRBackupDeleteExecutor.execute(dr_backup, force=force)
+                executors.DRBackupDeleteExecutor.execute(dr_backup)
 
     def execute(self):
         """
@@ -114,6 +113,7 @@ class BackupScheduleBackend(object):
             self.create_backup()
         except BackupError as e:
             self.schedule.runtime_state = str(e)
+            self.schedule.is_active = False
         else:
             self.schedule.runtime_state = 'Successfully started backup creation.'
         finally:
