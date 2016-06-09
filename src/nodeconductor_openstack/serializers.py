@@ -333,12 +333,6 @@ class InstanceSecurityGroupSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
-    url = serializers.HyperlinkedRelatedField(
-        source='security_group',
-        lookup_field='uuid',
-        view_name='openstack-sgp-detail',
-        queryset=models.SecurityGroup.objects.all(),
-    )
     state = serializers.ReadOnlyField(source='security_group.human_readable_state')
     description = serializers.ReadOnlyField(source='security_group.description')
 
@@ -346,7 +340,7 @@ class InstanceSecurityGroupSerializer(serializers.ModelSerializer):
         model = models.InstanceSecurityGroup
         fields = ('url', 'name', 'rules', 'description', 'state')
         extra_kwargs = {
-            'url': {'lookup_field': 'uuid'},
+            'url': {'source': 'security_group', 'view_name': 'openstack-sgp-detail', 'lookup_field': 'uuid'},
         }
         view_name = 'openstack-sgp-detail'
 
@@ -355,22 +349,19 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
     instance_name = serializers.ReadOnlyField(source='instance.name')
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
                                        default=timezone.get_current_timezone_name)
-    instance = serializers.HyperlinkedRelatedField(
-        lookup_field='uuid',
-        view_name='openstack-instance-detail',
-        queryset=models.Instance.objects.all(),
-    )
 
     class Meta(object):
         model = models.BackupSchedule
         view_name = 'openstack-schedule-detail'
         fields = ('url', 'uuid', 'description', 'backups', 'retention_time', 'timezone',
-                  'instance', 'maximal_number_of_backups', 'schedule', 'is_active', 'instance_name')
-        read_only_fields = ('is_active', 'backups')
+                  'instance', 'maximal_number_of_backups', 'schedule', 'is_active', 'instance_name',
+                  'backup_type', 'next_trigger_at', 'dr_backups')
+        read_only_fields = ('is_active', 'backups', 'next_trigger_at', 'dr_backups')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
             'backups': {'lookup_field': 'uuid', 'view_name': 'openstack-backup-detail'},
+            'dr_backups': {'lookup_field': 'uuid', 'view_name': 'openstack-dr-backup-detail'},
         }
 
 
@@ -886,10 +877,10 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
         model = models.DRBackup
         view_name = 'openstack-dr-backup-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'source_instance', 'tenant', 'restorations',
+            'source_instance', 'tenant', 'restorations', 'kept_until',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'tenant', 'restorations',
+            'tenant', 'restorations', 'kept_until',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'source_instance',
@@ -907,69 +898,70 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
         source_instance = validated_data['source_instance']
         validated_data['tenant'] = source_instance.tenant
         validated_data['service_project_link'] = source_instance.service_project_link
-        validated_data['metadata'] = {
-            'source_instance_name': source_instance.name,
-            'source_instance_description': source_instance.description,
-            'source_instance_flavor_name': source_instance.flavor_name,
-            'source_instance_min_disk': source_instance.min_disk,
-            'source_instance_min_ram': source_instance.min_ram,
-        }
+        validated_data['metadata'] = source_instance.as_dict()
         dr_backup = super(DRBackupSerializer, self).create(validated_data)
-        # Import instance volumes to NC. Temporary. Should be removed after NC-1410 implementation.
-        instance = dr_backup.source_instance
-        backend = instance.get_backend()
-        volumes = [backend.import_volume(vid) for vid in (instance.system_volume_id, instance.data_volume_id)]
-        dr_backup.instance_volumes.add(*volumes)
-
-        for volume in volumes:
-            # Create temporary snapshot volume for instance volume.
-            snapshot = models.Snapshot.objects.create(
-                source_volume=volume,
-                tenant=volume.tenant,
-                service_project_link=volume.service_project_link,
-                size=volume.size,
-                name='Temporary snapshot for volume: %s' % volume.name,
-                description='Part of DR backup %s' % dr_backup.name,
-                metadata={'source_volume_name': volume.name, 'source_volume_description': volume.description},
-            )
-            snapshot.increase_backend_quotas_usage()
-            dr_backup.temporary_snapshots.add(snapshot)
-
-            # Create temporary volume from snapshot.
-            tmp_volume = models.Volume.objects.create(
-                service_project_link=snapshot.service_project_link,
-                tenant=snapshot.tenant,
-                source_snapshot=snapshot,
-                metadata=snapshot.metadata,
-                name='Temporary copy for volume: %s' % volume.name,
-                description='Part of DR backup %s' % dr_backup.name,
-                size=snapshot.size,
-            )
-            tmp_volume.increase_backend_quotas_usage()
-            dr_backup.temporary_volumes.add(tmp_volume)
-
-            # Create backup for temporary volume.
-            volume_backup = models.VolumeBackup.objects.create(
-                name=volume.name,
-                description=volume.description,
-                source_volume=tmp_volume,
-                tenant=dr_backup.tenant,
-                size=volume.size,
-                service_project_link=dr_backup.service_project_link,
-                metadata={
-                    'source_volume_name': volume.name,
-                    'source_volume_description': volume.description,
-                    'source_volume_bootable': volume.bootable,
-                    'source_volume_size': volume.size,
-                    'source_volume_metadata': volume.metadata,
-                    'source_volume_image_metadata': volume.image_metadata,
-                    'source_volume_type': volume.type,
-                }
-            )
-            volume_backup.increase_backend_quotas_usage()
-            dr_backup.volume_backups.add(volume_backup)
-
+        create_dr_backup_related_resources(dr_backup)
         return dr_backup
+
+
+def create_dr_backup_related_resources(dr_backup):
+    """ Create resources that has to be created on backend for DR backup.
+
+    This function is extracted from serializer to create dr backups with scheduler.
+    """
+    # Import instance volumes to NC. Temporary. Should be removed after NC-1410 implementation.
+    instance = dr_backup.source_instance
+    backend = instance.get_backend()
+    volumes = [backend.import_volume(vid) for vid in (instance.system_volume_id, instance.data_volume_id)]
+    dr_backup.instance_volumes.add(*volumes)
+
+    for volume in volumes:
+        # Create temporary snapshot volume for instance volume.
+        snapshot = models.Snapshot.objects.create(
+            source_volume=volume,
+            tenant=volume.tenant,
+            service_project_link=volume.service_project_link,
+            size=volume.size,
+            name='Temporary snapshot for volume: %s' % volume.name,
+            description='Part of DR backup %s' % dr_backup.name,
+            metadata={'source_volume_name': volume.name, 'source_volume_description': volume.description},
+        )
+        snapshot.increase_backend_quotas_usage()
+        dr_backup.temporary_snapshots.add(snapshot)
+
+        # Create temporary volume from snapshot.
+        tmp_volume = models.Volume.objects.create(
+            service_project_link=snapshot.service_project_link,
+            tenant=snapshot.tenant,
+            source_snapshot=snapshot,
+            metadata=snapshot.metadata,
+            name='Temporary copy for volume: %s' % volume.name,
+            description='Part of DR backup %s' % dr_backup.name,
+            size=snapshot.size,
+        )
+        tmp_volume.increase_backend_quotas_usage()
+        dr_backup.temporary_volumes.add(tmp_volume)
+
+        # Create backup for temporary volume.
+        volume_backup = models.VolumeBackup.objects.create(
+            name=volume.name,
+            description=volume.description,
+            source_volume=tmp_volume,
+            tenant=dr_backup.tenant,
+            size=volume.size,
+            service_project_link=dr_backup.service_project_link,
+            metadata={
+                'source_volume_name': volume.name,
+                'source_volume_description': volume.description,
+                'source_volume_bootable': volume.bootable,
+                'source_volume_size': volume.size,
+                'source_volume_metadata': volume.metadata,
+                'source_volume_image_metadata': volume.image_metadata,
+                'source_volume_type': volume.type,
+            }
+        )
+        volume_backup.increase_backend_quotas_usage()
+        dr_backup.volume_backups.add(volume_backup)
 
 
 class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
@@ -1000,8 +992,8 @@ class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
         if flavor.settings != tenant.service_project_link.service.settings:
             raise serializers.ValidationError('Tenant and flavor should belong to the same service settings.')
 
-        min_disk = dr_backup.metadata['source_instance_min_disk']
-        min_ram = dr_backup.metadata['source_instance_min_ram']
+        min_disk = dr_backup.metadata['min_disk']
+        min_ram = dr_backup.metadata['min_ram']
         if flavor.disk < min_disk:
             raise serializers.ValidationError(
                 {'flavor': "Disk of flavor is not enough for restoration. Min value: %s" % min_disk})
@@ -1017,16 +1009,21 @@ class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
         dr_backup = validated_data['dr_backup']
         # instance that will be restored
         instance = models.Instance.objects.create(
-            name=dr_backup.metadata['source_instance_name'],
-            description=dr_backup.metadata['source_instance_description'],
+            name=dr_backup.metadata['name'],
+            description=dr_backup.metadata['description'],
             service_project_link=tenant.service_project_link,
             tenant=tenant,
             flavor_disk=flavor.disk,
             flavor_name=flavor.name,
             cores=flavor.cores,
             ram=flavor.ram,
+            min_ram=dr_backup.metadata['min_ram'],
+            min_disk=dr_backup.metadata['min_disk'],
+            image_name=dr_backup.metadata['image_name'],
+            user_data=dr_backup.metadata['user_data'],
             disk=sum([volume_backup.size for volume_backup in dr_backup.volume_backups.all()]),
         )
+        instance.tags.add(*dr_backup.metadata['tags'])
         instance.increase_backend_quotas_usage()
         validated_data['instance'] = instance
         dr_backup_restoration = super(DRBackupRestorationSerializer, self).create(validated_data)

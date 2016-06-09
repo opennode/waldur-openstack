@@ -1,6 +1,7 @@
 import logging
 
 from django.utils import six, timezone
+from rest_framework.exceptions import ValidationError as SerializersValidationError
 
 from nodeconductor.core.tasks import send_task
 from nodeconductor.structure import ServiceBackendError
@@ -33,6 +34,12 @@ class BackupScheduleBackend(object):
         """
         Creates new backup based on schedule and starts backup process
         """
+        if self.schedule.backup_type == self.schedule.BackupTypes.REGULAR:
+            self._create_regular_backup()
+        elif self.schedule.backup_type == self.schedule.BackupTypes.DR:
+            self._create_dr_backup()
+
+    def _create_regular_backup(self):
         if not self.check_instance_state():
             return
 
@@ -44,10 +51,41 @@ class BackupScheduleBackend(object):
         backend.start_backup()
         return backup
 
+    def _create_dr_backup(self):
+        from . import models, executors, serializers
+        kept_until = timezone.now() + \
+            timezone.timedelta(days=self.schedule.retention_time) if self.schedule.retention_time else None
+
+        dr_backup = models.DRBackup.objects.create(
+            source_instance=self.schedule.instance,
+            name='DR backup of instance "%s"' % self.schedule.instance,
+            description='Scheduled DR backup.',
+            tenant=self.schedule.instance.tenant,
+            service_project_link=self.schedule.instance.service_project_link,
+            metadata=self.schedule.instance.as_dict(),
+            backup_schedule=self.schedule,
+        )
+        try:
+            serializers.create_dr_backup_related_resources(dr_backup)
+        except SerializersValidationError as e:
+            message = 'Failed to schedule backup creation. Error: %s' % e
+            logger.exception('Backup schedule (PK: %s) execution failed. %s' % (self.schedule.pk, message))
+            raise BackupError(message)
+        else:
+            dr_backup.kept_until = kept_until
+            dr_backup.save()
+            executors.DRBackupCreateExecutor.execute(dr_backup)
+
     def delete_extra_backups(self):
         """
         Deletes oldest existing backups if maximal_number_of_backups was reached
         """
+        if self.schedule.backup_type == self.schedule.BackupTypes.REGULAR:
+            self._delete_regular_backups()
+        elif self.schedule.backup_type == self.schedule.BackupTypes.DR:
+            self._delate_dr_backups()
+
+    def _delete_regular_backups(self):
         states = self.schedule.backups.model.States
         exclude_states = (states.DELETING, states.DELETED, states.ERRED)
         stable_backups = self.schedule.backups.exclude(state__in=exclude_states)
@@ -57,15 +95,31 @@ class BackupScheduleBackend(object):
                 backend = backup.get_backend()
                 backend.start_deletion()
 
+    def _delate_dr_backups(self):
+        from . import executors
+        states = self.schedule.dr_backups.model.States
+        stable_dr_backups = self.schedule.dr_backups.filter(state__in=(states.OK, states.ERRED))
+        extra_backups_count = stable_dr_backups.count() - self.schedule.maximal_number_of_backups
+        if extra_backups_count > 0:
+            for dr_backup in stable_dr_backups.order_by('created')[:extra_backups_count]:
+                force = dr_backup.state == states.ERRED
+                executors.DRBackupDeleteExecutor.execute(dr_backup, force=force)
+
     def execute(self):
         """
         Creates new backup, deletes existing if maximal_number_of_backups was
         reached, calculates new next_trigger_at time.
         """
-        self.create_backup()
-        self.delete_extra_backups()
-        self.schedule.update_next_trigger_at()
-        self.schedule.save()
+        try:
+            self.create_backup()
+        except BackupError as e:
+            self.schedule.runtime_state = str(e)
+        else:
+            self.schedule.runtime_state = 'Successfully started backup creation.'
+        finally:
+            self.delete_extra_backups()
+            self.schedule.update_next_trigger_at()
+            self.schedule.save()
 
 
 class BackupBackend(object):
@@ -94,6 +148,7 @@ class BackupBackend(object):
         instance = self.backup.instance
         metadata = {
             'name': instance.name,
+            'description': instance.description,
             'service_project_link': instance.service_project_link.pk,
             'tenant': instance.tenant.pk,
             'system_volume_id': instance.system_volume_id,

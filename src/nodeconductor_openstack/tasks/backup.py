@@ -7,7 +7,7 @@ from nodeconductor.core.tasks import transition
 from nodeconductor.structure.log import event_logger
 
 from ..backup import BackupError
-from ..models import BackupSchedule, Backup
+from ..models import BackupSchedule, Backup, DRBackup
 
 
 logger = logging.getLogger(__name__)
@@ -22,9 +22,14 @@ def schedule_backups():
 
 @shared_task(name='nodeconductor.openstack.delete_expired_backups')
 def delete_expired_backups():
+    from .. import executors  # import here to avoid circular imports
     for backup in Backup.objects.filter(kept_until__lt=timezone.now(), state=Backup.States.READY):
         backend = backup.get_backend()
         backend.start_deletion()
+    for dr_backup in DRBackup.objects.filter(kept_until__lt=timezone.now(), state=DRBackup.States.OK):
+        executors.DRBackupDeleteExecutor.execute(dr_backup)
+    for dr_backup in DRBackup.objects.filter(kept_until__lt=timezone.now(), state=DRBackup.States.ERRED):
+        executors.DRBackupDeleteExecutor.execute(dr_backup, force=True)
 
 
 @shared_task(name='nodeconductor.openstack.backup_start_create')
