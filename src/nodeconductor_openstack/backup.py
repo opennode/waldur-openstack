@@ -1,9 +1,9 @@
 import logging
 
 from django.utils import six, timezone
-from rest_framework.exceptions import ValidationError as SerializersValidationError
 
 from nodeconductor.core.tasks import send_task
+from nodeconductor.quotas.exceptions import QuotaValidationError
 from nodeconductor.structure import ServiceBackendError
 
 
@@ -67,7 +67,7 @@ class BackupScheduleBackend(object):
         )
         try:
             serializers.create_dr_backup_related_resources(dr_backup)
-        except SerializersValidationError as e:
+        except QuotaValidationError as e:
             message = 'Failed to schedule backup creation. Error: %s' % e
             logger.exception('Backup schedule (PK: %s) execution failed. %s' % (self.schedule.pk, message))
             raise BackupError(message)
