@@ -31,8 +31,9 @@ class SetDRBackupErredTask(tasks.ErrorStateTransitionTask):
         # Deactivate schedule if its backup become erred.
         schedule = dr_backup.backup_schedule
         if schedule:
-            schedule.runtime_state = 'Failed to execute backup for %s. Error: %s' % (
+            schedule.error_message = 'Failed to execute backup for %s. Error: %s' % (
                 dr_backup.instance, dr_backup.error_message)
+            schedule.runtime_state = 'Failed to schedule backup creation.'
             schedule.is_active = False
             schedule.save()
 

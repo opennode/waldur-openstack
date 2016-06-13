@@ -1,10 +1,13 @@
 import logging
 
+from django.db import transaction
 from django.utils import six, timezone
 
 from nodeconductor.core.tasks import send_task
 from nodeconductor.quotas.exceptions import QuotaValidationError
 from nodeconductor.structure import ServiceBackendError
+
+from .backend import OpenStackBackendError
 
 
 logger = logging.getLogger(__name__)
@@ -56,24 +59,24 @@ class BackupScheduleBackend(object):
         kept_until = timezone.now() + \
             timezone.timedelta(days=self.schedule.retention_time) if self.schedule.retention_time else None
 
-        dr_backup = models.DRBackup.objects.create(
-            source_instance=self.schedule.instance,
-            name='DR backup of instance "%s"' % self.schedule.instance,
-            description='Scheduled DR backup.',
-            tenant=self.schedule.instance.tenant,
-            service_project_link=self.schedule.instance.service_project_link,
-            metadata=self.schedule.instance.as_dict(),
-            backup_schedule=self.schedule,
-        )
         try:
-            serializers.create_dr_backup_related_resources(dr_backup)
-        except QuotaValidationError as e:
+            with transaction.atomic():
+                dr_backup = models.DRBackup.objects.create(
+                    source_instance=self.schedule.instance,
+                    name='DR backup of instance "%s"' % self.schedule.instance,
+                    description='Scheduled DR backup.',
+                    tenant=self.schedule.instance.tenant,
+                    service_project_link=self.schedule.instance.service_project_link,
+                    metadata=self.schedule.instance.as_dict(),
+                    backup_schedule=self.schedule,
+                    kept_until=kept_until,
+                )
+                serializers.create_dr_backup_related_resources(dr_backup)
+        except (QuotaValidationError, OpenStackBackendError) as e:
             message = 'Failed to schedule backup creation. Error: %s' % e
             logger.exception('Backup schedule (PK: %s) execution failed. %s' % (self.schedule.pk, message))
             raise BackupError(message)
         else:
-            dr_backup.kept_until = kept_until
-            dr_backup.save()
             executors.DRBackupCreateExecutor.execute(dr_backup)
 
     def delete_extra_backups(self):
@@ -112,10 +115,11 @@ class BackupScheduleBackend(object):
         try:
             self.create_backup()
         except BackupError as e:
-            self.schedule.runtime_state = str(e)
+            self.schedule.runtime_state = 'Failed to schedule backup creation.'
+            self.schedule.error_message = str(e)
             self.schedule.is_active = False
         else:
-            self.schedule.runtime_state = 'Successfully started backup creation.'
+            self.schedule.runtime_state = 'Successfully started backup creation at %s.' % timezone.now()
         finally:
             self.delete_extra_backups()
             self.schedule.update_next_trigger_at()
@@ -143,29 +147,6 @@ class BackupBackend(object):
         send_task('openstack', 'backup_start_restore')(
             self.backup.uuid.hex, instance_uuid, user_input, snapshot_ids)
 
-    def get_metadata(self):
-        # populate backup metadata
-        instance = self.backup.instance
-        metadata = {
-            'name': instance.name,
-            'description': instance.description,
-            'service_project_link': instance.service_project_link.pk,
-            'tenant': instance.tenant.pk,
-            'system_volume_id': instance.system_volume_id,
-            'system_volume_size': instance.system_volume_size,
-            'data_volume_id': instance.data_volume_id,
-            'data_volume_size': instance.data_volume_size,
-            'min_ram': instance.min_ram,
-            'min_disk': instance.min_disk,
-            'key_name': instance.key_name,
-            'key_fingerprint': instance.key_fingerprint,
-            'user_data': instance.user_data,
-            'flavor_name': instance.flavor_name,
-            'image_name': instance.image_name,
-            'tags': [tag.name for tag in instance.tags.all()],
-        }
-        return metadata
-
     def create(self):
         instance = self.backup.instance
         quota_errors = instance.tenant.validate_quota_change({
@@ -187,7 +168,7 @@ class BackupBackend(object):
             six.reraise(BackupError, e)
 
         # populate backup metadata
-        metadata = self.get_metadata()
+        metadata = self.backup.instance.as_dict()
         metadata['system_snapshot_id'] = system_volume_snapshot_id
         metadata['data_snapshot_id'] = data_volume_snapshot_id
         metadata['system_snapshot_size'] = instance.system_volume_size
