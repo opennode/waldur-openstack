@@ -33,7 +33,7 @@ class SetDRBackupErredTask(tasks.ErrorStateTransitionTask):
         if schedule:
             schedule.error_message = 'Failed to execute backup for %s. Error: %s' % (
                 dr_backup.instance, dr_backup.error_message)
-            schedule.runtime_state = 'Failed to create backup.'
+            schedule.runtime_state = 'Failed to create backup'
             schedule.is_active = False
             schedule.save()
 
