@@ -584,7 +584,9 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
         if schedule.is_active:
             return response.Response(
                 {'status': 'BackupSchedule is already activated'}, status=status.HTTP_409_CONFLICT)
+        schedule.runtime_state = 'Activated manually'
         schedule.is_active = True
+        schedule.error_message = ''
         schedule.save()
 
         event_logger.openstack_backup.info(
@@ -604,6 +606,7 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
         if not schedule.is_active:
             return response.Response(
                 {'status': 'BackupSchedule is already deactivated'}, status=status.HTTP_409_CONFLICT)
+        schedule.runtime_state = 'Deactivated manually.'
         schedule.is_active = False
         schedule.save()
 

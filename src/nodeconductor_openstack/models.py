@@ -255,6 +255,27 @@ class Instance(structure_models.VirtualMachineMixin,
         add_quota('vcpu', -self.cores)
         add_quota('storage', -self.disk)
 
+    def as_dict(self):
+        """ Represent instance as dict with all necessary attributes """
+        return {
+            'name': self.name,
+            'description': self.description,
+            'service_project_link': self.service_project_link.pk,
+            'tenant': self.tenant.pk,
+            'system_volume_id': self.system_volume_id,
+            'system_volume_size': self.system_volume_size,
+            'data_volume_id': self.data_volume_id,
+            'data_volume_size': self.data_volume_size,
+            'min_ram': self.min_ram,
+            'min_disk': self.min_disk,
+            'key_name': self.key_name,
+            'key_fingerprint': self.key_fingerprint,
+            'user_data': self.user_data,
+            'flavor_name': self.flavor_name,
+            'image_name': self.image_name,
+            'tags': [tag.name for tag in self.tags.all()],
+        }
+
 
 class InstanceSecurityGroup(models.Model):
 
@@ -268,7 +289,9 @@ class InstanceSecurityGroup(models.Model):
 
 class BackupSchedule(core_models.UuidMixin,
                      core_models.DescribableMixin,
+                     core_models.RuntimeStateMixin,
                      core_models.ScheduleMixin,
+                     core_models.ErrorMessageMixin,
                      LoggableMixin):
 
     class Permissions(object):
@@ -276,9 +299,15 @@ class BackupSchedule(core_models.UuidMixin,
         project_path = 'instance__service_project_link__project'
         project_group_path = 'instance__service_project_link__project__project_groups'
 
+    class BackupTypes(object):
+        REGULAR = 'Regular'
+        DR = 'DR'
+        CHOICES = ((REGULAR, REGULAR), (DR, DR))
+
+    backup_type = models.CharField(max_length=30, choices=BackupTypes.CHOICES, default=BackupTypes.REGULAR)
     instance = models.ForeignKey(Instance, related_name='backup_schedules')
     retention_time = models.PositiveIntegerField(
-        help_text='Retention time in days')  # if 0 - backup will be kept forever
+        help_text='Retention time in days, if 0 - backup will be kept forever')
     maximal_number_of_backups = models.PositiveSmallIntegerField()
 
     def __str__(self):
@@ -507,6 +536,8 @@ class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
 
 # XXX: This model is itacloud specific, it should be moved to assembly
 class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
+    backup_schedule = models.ForeignKey(
+        BackupSchedule, blank=True, null=True, on_delete=models.SET_NULL, related_name='dr_backups')
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='dr_backups', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='dr_backups')
@@ -520,9 +551,15 @@ class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
     temporary_volumes = models.ManyToManyField(Volume, related_name='+')
     temporary_snapshots = models.ManyToManyField(Snapshot, related_name='+')
     volume_backups = models.ManyToManyField(VolumeBackup, related_name='dr_backups')
+    kept_until = models.DateTimeField(
+        null=True, blank=True, help_text='Guaranteed time of backup retention. If null - keep forever.')
 
     def get_backend(self):
         return self.tenant.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-dr-backup'
 
 
 # XXX: This model is itacloud specific, it should be moved to assembly

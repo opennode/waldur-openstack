@@ -1,8 +1,10 @@
 import logging
 
+from django.db import transaction
 from django.utils import six, timezone
 
 from nodeconductor.core.tasks import send_task
+from nodeconductor.quotas.exceptions import QuotaValidationError
 from nodeconductor.structure import ServiceBackendError
 
 
@@ -33,6 +35,12 @@ class BackupScheduleBackend(object):
         """
         Creates new backup based on schedule and starts backup process
         """
+        if self.schedule.backup_type == self.schedule.BackupTypes.REGULAR:
+            self._create_regular_backup()
+        elif self.schedule.backup_type == self.schedule.BackupTypes.DR:
+            self._create_dr_backup()
+
+    def _create_regular_backup(self):
         if not self.check_instance_state():
             return
 
@@ -44,10 +52,41 @@ class BackupScheduleBackend(object):
         backend.start_backup()
         return backup
 
+    def _create_dr_backup(self):
+        from . import models, executors, serializers, backend
+        kept_until = timezone.now() + \
+            timezone.timedelta(days=self.schedule.retention_time) if self.schedule.retention_time else None
+
+        try:
+            with transaction.atomic():
+                dr_backup = models.DRBackup.objects.create(
+                    source_instance=self.schedule.instance,
+                    name='DR backup of instance "%s"' % self.schedule.instance,
+                    description='Scheduled DR backup.',
+                    tenant=self.schedule.instance.tenant,
+                    service_project_link=self.schedule.instance.service_project_link,
+                    metadata=self.schedule.instance.as_dict(),
+                    backup_schedule=self.schedule,
+                    kept_until=kept_until,
+                )
+                serializers.create_dr_backup_related_resources(dr_backup)
+        except (QuotaValidationError, backend.OpenStackBackendError) as e:
+            message = 'Failed to schedule backup creation. Error: %s' % e
+            logger.exception('Backup schedule (PK: %s) execution failed. %s' % (self.schedule.pk, message))
+            raise BackupError(message)
+        else:
+            executors.DRBackupCreateExecutor.execute(dr_backup)
+
     def delete_extra_backups(self):
         """
         Deletes oldest existing backups if maximal_number_of_backups was reached
         """
+        if self.schedule.backup_type == self.schedule.BackupTypes.REGULAR:
+            self._delete_regular_backups()
+        elif self.schedule.backup_type == self.schedule.BackupTypes.DR:
+            self._delate_dr_backups()
+
+    def _delete_regular_backups(self):
         states = self.schedule.backups.model.States
         exclude_states = (states.DELETING, states.DELETED, states.ERRED)
         stable_backups = self.schedule.backups.exclude(state__in=exclude_states)
@@ -57,15 +96,32 @@ class BackupScheduleBackend(object):
                 backend = backup.get_backend()
                 backend.start_deletion()
 
+    def _delate_dr_backups(self):
+        from . import executors
+        states = self.schedule.dr_backups.model.States
+        stable_dr_backups = self.schedule.dr_backups.filter(state=states.OK)
+        extra_backups_count = stable_dr_backups.count() - self.schedule.maximal_number_of_backups
+        if extra_backups_count > 0:
+            for dr_backup in stable_dr_backups.order_by('created')[:extra_backups_count]:
+                executors.DRBackupDeleteExecutor.execute(dr_backup)
+
     def execute(self):
         """
         Creates new backup, deletes existing if maximal_number_of_backups was
         reached, calculates new next_trigger_at time.
         """
-        self.create_backup()
-        self.delete_extra_backups()
-        self.schedule.update_next_trigger_at()
-        self.schedule.save()
+        try:
+            self.create_backup()
+        except BackupError as e:
+            self.schedule.runtime_state = 'Failed to schedule backup creation.'
+            self.schedule.error_message = str(e)
+            self.schedule.is_active = False
+        else:
+            self.schedule.runtime_state = 'Successfully started backup creation at %s.' % timezone.now()
+        finally:
+            self.delete_extra_backups()
+            self.schedule.update_next_trigger_at()
+            self.schedule.save()
 
 
 class BackupBackend(object):
@@ -89,28 +145,6 @@ class BackupBackend(object):
         send_task('openstack', 'backup_start_restore')(
             self.backup.uuid.hex, instance_uuid, user_input, snapshot_ids)
 
-    def get_metadata(self):
-        # populate backup metadata
-        instance = self.backup.instance
-        metadata = {
-            'name': instance.name,
-            'service_project_link': instance.service_project_link.pk,
-            'tenant': instance.tenant.pk,
-            'system_volume_id': instance.system_volume_id,
-            'system_volume_size': instance.system_volume_size,
-            'data_volume_id': instance.data_volume_id,
-            'data_volume_size': instance.data_volume_size,
-            'min_ram': instance.min_ram,
-            'min_disk': instance.min_disk,
-            'key_name': instance.key_name,
-            'key_fingerprint': instance.key_fingerprint,
-            'user_data': instance.user_data,
-            'flavor_name': instance.flavor_name,
-            'image_name': instance.image_name,
-            'tags': [tag.name for tag in instance.tags.all()],
-        }
-        return metadata
-
     def create(self):
         instance = self.backup.instance
         quota_errors = instance.tenant.validate_quota_change({
@@ -132,7 +166,7 @@ class BackupBackend(object):
             six.reraise(BackupError, e)
 
         # populate backup metadata
-        metadata = self.get_metadata()
+        metadata = self.backup.instance.as_dict()
         metadata['system_snapshot_id'] = system_volume_snapshot_id
         metadata['data_snapshot_id'] = data_volume_snapshot_id
         metadata['system_snapshot_size'] = instance.system_volume_size
