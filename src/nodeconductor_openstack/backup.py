@@ -7,8 +7,6 @@ from nodeconductor.core.tasks import send_task
 from nodeconductor.quotas.exceptions import QuotaValidationError
 from nodeconductor.structure import ServiceBackendError
 
-from .backend import OpenStackBackendError
-
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +53,7 @@ class BackupScheduleBackend(object):
         return backup
 
     def _create_dr_backup(self):
-        from . import models, executors, serializers
+        from . import models, executors, serializers, backend
         kept_until = timezone.now() + \
             timezone.timedelta(days=self.schedule.retention_time) if self.schedule.retention_time else None
 
@@ -72,7 +70,7 @@ class BackupScheduleBackend(object):
                     kept_until=kept_until,
                 )
                 serializers.create_dr_backup_related_resources(dr_backup)
-        except (QuotaValidationError, OpenStackBackendError) as e:
+        except (QuotaValidationError, backend.OpenStackBackendError) as e:
             message = 'Failed to schedule backup creation. Error: %s' % e
             logger.exception('Backup schedule (PK: %s) execution failed. %s' % (self.schedule.pk, message))
             raise BackupError(message)
