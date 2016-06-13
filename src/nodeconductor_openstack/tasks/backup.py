@@ -72,7 +72,8 @@ def backup_create(backup_uuid):
         logger.exception('Failed to perform backup for instance: %s', backup.instance)
         schedule = backup.backup_schedule
         if schedule:
-            schedule.runtime_state = 'Failed to execute backup for %s. Error: %s' % (backup.instance, e)
+            schedule.error_message = 'Failed to execute backup for %s. Error: %s' % (backup.instance, e)
+            schedule.runtime_state = 'Failed to create backup.'
             schedule.is_active = False
             schedule.save()
 
