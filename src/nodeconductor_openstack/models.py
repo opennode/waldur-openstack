@@ -291,6 +291,7 @@ class BackupSchedule(core_models.UuidMixin,
                      core_models.DescribableMixin,
                      core_models.RuntimeStateMixin,
                      core_models.ScheduleMixin,
+                     core_models.ErrorMessageMixin,
                      LoggableMixin):
 
     class Permissions(object):

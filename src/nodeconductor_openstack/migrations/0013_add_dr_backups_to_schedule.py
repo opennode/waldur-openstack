@@ -19,6 +19,11 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='backupschedule',
+            name='error_message',
+            field=models.TextField(blank=True),
+        ),
+        migrations.AddField(
+            model_name='backupschedule',
             name='runtime_state',
             field=models.CharField(max_length=150, verbose_name='runtime state', blank=True),
         ),
