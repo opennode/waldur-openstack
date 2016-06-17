@@ -36,6 +36,8 @@ class OpenStackCostTrackingBackend(CostTrackingBackend):
 
     @classmethod
     def get_used_items(cls, resource):
+        if not isinstance(resource, models.Instance):  # XXX: Hotfix for new resources provision.
+            return []
         items = []
         tags = [t.name for t in resource.tags.all()]
 

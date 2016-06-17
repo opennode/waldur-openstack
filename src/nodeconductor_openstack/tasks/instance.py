@@ -2,21 +2,12 @@ import logging
 
 from celery import shared_task
 
-from nodeconductor.core.tasks import save_error_message, transition, throttle
+from nodeconductor.core.tasks import save_error_message, transition
+
 from ..models import Instance, FloatingIP
 
 
 logger = logging.getLogger(__name__)
-
-
-@shared_task(name='nodeconductor.openstack.provision')
-def provision(instance_uuid, **kwargs):
-    provision_instance.apply_async(
-        args=(instance_uuid,),
-        kwargs=kwargs,
-        link=set_online.si(instance_uuid),
-        link_error=set_erred.si(instance_uuid)
-    )
 
 
 @shared_task(name='nodeconductor.openstack.destroy')
@@ -69,16 +60,6 @@ def restart(instance_uuid):
         args=(instance_uuid,),
         link=set_online.si(instance_uuid),
         link_error=set_erred.si(instance_uuid))
-
-
-@shared_task(is_heavy_task=True)
-@transition(Instance, 'begin_provisioning')
-@save_error_message
-def provision_instance(instance_uuid, transition_entity=None, **kwargs):
-    instance = transition_entity
-    with throttle(key=instance.service_project_link.service.settings.backend_url):
-        backend = instance.get_backend()
-        backend.provision_instance(instance, **kwargs)
 
 
 @shared_task

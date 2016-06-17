@@ -24,10 +24,6 @@ class SetDRBackupErredTask(tasks.ErrorStateTransitionTask):
                 resource.set_erred()
                 resource.save(update_fields=['state'])
 
-        # Temporary: Unlink imported volumes. Should be removed after NC-1410 implementation.
-        for volume in dr_backup.instance_volumes.all():
-            volume.delete()
-
         # Deactivate schedule if its backup become erred.
         schedule = dr_backup.backup_schedule
         if schedule:
@@ -45,10 +41,6 @@ class CleanUpDRBackupTask(tasks.StateTransitionTask):
         It is safer to make cleanup in one task.
     """
     def execute(self, dr_backup):
-        # Temporary: Unlink imported volumes. Should be removed after NC-1410 implementation.
-        for volume in dr_backup.instance_volumes.all():
-            volume.delete()
-
         # import here to avoid circular dependencies
         from ..executors import SnapshotDeleteExecutor, VolumeDeleteExecutor
         for snapshot in dr_backup.temporary_snapshots.all():

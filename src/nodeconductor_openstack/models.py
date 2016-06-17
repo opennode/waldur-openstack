@@ -190,21 +190,18 @@ class FloatingIP(core_models.UuidMixin):
         return self.tenant.get_backend()
 
 
+# TODO:
+# 1. think how to populate instance volumes. DONE.
+# 2. implement import.
+# 3. Fix DR backups to use instance volumes.
 class Instance(structure_models.VirtualMachineMixin,
                structure_models.PaidResource,
                structure_models.Resource):
 
-    DEFAULT_DATA_VOLUME_SIZE = 20 * 1024
-
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='instances', on_delete=models.PROTECT)
 
-    # OpenStack backend specific fields
-    system_volume_id = models.CharField(max_length=255, blank=True)
-    system_volume_size = models.PositiveIntegerField(default=0, help_text='Root disk size in MiB')
-    data_volume_id = models.CharField(max_length=255, blank=True)
-    data_volume_size = models.PositiveIntegerField(
-        default=DEFAULT_DATA_VOLUME_SIZE, help_text='Data disk size in MiB', validators=[MinValueValidator(1 * 1024)])
+    volumes = models.ManyToManyField('Volume', related_name='instances')
 
     flavor_name = models.CharField(max_length=255, blank=True)
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
@@ -219,6 +216,46 @@ class Instance(structure_models.VirtualMachineMixin,
     @property
     def human_readable_state(self):
         return force_text(dict(self.States.CHOICES)[self.state])
+
+    @property
+    def data_volume(self):
+        if not getattr(self, '_data_volume', False):
+            self._data_volume = self.volumes.filter(bootable=False).first()
+        return self._data_volume
+
+    # XXX: This property exists only for compatibility.
+    @property
+    def data_volume_id(self):
+        if self.data_volume:
+            return self.data_volume.backend_id
+        return
+
+    # XXX: This property exists only for compatibility.
+    @property
+    def data_volume_size(self):
+        if self.data_volume:
+            return self.data_volume.size
+        return
+
+    @property
+    def system_volume(self):
+        if not getattr(self, '_system_volume', False):
+            self._system_volume = self.volumes.filter(bootable=True).first()
+        return self._system_volume
+
+    # XXX: This property exists only for compatibility.
+    @property
+    def system_volume_id(self):
+        if self.system_volume:
+            return self.system_volume.backend_id
+        return
+
+    # XXX: This property exists only for compatibility.
+    @property
+    def system_volume_size(self):
+        if self.system_volume:
+            return self.system_volume.size
+        return
 
     @classmethod
     def get_url_name(cls):
@@ -246,14 +283,12 @@ class Instance(structure_models.VirtualMachineMixin,
         add_quota('instances', 1)
         add_quota('ram', self.ram)
         add_quota('vcpu', self.cores)
-        add_quota('storage', self.disk)
 
     def decrease_backend_quotas_usage(self):
         add_quota = self.tenant.add_quota_usage
         add_quota('instances', -1)
         add_quota('ram', -self.ram)
         add_quota('vcpu', -self.cores)
-        add_quota('storage', -self.disk)
 
     def as_dict(self):
         """ Represent instance as dict with all necessary attributes """
@@ -546,8 +581,6 @@ class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
         blank=True,
         help_text='Information about instance that will be used on restoration',
     )
-    # XXX: This field is temporary. Should be deleted in NC-1410.
-    instance_volumes = models.ManyToManyField(Volume, related_name='+')
     temporary_volumes = models.ManyToManyField(Volume, related_name='+')
     temporary_snapshots = models.ManyToManyField(Snapshot, related_name='+')
     volume_backups = models.ManyToManyField(VolumeBackup, related_name='dr_backups')

@@ -487,6 +487,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     backup_schedules = BackupScheduleSerializer(many=True, read_only=True)
 
     skip_external_ip_assignment = serializers.BooleanField(write_only=True, default=False)
+    system_volume_size = serializers.IntegerField(min_value=1024)
+    data_volume_size = serializers.IntegerField(initial=20 * 1024, min_value=1024)
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
@@ -506,6 +508,18 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         if 'system_volume_size' in fields:
             fields['system_volume_size'].required = True
         return fields
+
+    @staticmethod
+    def eager_load(queryset):
+        queryset = structure_serializers.VirtualMachineSerializer.eager_load(queryset)
+        queryset = queryset.select_related('tenant')
+        return queryset.prefetch_related(
+            'security_groups__security_group',
+            'security_groups__security_group__rules',
+            'backups',
+            'backup_schedules',
+            'volumes',
+        )
 
     def validate(self, attrs):
         # skip validation on object update
@@ -553,12 +567,56 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
+        """ Store flavor, ssh_key and image details into instance model.
+            Create volumes and security groups for instance.
+        """
         security_groups = [data['security_group'] for data in validated_data.pop('security_groups', [])]
+        tenant = validated_data['tenant']
+        spl = tenant.service_project_link
+        ssh_key = validated_data.get('ssh_key')
+        if ssh_key:
+            validated_data['key_name'] = self.get_key_name(ssh_key)
+            validated_data['key_fingerprint'] = ssh_key.fingerprint
+
+        flavor = validated_data['flavor']
+        validated_data['flavor_name'] = flavor.name
+        validated_data['cores'] = flavor.cores
+        validated_data['ram'] = flavor.ram
+        validated_data['flavor_disk'] = flavor.disk
+
+        image = validated_data['image']
+        validated_data['image_name'] = image.name
+        validated_data['min_disk'] = image.min_disk
+        validated_data['min_ram'] = image.min_ram
+
+        system_volume_size = validated_data['system_volume_size']
+        data_volume_size = validated_data['data_volume_size']
+        validated_data['disk'] = data_volume_size + system_volume_size
+
         instance = super(InstanceSerializer, self).create(validated_data)
 
         for sg in security_groups:
             instance.security_groups.create(security_group=sg)
+
+        system_volume = models.Volume.objects.create(
+            name='{0}-system'.format(instance.name),
+            tenant=tenant,
+            service_project_link=spl,
+            size=system_volume_size,
+            image=image,
+            bootable=True,
+        )
+        system_volume.increase_backend_quotas_usage()
+        data_volume = models.Volume.objects.create(
+            name='{0}-data'.format(instance.name),
+            tenant=tenant,
+            service_project_link=spl,
+            size=data_volume_size,
+        )
+        data_volume.increase_backend_quotas_usage()
+        instance.volumes.add(system_volume, data_volume)
 
         return instance
 
@@ -590,26 +648,11 @@ class InstanceImportSerializer(structure_serializers.BaseResourceImportSerialize
     def create(self, validated_data):
         tenant = validated_data['tenant']
         backend = tenant.get_backend()
-
         try:
-            backend_instance = backend.get_instance(validated_data['backend_id'])
+            instance = backend.import_instance(validated_data['backend_id'])
         except OpenStackBackendError as e:
             raise serializers.ValidationError(
                 {'backend_id': "Can't import instance with ID %s. Reason: %s" % (validated_data['backend_id'], e)})
-
-        backend_security_groups = backend_instance.nc_model_data.pop('security_groups')
-        security_groups = tenant.security_groups.filter(name__in=backend_security_groups)
-        if security_groups.count() != len(backend_security_groups):
-            raise serializers.ValidationError(
-                {'backend_id': "Security groups for instance ID %s "
-                               "are missed in NodeConductor" % validated_data['backend_id']})
-
-        validated_data.update(backend_instance.nc_model_data)
-        instance = super(InstanceImportSerializer, self).create(validated_data)
-
-        for sg in security_groups:
-            instance.security_groups.create(security_group=sg)
-
         return instance
 
 
@@ -912,13 +955,9 @@ def create_dr_backup_related_resources(dr_backup):
 
     This function is extracted from serializer to create dr backups with scheduler.
     """
-    # Import instance volumes to NC. Temporary. Should be removed after NC-1410 implementation.
     instance = dr_backup.source_instance
-    backend = instance.get_backend()
-    volumes = [backend.import_volume(vid) for vid in (instance.system_volume_id, instance.data_volume_id)]
-    dr_backup.instance_volumes.add(*volumes)
 
-    for volume in volumes:
+    for volume in instance.volumes.all():
         # Create temporary snapshot volume for instance volume.
         snapshot = models.Snapshot.objects.create(
             source_volume=volume,
@@ -1042,6 +1081,7 @@ class DRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
                 image_metadata=volume_backup.metadata['source_volume_image_metadata'],
             )
             volume.increase_backend_quotas_usage()
+            instance.volumes.add(volume)
             # temporary imported backup
             # no need to increase quotas for mirrored backup - it is just link
             # to the existed record in swift
