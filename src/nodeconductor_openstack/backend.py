@@ -3,7 +3,6 @@ import datetime
 import dateutil.parser
 import json
 import logging
-import re
 import time
 import uuid
 
