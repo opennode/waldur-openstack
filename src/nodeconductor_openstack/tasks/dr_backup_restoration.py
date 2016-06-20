@@ -32,27 +32,12 @@ class CreateInstanceFromVolumesTask(tasks.Task):
 
     def execute(self, dr_backup_restoration):
         instance = dr_backup_restoration.instance
-        volumes = [restoration.volume for restoration in dr_backup_restoration.volume_backup_restorations.all()]
         flavor = dr_backup_restoration.flavor
 
-        if len(volumes) > 2:
-            raise DRBackupRestorationException(
-                'Current instance creation process does not support more instances with more than 2 volumes.')
-        try:
-            system_volume_id = next(volume.backend_id for volume in volumes if volume.bootable)
-        except StopIteration:
-            raise DRBackupRestorationException('Cannot restore instance without system volume.')
-        try:
-            data_volume_id = next(volume.backend_id for volume in volumes if not volume.bootable)
-        except StopIteration:
-            raise DRBackupRestorationException('Cannot restore instance without data volume.')
-
         backend = instance.get_backend()
-        backend.provision_instance(
+        backend.create_instance(
             instance,
             backend_flavor_id=flavor.backend_id,
-            data_volume_id=data_volume_id,
-            system_volume_id=system_volume_id,
             skip_external_ip_assignment=True,
         )
 

@@ -250,14 +250,16 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         send_task('openstack', 'sync_instance_security_groups')(self.get_object().uuid.hex)
 
     def perform_provision(self, serializer):
-        resource = serializer.save()
-        backend = resource.get_backend()
-        backend.provision(
-            resource,
-            flavor=serializer.validated_data['flavor'],
-            image=serializer.validated_data['image'],
+        instance = serializer.save()
+        executors.InstanceCreateExecutor.execute(
+            instance,
             ssh_key=serializer.validated_data.get('ssh_public_key'),
-            skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'])
+            flavor=serializer.validated_data['flavor'],
+            skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'],
+        )
+
+    def perform_managed_resource_destroy(self, instance, force=False):
+        executors.InstanceDeleteExecutor.execute(instance, force=force)
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)

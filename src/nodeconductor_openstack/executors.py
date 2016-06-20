@@ -444,4 +444,60 @@ class DRBackupRestorationCreateExecutor(executors.CreateExecutor, executors.Base
 
     @classmethod
     def get_failure_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
-        return SetDRBackupRestorationErredTask().si(serialized_dr_backup_restoration)
+        return SetDRBackupRestorationErredTask().s(serialized_dr_backup_restoration)
+
+
+class InstanceCreateExecutor(executors.CreateExecutor, executors.BaseChordExecutor):
+    """ First - create instance volumes in parallel, after - create instance based on created volumes """
+
+    @classmethod
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+        """ Create all instance volumes in parallel and wait for them to provision """
+        volumes_tasks = [tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')]
+        for volume in instance.volumes.all():
+            serialized_volume = utils.serialize_instance(volume)
+            volumes_tasks.append(chain(
+                # start volume creation
+                tasks.BackendMethodTask().si(serialized_volume, 'create_volume', state_transition='begin_creating'),
+                # wait until volume become available
+                PollRuntimeStateTask().si(
+                    serialized_volume,
+                    backend_pull_method='pull_volume_runtime_state',
+                    success_state='available',
+                    erred_state='error',
+                ).set(countdown=30),
+                # pull volume to sure that it is bootable
+                tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
+                # mark volume as OK
+                tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'),
+            ))
+        return group(volumes_tasks)
+
+    @classmethod
+    def get_callback_signature(cls, instance, serialized_instance,
+                               ssh_key=None, flavor=None, skip_external_ip_assignment=False):
+        # Note that flavor is required for instance creation.
+        kwargs = {
+            'backend_flavor_id': flavor.backend_id,
+            'skip_external_ip_assignment': skip_external_ip_assignment,
+        }
+        if ssh_key is not None:
+            kwargs['public_key'] = ssh_key.public_key,
+        return tasks.BackendMethodTask().si(serialized_instance, 'create_instance', **kwargs)
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        # XXX: This method is overridden to support old-style states.
+        return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
+
+
+class InstanceDeleteExecutor(executors.DeleteExecutor):
+
+    @classmethod
+    def pre_apply(cls, instance, **kwargs):
+        instance.schedule_deletion()
+        instance.save(update_fields=['state'])
+
+    @classmethod
+    def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
+        return tasks.BackendMethodTask().si(serialized_instance, 'delete_instance')
