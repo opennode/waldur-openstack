@@ -10,25 +10,28 @@ def populate_instance_volumes(apps, schema_editor):
     Instance = apps.get_model('openstack', 'Instance')
     Volume = apps.get_model('openstack', 'Volume')
     for instance in Instance.objects.all():
-        system_volume = Volume.objects.create(
-            uuid=uuid4().hex,
-            tenant=instance.tenant,
-            service_project_link=instance.service_project_link,
-            bootable=True,
-            size=instance.system_volume_size,
-            backend_id=instance.system_volume_id,
-            name='{0}-system'.format(instance.name),
-        )
-        data_volume = Volume.objects.create(
-            uuid=uuid4().hex,
-            tenant=instance.tenant,
-            service_project_link=instance.service_project_link,
-            bootable=False,
-            size=instance.data_volume_size,
-            backend_id=instance.data_volume_id,
-            name='{0}-data'.format(instance.name),
-        )
-        instance.volumes.add(system_volume, data_volume)
+        if instance.system_volume_id:
+            system_volume = Volume.objects.create(
+                uuid=uuid4().hex,
+                tenant=instance.tenant,
+                service_project_link=instance.service_project_link,
+                bootable=True,
+                size=instance.system_volume_size,
+                backend_id=instance.system_volume_id,
+                name='{0}-system'.format(instance.name[:143]),
+            )
+            instance.volumes.add(system_volume)
+        if instance.data_volume_id:
+            data_volume = Volume.objects.create(
+                uuid=uuid4().hex,
+                tenant=instance.tenant,
+                service_project_link=instance.service_project_link,
+                bootable=False,
+                size=instance.data_volume_size,
+                backend_id=instance.data_volume_id,
+                name='{0}-data'.format(instance.name[:145]),
+            )
+            instance.volumes.add(data_volume)
 
 
 class Migration(migrations.Migration):
