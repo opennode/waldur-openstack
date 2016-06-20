@@ -827,6 +827,7 @@ class OpenStackBackend(ServiceBackend):
         try:
             backend_instance = nova.servers.get(backend_instance_id)
             flavor = nova.flavors.get(backend_instance.flavor['id'])
+            attached_volume_ids = [v.volumeId for v in nova.volumes.get_server_volumes(backend_instance_id)]
         except nova_exceptions.ClientException as e:
             logger.exception("Failed to lookup instance %s information", backend_instance_id)
             six.reraise(OpenStackBackendError, e)
@@ -854,7 +855,6 @@ class OpenStackBackend(ServiceBackend):
         with transaction.atomic():
             # import instance volumes, or use existed if they already exist in NodeConductor.
             volumes = []
-            attached_volume_ids = [v.volumeId for v in nova.volumes.get_server_volumes(backend_instance_id)]
             for backend_volume_id in attached_volume_ids:
                 try:
                     volumes.append(models.Volume.objects.get(tenant=tenant, backend_id=backend_volume_id))

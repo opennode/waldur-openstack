@@ -254,7 +254,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         executors.InstanceCreateExecutor.execute(
             instance,
             ssh_key=serializer.validated_data.get('ssh_public_key'),
-            image=serializer.validated_data['image'],
             flavor=serializer.validated_data['flavor'],
             skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'],
         )
