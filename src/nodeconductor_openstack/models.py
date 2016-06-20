@@ -190,10 +190,6 @@ class FloatingIP(core_models.UuidMixin):
         return self.tenant.get_backend()
 
 
-# TODO:
-# 1. think how to populate instance volumes. DONE.
-# 2. implement import.
-# 3. Fix DR backups to use instance volumes.
 class Instance(structure_models.VirtualMachineMixin,
                structure_models.PaidResource,
                structure_models.Resource):
@@ -228,14 +224,12 @@ class Instance(structure_models.VirtualMachineMixin,
     def data_volume_id(self):
         if self.data_volume:
             return self.data_volume.backend_id
-        return
 
     # XXX: This property exists only for compatibility.
     @property
     def data_volume_size(self):
         if self.data_volume:
             return self.data_volume.size
-        return
 
     @property
     def system_volume(self):
@@ -248,14 +242,12 @@ class Instance(structure_models.VirtualMachineMixin,
     def system_volume_id(self):
         if self.system_volume:
             return self.system_volume.backend_id
-        return
 
     # XXX: This property exists only for compatibility.
     @property
     def system_volume_size(self):
         if self.system_volume:
             return self.system_volume.size
-        return
 
     @classmethod
     def get_url_name(cls):
