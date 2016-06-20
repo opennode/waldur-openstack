@@ -276,7 +276,7 @@ class OpenStackBackend(ServiceBackend):
         instance.save()
         send_task('openstack', 'restart')(instance.uuid.hex)
 
-    def get_or_create_ssh_key_for_tenant(self, tenant, key_name, fingerprint, public_key):
+    def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
         nova = self.nova_client
 
         try:
@@ -950,7 +950,7 @@ class OpenStackBackend(ServiceBackend):
             # instance key name and fingerprint are optional
             if instance.key_name:
                 backend_public_key = self.get_or_create_ssh_key_for_tenant(
-                    tenant, instance.key_name, instance.key_fingerprint, public_key)
+                    instance.key_name, instance.key_fingerprint, public_key)
             else:
                 backend_public_key = None
 
