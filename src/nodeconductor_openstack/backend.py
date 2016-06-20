@@ -1080,10 +1080,17 @@ class OpenStackBackend(ServiceBackend):
         ports = neutron.list_ports(tenant_id=tenant.backend_id)
         if ports:
             for port in ports['ports']:
-                logger.info("Deleting port %s from tenant %s", port['id'], tenant.backend_id)
+                logger.info("Deleting port %s interface_router from tenant %s", port['id'], tenant.backend_id)
                 if not dryrun:
                     try:
                         neutron.remove_interface_router(port['device_id'], {'port_id': port['id']})
+                    except (neutron_exceptions.NotFound, keystone_exceptions.ClientException):
+                        logger.debug("Port %s interface_router is already gone from tenant %s", port['id'], tenant.backend_id)
+
+                logger.info("Deleting port %s from tenant %s", port['id'], tenant.backend_id)
+                if not dryrun:
+                    try:
+                        neutron.delete_port(port['id'])
                     except (neutron_exceptions.NotFound, keystone_exceptions.ClientException):
                         logger.debug("Port %s is already gone from tenant %s", port['id'], tenant.backend_id)
 
@@ -1102,6 +1109,8 @@ class OpenStackBackend(ServiceBackend):
         networks = neutron.list_networks(tenant_id=tenant.backend_id)
         if networks:
             for network in networks['networks']:
+                if network['router:external']:
+                    continue
                 for subnet in network['subnets']:
                     logger.info("Deleting subnetwork %s from tenant %s", subnet, tenant.backend_id)
                     if not dryrun:
