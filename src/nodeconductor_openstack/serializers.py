@@ -1,4 +1,5 @@
 import pytz
+import re
 import urlparse
 
 from django.contrib.contenttypes.models import ContentType
@@ -577,7 +578,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         spl = tenant.service_project_link
         ssh_key = validated_data.get('ssh_key')
         if ssh_key:
-            validated_data['key_name'] = '{0}-{1}'.format(ssh_key.uuid.hex, ssh_key.get_safe_name())
+            # We want names to be human readable in backend.
+            # OpenStack only allows latin letters, digits, dashes, underscores and spaces
+            # as key names, thus we mangle the original name.
+            safe_name = re.sub(r'[^-a-zA-Z0-9 _]+', '_', ssh_key.name)[:17]
+            validated_data['key_name'] = '{0}-{1}'.format(ssh_key.uuid.hex, safe_name)
             validated_data['key_fingerprint'] = ssh_key.fingerprint
 
         flavor = validated_data['flavor']
