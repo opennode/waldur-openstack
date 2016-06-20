@@ -123,6 +123,25 @@ class InstanceFactory(TenantMixin, factory.DjangoModelFactory):
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstack-instance-list')
 
+    @factory.post_generation
+    def volumes(self, create, extracted, **kwargs):
+        if not create:
+            return
+
+        self.volumes.create(
+            tenant=self.tenant,
+            service_project_link=self.service_project_link,
+            bootable=True,
+            size=10 * 1024,
+            name='{0}-system'.format(self.name),
+        )
+        self.volumes.create(
+            tenant=self.tenant,
+            service_project_link=self.service_project_link,
+            size=20 * 1024,
+            name='{0}-system'.format(self.name),
+        )
+
 
 class SecurityGroupFactory(TenantMixin, factory.DjangoModelFactory):
     class Meta(object):

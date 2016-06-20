@@ -435,7 +435,7 @@ class BackupRestorationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
 
         system_volume_size = attrs['system_volume_size']
-        data_volume_size = attrs.get('data_volume_size', models.Instance.DEFAULT_DATA_VOLUME_SIZE)
+        data_volume_size = attrs.get('data_volume_size', 20 * 1024)
         quota_usage = {
             'storage': system_volume_size + data_volume_size,
             'vcpu': flavor.cores,
@@ -489,7 +489,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     skip_external_ip_assignment = serializers.BooleanField(write_only=True, default=False)
     system_volume_size = serializers.IntegerField(min_value=1024)
-    data_volume_size = serializers.IntegerField(initial=20 * 1024, min_value=1024)
+    data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024)
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
@@ -626,6 +626,9 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         return instance
 
     def update(self, instance, validated_data):
+        # DRF adds data_volume_size to validated_data, because it has default value.
+        # This field is protected, so it should not be used for update.
+        del validated_data['data_volume_size']
         security_groups = validated_data.pop('security_groups', [])
         security_groups = [data['security_group'] for data in security_groups]
         instance = super(InstanceSerializer, self).update(instance, validated_data)
