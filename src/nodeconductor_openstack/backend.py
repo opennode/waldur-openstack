@@ -276,19 +276,6 @@ class OpenStackBackend(ServiceBackend):
         instance.save()
         send_task('openstack', 'restart')(instance.uuid.hex)
 
-    def get_key_name(self, public_key):
-        # We want names to be human readable in backend.
-        # OpenStack only allows latin letters, digits, dashes, underscores and spaces
-        # as key names, thus we mangle the original name.
-
-        safe_name = self.sanitize_key_name(public_key.name)
-        key_name = '{0}-{1}'.format(public_key.uuid.hex, safe_name)
-        return key_name
-
-    def sanitize_key_name(self, key_name):
-        # Safe key name length must be less than 17 chars due to limit of full key name to 50 chars.
-        return re.sub(r'[^-a-zA-Z0-9 _]+', '_', key_name)[:17]
-
     def get_or_create_ssh_key_for_tenant(self, tenant, key_name, fingerprint, public_key):
         nova = self.nova_client
 
@@ -865,14 +852,14 @@ class OpenStackBackend(ServiceBackend):
                 launch_time = timezone.make_aware(d, timezone.utc)
 
         with transaction.atomic():
-            # import instance volumes, or use existed if they already exist in NodeCondcutor.
+            # import instance volumes, or use existed if they already exist in NodeConductor.
             volumes = []
             attached_volume_ids = [v.volumeId for v in nova.volumes.get_server_volumes(backend_instance_id)]
             for backend_volume_id in attached_volume_ids:
                 try:
                     volumes.append(models.Volume.objects.get(tenant=tenant, backend_id=backend_volume_id))
                 except models.Volume.DoesNotExist:
-                    volumes.append(self.import_volume(backend_volume_id), save=save)
+                    volumes.append(self.import_volume(backend_volume_id, save=save))
 
             # security groups should exist in NodeConductor.
             security_groups_names = [sg['name'] for sg in backend_instance.security_groups]
@@ -931,7 +918,7 @@ class OpenStackBackend(ServiceBackend):
         except nova_exceptions.ClientException:
             return []
 
-    def create_instance(self, instance, backend_flavor_id=None, backend_image_id=None,
+    def create_instance(self, instance, backend_flavor_id=None,
                         skip_external_ip_assignment=False, public_key=None):
         logger.info('About to create instance %s', instance.uuid)
         try:
