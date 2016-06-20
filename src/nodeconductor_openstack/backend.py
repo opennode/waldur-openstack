@@ -1039,10 +1039,7 @@ class OpenStackBackend(ServiceBackend):
                 else:
                     instance.security_groups.create(security_group=security_group)
 
-        except (glance_exceptions.ClientException,
-                cinder_exceptions.ClientException,
-                nova_exceptions.ClientException,
-                neutron_exceptions.NeutronClientException) as e:
+        except (nova_exceptions.ClientException, neutron_exceptions.NeutronClientException) as e:
             logger.exception("Failed to provision instance %s", instance.uuid)
             six.reraise(OpenStackBackendError, e)
         else:
