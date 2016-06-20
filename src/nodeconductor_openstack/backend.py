@@ -863,6 +863,8 @@ class OpenStackBackend(ServiceBackend):
 
             # security groups should exist in NodeConductor.
             security_groups_names = [sg['name'] for sg in backend_instance.security_groups]
+            if tenant.security_groups.filter(name__in=security_groups_names).count() != len(security_groups_names):
+                self.pull_tenant_security_groups(tenant)
             security_groups = []
             for name in security_groups_names:
                 try:
