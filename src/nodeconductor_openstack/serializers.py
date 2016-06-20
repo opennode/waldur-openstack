@@ -577,7 +577,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         spl = tenant.service_project_link
         ssh_key = validated_data.get('ssh_key')
         if ssh_key:
-            validated_data['key_name'] = self.get_key_name(ssh_key)
+            validated_data['key_name'] = '{0}-{1}'.format(ssh_key.uuid.hex, ssh_key.get_safe_name())
             validated_data['key_fingerprint'] = ssh_key.fingerprint
 
         flavor = validated_data['flavor']
@@ -601,7 +601,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             instance.security_groups.create(security_group=sg)
 
         system_volume = models.Volume.objects.create(
-            name='{0}-system'.format(instance.name),
+            name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
             tenant=tenant,
             service_project_link=spl,
             size=system_volume_size,
@@ -610,7 +610,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         )
         system_volume.increase_backend_quotas_usage()
         data_volume = models.Volume.objects.create(
-            name='{0}-data'.format(instance.name),
+            name='{0}-data'.format(instance.name[:145]),  # volume name cannot be longer than 150 symbols
             tenant=tenant,
             service_project_link=spl,
             size=data_volume_size,
