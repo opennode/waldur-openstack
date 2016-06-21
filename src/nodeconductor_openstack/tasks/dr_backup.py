@@ -40,10 +40,17 @@ class CleanUpDRBackupTask(tasks.StateTransitionTask):
         Celery is too fragile with groups or chains in callback.
         It is safer to make cleanup in one task.
     """
-    def execute(self, dr_backup):
+    def execute(self, dr_backup, force=False):
         # import here to avoid circular dependencies
         from ..executors import SnapshotDeleteExecutor, VolumeDeleteExecutor
         for snapshot in dr_backup.temporary_snapshots.all():
-            SnapshotDeleteExecutor.execute(snapshot)
+            SnapshotDeleteExecutor.execute(snapshot, force=force)
         for volume in dr_backup.temporary_volumes.all():
-            VolumeDeleteExecutor.execute(volume)
+            VolumeDeleteExecutor.execute(volume, force=force)
+
+
+class ForceDeleteDRBackupTask(tasks.StateTransitionTask):
+
+    def execute(self, dr_backup):
+        dr_backup.volume_backups.all().delete()
+        dr_backup.delete()

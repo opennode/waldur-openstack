@@ -1,8 +1,7 @@
 from celery import shared_task, current_app
 from functools import wraps
 
-from nodeconductor.core.tasks import retry_if_false, BackendMethodTask, Task
-from nodeconductor.core.utils import deserialize_instance
+from nodeconductor.core.tasks import retry_if_false, Task
 
 from .. import models
 from ..backend import OpenStackClient
@@ -78,4 +77,20 @@ class PollRuntimeStateTask(Task):
         elif instance.runtime_state == erred_state:
             raise RuntimeStateException(
                 'Instance %s (PK: %s) runtime state become erred: %s' % (instance, instance.pk, erred_state))
+        return instance
+
+
+class PollBackendCheckTask(Task):
+    """ Poll was object deleted from backend """
+    max_retries = 60
+    default_retry_delay = 5
+
+    def get_backend(self, instance):
+        return instance.get_backend()
+
+    def execute(self, instance, backend_check_method):
+        # backend_check_method should return True if object does not exist at backend
+        backend = self.get_backend(instance)
+        if not getattr(backend, backend_check_method)(instance):
+            self.retry()
         return instance
