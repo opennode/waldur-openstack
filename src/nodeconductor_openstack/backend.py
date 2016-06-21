@@ -459,7 +459,7 @@ class OpenStackBackend(ServiceBackend):
             return False
         except nova_exceptions.NotFound:
             return True
-        except cinder_exceptions.ClientException as e:
+        except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
     def pull_flavors(self):
