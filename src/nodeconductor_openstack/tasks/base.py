@@ -80,7 +80,7 @@ class PollRuntimeStateTask(Task):
         return instance
 
 
-class PollDeletionTask(Task):
+class PollBackedCheckTask(Task):
     """ Poll was object deleted from backend """
     max_retries = 60
     default_retry_delay = 5
