@@ -407,16 +407,29 @@ class OpenStackBackend(ServiceBackend):
         else:
             return False
 
-    def _wait_for_volume_deletion(self, volume_id, cinder, retries=90, poll_interval=3):
+    @log_backend_action('check is volume deleted')
+    def is_volume_deleted(self, volume):
+        cinder = self.cinder_client
         try:
-            for _ in range(retries):
-                cinder.volumes.get(volume_id)
-                time.sleep(poll_interval)
-
+            cinder.volumes.get(volume.backend_id)
             return False
         except cinder_exceptions.NotFound:
             return True
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
 
+    @log_backend_action('check is snapshot deleted')
+    def is_snapshot_deleted(self, snapshot):
+        cinder = self.cinder_client
+        try:
+            cinder.volume_snapshots.get(snapshot.backend_id)
+            return False
+        except cinder_exceptions.NotFound:
+            return True
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    # deprecated
     def _wait_for_snapshot_deletion(self, snapshot_id, cinder, retries=90, poll_interval=3):
         try:
             for _ in range(retries):
@@ -427,16 +440,27 @@ class OpenStackBackend(ServiceBackend):
         except (cinder_exceptions.NotFound, keystone_exceptions.NotFound):
             return True
 
-    def _wait_for_instance_deletion(self, backend_instance_id, retries=90, poll_interval=3):
+    @log_backend_action('check is volume backup deleted')
+    def is_volume_backup_deleted(self, volume_backup):
+        cinder_v2 = self.cinder_v2_client
+        try:
+            cinder_v2.backups.get(volume_backup.backend_id)
+            return False
+        except cinder_exceptions.NotFound:
+            return True
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action('check is instance deleted')
+    def is_instance_deleted(self, instance):
         nova = self.nova_client
         try:
-            for _ in range(retries):
-                nova.servers.get(backend_instance_id)
-                time.sleep(poll_interval)
-
+            nova.servers.get(instance.backend_id)
             return False
         except nova_exceptions.NotFound:
             return True
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
 
     def pull_flavors(self):
         nova = self.nova_admin_client
