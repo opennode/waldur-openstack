@@ -2,7 +2,7 @@ from celery import chain, group
 
 from nodeconductor.core import tasks, executors, utils
 
-from .tasks import (PollRuntimeStateTask, PollBackedCheckTask, ForceDeleteDRBackupTask,
+from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask)
 
@@ -238,7 +238,7 @@ class VolumeDeleteExecutor(executors.DeleteExecutor):
         if volume.backend_id:
             return chain(
                 tasks.BackendMethodTask().si(serialized_volume, 'delete_volume', state_transition='begin_deleting'),
-                PollBackedCheckTask().si(serialized_volume, 'is_volume_deleted'),
+                PollBackendCheckTask().si(serialized_volume, 'is_volume_deleted'),
             )
         else:
             return tasks.StateTransitionTask().si(serialized_volume, state_transition='begin_deleting')
@@ -279,7 +279,7 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
         if snapshot.backend_id:
             return chain(
                 tasks.BackendMethodTask().si(serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting'),
-                PollBackedCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'),
+                PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'),
             )
         else:
             return tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
@@ -365,7 +365,7 @@ class DRBackupDeleteExecutor(executors.DeleteExecutor, executors.BaseChordExecut
             serialized = utils.serialize_instance(volume_backup)
             deletion_tasks.append(chain(
                 tasks.BackendMethodTask().si(serialized, 'delete_volume_backup', state_transition='begin_deleting'),
-                PollBackedCheckTask().si(serialized, 'is_volume_backup_deleted'),
+                PollBackendCheckTask().si(serialized, 'is_volume_backup_deleted'),
                 tasks.DeletionTask().si(serialized),
             ))
 
@@ -512,7 +512,7 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
         if instance.backend_id:
             return chain(
                 tasks.BackendMethodTask().si(serialized_instance, 'delete_instance', state_transition='begin_deleting'),
-                PollBackedCheckTask().si(serialized_instance, 'is_instance_deleted'),
+                PollBackendCheckTask().si(serialized_instance, 'is_instance_deleted'),
             )
         else:
             return tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_deleting')
