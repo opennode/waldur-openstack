@@ -57,7 +57,7 @@ class OpenStackSession(dict):
         try:
             # This will eagerly sign in throwing AuthorizationFailure on bad credentials
             self.keystone_session.get_token()
-        except (keystone_exceptions.AuthorizationFailure, keystone_exceptions.ConnectionRefused) as e:
+        except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
         for opt in ('auth_ref', 'auth_url', 'tenant_id', 'tenant_name'):
