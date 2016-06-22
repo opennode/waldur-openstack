@@ -121,7 +121,7 @@ class OpenStackClient(object):
     def nova(self):
         try:
             return nova_client.Client(session=self.session.keystone_session)
-        except (nova_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except nova_exceptions.ClientException as e:
             logger.exception('Failed to create nova client: %s', e)
             six.reraise(OpenStackBackendError, e)
 
@@ -129,7 +129,7 @@ class OpenStackClient(object):
     def neutron(self):
         try:
             return neutron_client.Client(session=self.session.keystone_session)
-        except (neutron_exceptions.NeutronClientException, keystone_exceptions.ClientException) as e:
+        except neutron_exceptions.NeutronClientException as e:
             logger.exception('Failed to create neutron client: %s', e)
             six.reraise(OpenStackBackendError, e)
 
@@ -137,7 +137,7 @@ class OpenStackClient(object):
     def cinder(self):
         try:
             return cinder_client.Client(session=self.session.keystone_session)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             logger.exception('Failed to create cinder client: %s', e)
             six.reraise(OpenStackBackendError, e)
 
@@ -145,7 +145,7 @@ class OpenStackClient(object):
     def cinder_v2(self):
         try:
             return cinder_v2_client.Client(session=self.session.keystone_session)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             logger.exception('Failed to create cinder client: %s', e)
             six.reraise(OpenStackBackendError, e)
 
@@ -283,16 +283,12 @@ class OpenStackBackend(ServiceBackend):
         except nova_exceptions.NotFound:
             # Fine, it's a new key, let's add it
             try:
-                return nova.keypairs.create(name=key_name, public_key=public_key)
-            except (nova_exceptions.ClientException, keystone_exceptions.ClientException) as e:
-                six.reraise(OpenStackBackendError, e)
-            else:
                 logger.info('Propagating ssh public key %s to backend', key_name)
-        except (nova_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+                return nova.keypairs.create(name=key_name, public_key=public_key)
+            except nova_exceptions.ClientException as e:
+                six.reraise(OpenStackBackendError, e)
+        except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
-        else:
-            # Found a key with the same fingerprint, skip adding
-            logger.debug('Skipped propagating ssh public key %s to backend', key_name)
 
     @log_backend_action()
     def remove_ssh_key_from_tenant(self, tenant, key_name, fingerprint):
@@ -437,7 +433,7 @@ class OpenStackBackend(ServiceBackend):
                 time.sleep(poll_interval)
 
             return False
-        except (cinder_exceptions.NotFound, keystone_exceptions.NotFound):
+        except cinder_exceptions.NotFound:
             return True
 
     @log_backend_action('check is volume backup deleted')
@@ -1103,7 +1099,7 @@ class OpenStackBackend(ServiceBackend):
                 if not dryrun:
                     try:
                         neutron.delete_floatingip(floatingip['id'])
-                    except (neutron_exceptions.NotFound, keystone_exceptions.ClientException):
+                    except neutron_exceptions.NotFound:
                         logger.debug("Floating IP %s is already gone from tenant %s", floatingip['id'], tenant.backend_id)
 
         # ports
@@ -1114,14 +1110,14 @@ class OpenStackBackend(ServiceBackend):
                 if not dryrun:
                     try:
                         neutron.remove_interface_router(port['device_id'], {'port_id': port['id']})
-                    except (neutron_exceptions.NotFound, keystone_exceptions.ClientException):
+                    except neutron_exceptions.NotFound:
                         logger.debug("Port %s interface_router is already gone from tenant %s", port['id'], tenant.backend_id)
 
                 logger.info("Deleting port %s from tenant %s", port['id'], tenant.backend_id)
                 if not dryrun:
                     try:
                         neutron.delete_port(port['id'])
-                    except (neutron_exceptions.NotFound, keystone_exceptions.ClientException):
+                    except neutron_exceptions.NotFound:
                         logger.debug("Port %s is already gone from tenant %s", port['id'], tenant.backend_id)
 
         # routers
@@ -1132,7 +1128,7 @@ class OpenStackBackend(ServiceBackend):
                 if not dryrun:
                     try:
                         neutron.delete_router(router['id'])
-                    except (neutron_exceptions.NotFound, keystone_exceptions.ClientException):
+                    except neutron_exceptions.NotFound:
                         logger.debug("Router %s is already gone from tenant %s", router['id'], tenant.backend_id)
 
         # networks
@@ -1146,14 +1142,14 @@ class OpenStackBackend(ServiceBackend):
                     if not dryrun:
                         try:
                             neutron.delete_subnet(subnet)
-                        except (neutron_exceptions.NotFound, keystone_exceptions.ClientException):
+                        except neutron_exceptions.NotFound:
                             logger.info("Subnetwork %s is already gone from tenant %s", subnet, tenant.backend_id)
 
                 logger.info("Deleting network %s from tenant %s", network['id'], tenant.backend_id)
                 if not dryrun:
                     try:
                         neutron.delete_network(network['id'])
-                    except (neutron_exceptions.NotFound, keystone_exceptions.ClientException):
+                    except neutron_exceptions.NotFound:
                         logger.debug("Network %s is already gone from tenant %s", network['id'], tenant.backend_id)
 
         # security groups
@@ -1164,7 +1160,7 @@ class OpenStackBackend(ServiceBackend):
             if not dryrun:
                 try:
                     sgroup.delete()
-                except (nova_exceptions.ClientException, keystone_exceptions.ClientException):
+                except nova_exceptions.ClientException:
                     logger.debug("Cannot delete %s from tenant %s", sgroup, tenant.backend_id)
 
         # servers (instances)
@@ -1501,8 +1497,7 @@ class OpenStackBackend(ServiceBackend):
 
             neutron.delete_network(tenant.external_network_id)
             logger.info('External network with id %s has been deleted.', tenant.external_network_id)
-        except (neutron_exceptions.NeutronClientException,
-                keystone_exceptions.ClientException) as e:
+        except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
             tenant.external_network_id = ''
@@ -1541,7 +1536,7 @@ class OpenStackBackend(ServiceBackend):
             }
             create_response = neutron.create_subnet({'subnets': [subnet_data]})
             self.get_or_create_router(network_name, create_response['subnets'][0]['id'])
-        except (keystone_exceptions.ClientException, neutron_exceptions.NeutronException) as e:
+        except neutron_exceptions.NeutronException as e:
             six.reraise(OpenStackBackendError, e)
         else:
             tenant.internal_network_id = internal_network_id
@@ -1557,7 +1552,7 @@ class OpenStackBackend(ServiceBackend):
                     'tenant_id': tenant.backend_id,
                 }
             })['floatingip']
-        except (neutron_exceptions.NeutronClientException, keystone_exceptions.ClientException) as e:
+        except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
             tenant.floating_ips.create(
@@ -1740,7 +1735,7 @@ class OpenStackBackend(ServiceBackend):
         nova = self.nova_client
         try:
             nova.servers.delete(instance.backend_id)
-        except (nova_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
         if instance.tenant.floating_ips.filter(address=instance.external_ips).update(status='DOWN'):
@@ -1762,7 +1757,7 @@ class OpenStackBackend(ServiceBackend):
                 tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
                 snapshot_ids.append(snapshot.id)
 
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             logger.exception('Failed to snapshot volumes %s', ', '.join(volume_ids))
             six.reraise(OpenStackBackendError, e)
         else:
@@ -1789,7 +1784,7 @@ class OpenStackBackend(ServiceBackend):
                 else:
                     logger.exception('Failed to delete snapshot %s', snapshot_id)
 
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             logger.exception(
                 'Failed to delete snapshots %s', ', '.join(snapshot_ids))
             six.reraise(OpenStackBackendError, e)
@@ -1830,7 +1825,7 @@ class OpenStackBackend(ServiceBackend):
                 # volume size should be equal to a snapshot size
                 tenant.add_quota_usage('storage', self.gb2mb(snapshot.size))
 
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             logger.exception('Failed to promote snapshots %s', ', '.join(snapshot_ids))
             six.reraise(OpenStackBackendError, e)
         else:
@@ -1886,7 +1881,7 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             backend_volume = cinder.volumes.create(**kwargs)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         volume.backend_id = backend_volume.id
         if hasattr(backend_volume, 'volume_image_metadata'):
@@ -1901,7 +1896,7 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             backend_volume = cinder.volumes.get(volume.backend_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         if backend_volume.status != volume.runtime_state:
             volume.runtime_state = backend_volume.status
@@ -1913,7 +1908,7 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             cinder.volumes.update(volume.backend_id, display_name=volume.name, display_description=volume.description)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
@@ -1921,7 +1916,7 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             cinder.volumes.delete(volume.backend_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         volume.decrease_backend_quotas_usage()
 
@@ -1930,7 +1925,7 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             backend_volume = cinder.volumes.get(backend_volume_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
         spl = tenant.service_project_link
@@ -1987,7 +1982,7 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             backend_snapshot = cinder.volume_snapshots.create(snapshot.source_volume.backend_id, **kwargs)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         snapshot.backend_id = backend_snapshot.id
         snapshot.runtime_state = backend_snapshot.status
@@ -2000,7 +1995,7 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             backend_snapshot = cinder.volume_snapshots.get(snapshot.backend_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         if backend_snapshot.status != snapshot.runtime_state:
             snapshot.runtime_state = backend_snapshot.status
@@ -2012,7 +2007,7 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             cinder.volume_snapshots.delete(snapshot.backend_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         snapshot.decrease_backend_quotas_usage()
 
@@ -2023,7 +2018,7 @@ class OpenStackBackend(ServiceBackend):
         try:
             cinder.volume_snapshots.update(
                 snapshot.backend_id, display_name=snapshot.name, display_description=snapshot.description)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
@@ -2036,7 +2031,7 @@ class OpenStackBackend(ServiceBackend):
                 description=volume_backup.description,
                 container=volume_backup.tenant.backend_id,
             )
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         volume_backup.backend_id = backend_volume_backup.id
         volume_backup.runtime_state = backend_volume_backup.status
@@ -2048,7 +2043,7 @@ class OpenStackBackend(ServiceBackend):
         cinder_v2 = self.cinder_v2_client
         try:
             backend_record = cinder_v2.backups.export_record(volume_backup.backend_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         record = volume_backup.record or models.VolumeBackupRecord()
         record.service = backend_record['backup_service']
@@ -2064,7 +2059,7 @@ class OpenStackBackend(ServiceBackend):
         cinder_v2 = self.cinder_v2_client
         try:
             backend_volume_backup = cinder_v2.backups.get(volume_backup.backend_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         if backend_volume_backup.status != volume_backup.runtime_state:
             volume_backup.runtime_state = backend_volume_backup.status
@@ -2076,7 +2071,7 @@ class OpenStackBackend(ServiceBackend):
         cinder_v2 = self.cinder_v2_client
         try:
             cinder_v2.backups.delete(volume_backup.backend_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException) as e:
+        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         if volume_backup.record:
             volume_backup.record.delete()
@@ -2091,7 +2086,7 @@ class OpenStackBackend(ServiceBackend):
                 volume_backup.record.service,
                 base64.b64encode(json.dumps(volume_backup.record.details))
             )
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException, KeyError) as e:
+        except (cinder_exceptions.ClientException, KeyError) as e:
             six.reraise(OpenStackBackendError, e)
         volume_backup.backend_id = imported_record['id']
         volume_backup.save()
@@ -2102,7 +2097,7 @@ class OpenStackBackend(ServiceBackend):
         cinder_v2 = self.cinder_v2_client
         try:
             cinder_v2.restores.restore(volume_id=volume.backend_id, backup_id=volume_backup.backend_id)
-        except (cinder_exceptions.ClientException, keystone_exceptions.ClientException, KeyError) as e:
+        except (cinder_exceptions.ClientException, KeyError) as e:
             six.reraise(OpenStackBackendError, e)
         return volume_backup
 
