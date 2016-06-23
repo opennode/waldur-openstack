@@ -192,6 +192,7 @@ class FloatingIP(core_models.UuidMixin):
 
 class Instance(structure_models.VirtualMachineMixin,
                structure_models.PaidResource,
+               core_models.RuntimeStateMixin,
                structure_models.Resource):
 
     service_project_link = models.ForeignKey(

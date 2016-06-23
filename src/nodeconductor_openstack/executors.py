@@ -536,9 +536,30 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, flavor, **kwargs):
-        return tasks.BackendMethodTask().si(
-                serialized_instance, 'change_flavor', state_transition='begin_resizing',
-                flavor_id=flavor.backend_id)
+        return chain(
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='resize',
+                state_transition='begin_resizing',
+                flavor_id=flavor.backend_id
+            ),
+            PollRuntimeStateTask().si(
+                serialized_instance,
+                backend_pull_method='pull_instance_runtime_state',
+                success_state='VERIFY_RESIZE',
+                erred_state='ERRED'
+            ),
+            tasks.BackendMethodTask().si(
+                instance=serialized_instance,
+                backend_method='confirm_resize'
+            ),
+            PollRuntimeStateTask().si(
+                serialized_instance,
+                backend_pull_method='pull_instance_runtime_state',
+                success_state='SHUTOFF',
+                erred_state='ERRED'
+            ),
+        )
 
     @classmethod
     def get_success_signature(cls, instance, serialized_instance, flavor, **kwargs):
@@ -565,8 +586,45 @@ class InstanceVolumeExtendExecutor(BaseExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, new_size, **kwargs):
-        return tasks.BackendMethodTask().si(
-            serialized_instance, 'extend_disk', state_transition='begin_resizing', new_size=new_size)
+        volume = instance.data_volume
+        serialized_volume = utils.serialize_instance(volume)
+
+        return chain(
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='detach_instance_volume',
+                state_transition='begin_resizing',
+                backend_volume_id=volume.backend_id
+            ),
+            PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error'
+            ),
+            tasks.BackendMethodTask().si(
+                serialized_volume,
+                backend_method='extend_volume',
+                new_size=new_size
+            ),
+            PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error'
+            ),
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='attach_instance_volume',
+                backend_volume_id=volume.backend_id
+            ),
+            PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='in-use',
+                erred_state='error'
+            ),
+        )
 
     @classmethod
     def get_success_signature(cls, instance, serialized_instance, new_size, **kwargs):

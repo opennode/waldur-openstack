@@ -675,21 +675,15 @@ class InstanceVolumeExtendSerializer(serializers.Serializer):
 
     def validate_disk_size(self, value):
         if value is not None:
-            if value <= self.instance.data_volume_size:
+            if value == self.instance.data_volume_size:
                 raise serializers.ValidationError(
-                    "Disk size must be strictly greater than the current one")
-
-            quota_errors = self.instance.tenant.validate_quota_change({
-                'storage': value - self.instance.data_volume_size,
-            })
-            if quota_errors:
-                raise serializers.ValidationError(
-                    "One or more quotas are over limit: \n" + "\n".join(quota_errors))
+                    "Disk size must be strictly greater than the current one.")
         return value
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         new_size = validated_data.get('disk_size')
-        instance.tenant.add_quota_usage('storage', new_size - instance.disk)
+        instance.tenant.add_quota_usage('storage', new_size - instance.disk, validate=True)
         return super(InstanceVolumeExtendSerializer, self).update(instance, validated_data)
 
 
@@ -718,25 +712,19 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 
             if value.settings != spl.service.settings:
                 raise serializers.ValidationError(
-                    "New flavor is not within the same service settings")
+                    "New flavor is not within the same service settings.")
 
             if value.disk < self.instance.flavor_disk:
-                raise serializers.ValidationError("New flavor disk should be greater than the previous value.")
-
-            quota_errors = self.instance.tenant.validate_quota_change({
-                'vcpu': value.cores - self.instance.cores,
-                'ram': value.ram - self.instance.ram,
-            })
-            if quota_errors:
                 raise serializers.ValidationError(
-                    "One or more quotas are over limit: \n" + "\n".join(quota_errors))
+                    "New flavor disk should be greater than the previous value.")
         return value
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         flavor = validated_data.get('flavor')
 
-        instance.tenant.add_quota_usage('ram', flavor.ram - instance.ram)
-        instance.tenant.add_quota_usage('vcpu', flavor.cores - instance.cores)
+        instance.tenant.add_quota_usage('ram', flavor.ram - instance.ram, validate=True)
+        instance.tenant.add_quota_usage('vcpu', flavor.cores - instance.cores, validate=True)
 
         instance.ram = flavor.ram
         instance.cores = flavor.cores
@@ -745,27 +733,6 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
         instance.save(update_fields=['ram', 'cores', 'flavor_name', 'flavor_disk'])
 
         return super(InstanceFlavorChangeSerializer, self).update(instance, validated_data)
-
-
-class InstanceResizeSerializer(InstanceFlavorChangeSerializer,
-                               InstanceVolumeExtendSerializer):
-
-    def get_fields(self):
-        fields = super(InstanceResizeSerializer, self).get_fields()
-        if self.instance:
-            fields['disk_size'].required = False
-            fields['flavor'].required = False
-        return fields
-
-    def validate(self, attrs):
-        flavor = attrs.get('flavor')
-        disk_size = attrs.get('disk_size')
-
-        if flavor is not None and disk_size is not None:
-            raise serializers.ValidationError("Cannot resize both disk size and flavor simultaneously")
-        if flavor is None and disk_size is None:
-            raise serializers.ValidationError("Either disk_size or flavor is required")
-        return attrs
 
 
 class TenantSerializer(structure_serializers.BaseResourceSerializer):

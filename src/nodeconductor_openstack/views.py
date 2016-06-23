@@ -2,6 +2,7 @@ from django.http import Http404
 from django.utils import six
 from rest_framework import viewsets, decorators, exceptions, response, permissions, mixins, status
 from rest_framework import filters as rf_filters
+from rest_framework.exceptions import ValidationError
 from rest_framework.reverse import reverse
 from taggit.models import TaggedItem
 
@@ -175,7 +176,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
-        'resize': serializers.InstanceResizeSerializer,
         'change_flavor': serializers.InstanceFlavorChangeSerializer,
         'extend_volume': serializers.InstanceVolumeExtendSerializer,
     }
@@ -350,16 +350,27 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 "disk_size": 1024
             }
         """
-        serializer = self.get_serializer(instance, data=request.data)
-        serializer.is_valid(raise_exception=True)
+        flavor = request.data.get('flavor')
+        disk_size = request.data.get('disk_size')
 
-        flavor = serializer.validated_data.get('flavor')
-        new_size = serializer.validated_data.get('disk_size')
+        if flavor is not None and disk_size is not None:
+            raise ValidationError("Cannot resize both disk size and flavor simultaneously")
 
-        # Serializer makes sure that exactly one of the branches will match
-        if flavor is not None:
+        if flavor is None and disk_size is None:
+            raise ValidationError("Either disk_size or flavor is required")
+
+        if flavor:
+            serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            flavor = serializer.validated_data.get('flavor')
             executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
-        else:
+
+        if disk_size:
+            serializer = serializers.InstanceVolumeExtendSerializer(instance, data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            new_size = serializer.validated_data.get('disk_size')
             executors.InstanceVolumeExtendExecutor().execute(instance, new_size=new_size)
 
     resize.title = 'Resize virtual machine'
