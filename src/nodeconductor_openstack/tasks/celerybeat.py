@@ -70,7 +70,7 @@ def pull_tenant_instances(serialized_tenant):
             instance.error_message = message
             instance.save(update_fields=['state', 'error_message'])
         else:
-            if instance.state == States.ERRED:
+            if instance.state != States.ERRED and instance.error_message:
                 # for instance state should be updated during pull
                 instance.error_message = ''
                 instance.save(update_fields=['error_message'])
