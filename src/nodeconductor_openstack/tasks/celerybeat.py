@@ -1,6 +1,7 @@
 import logging
 
 from celery import shared_task, chain
+from django.utils import six
 
 from nodeconductor.core import tasks as core_tasks, utils as core_utils
 from nodeconductor.structure import ServiceBackendError
@@ -62,8 +63,16 @@ def pull_tenant_instances(serialized_tenant):
     for instance in tenant.instances.filter(state__in=stable_states).exclude(backend_id=''):
         try:
             backend.pull_instance(instance)
-        except ServiceBackendError:
+        except ServiceBackendError as e:
             logger.error('Failed to pull instance %s (PK: %s).' % (instance.name, instance.pk))
+            instance.set_erred()
+            instance.error_message = six.text_type(e)
+            instance.save(update_fields=['state', 'error_message'])
+        else:
+            if instance.state == States.ERRED:
+                instance.recover()
+                instance.error_message = ''
+                instance.save(update_fields=['state', 'error_message'])
 
 
 @shared_task(name='nodeconductor.openstack.pull_volumes')
@@ -83,5 +92,13 @@ def pull_tenant_volumes(serialized_tenant):
     for volume in tenant.volumes.filter(state__in=[States.OK, States.ERRED]).exclude(backend_id=''):
         try:
             backend.pull_volume(volume)
-        except ServiceBackendError:
+        except ServiceBackendError as e:
             logger.error('Failed to pull volume %s (PK: %s).' % (volume.name, volume.pk))
+            volume.set_erred()
+            volume.error_message = six.text_type(e)
+            volume.save(update_fields=['state', 'error_message'])
+        else:
+            if volume.state == States.ERRED:
+                volume.recover()
+                volume.error_message = ''
+                volume.save(update_fields=['state', 'error_message'])

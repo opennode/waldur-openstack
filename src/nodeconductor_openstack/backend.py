@@ -179,6 +179,21 @@ class OpenStackClient(object):
         return ceilometer_client.Client('2', **kwargs)
 
 
+def _update_pulled_feilds(obj, imported_instance, fields):
+    """ Update instance fields based on imported from backend data.
+
+        Save changes to DB only one or more fields were changed.
+    """
+    modified = False
+    for field in fields:
+        pulled_valued = getattr(imported_instance, field)
+        if getattr(instance, field) != pulled_valued:
+            setattr(instance, pulled_valued)
+            modified = True
+    if modified:
+        instance.save()
+
+
 class OpenStackBackend(ServiceBackend):
 
     DEFAULTS = {
@@ -804,9 +819,7 @@ class OpenStackBackend(ServiceBackend):
         tenant.refresh_from_db()
         # if tenant was not modified in NC database after import.
         if tenant.modified < import_time:
-            tenant.name = imported_tenant.name
-            tenant.description = imported_tenant.description
-            tenant.save()
+            _update_pulled_feilds(tenant, imported_tenant, ('name', 'description'))
 
     @log_backend_action()
     def add_admin_user_to_tenant(self, tenant):
@@ -1071,19 +1084,11 @@ class OpenStackBackend(ServiceBackend):
     @log_backend_action()
     def pull_instance(self, instance):
         import_time = timezone.now()
-        try:
-            imported_instance = self.import_instance(instance.backend_id, save=False)
-        except OpenStackBackendError as e:
-            instance.set_erred()
-            instance.error_message = str(e)
-            instance.save()
-            raise
+        imported_instance = self.import_instance(instance.backend_id, save=False)
 
+        instance.refresh_from_db()
         if instance.modified < import_time:
-            update_fields = ('ram', 'cores', 'disk', 'state')
-            for field in update_fields:
-                setattr(instance, field, getattr(imported_instance, field))
-                instance.save()
+            _update_pulled_feilds(instance, imported_instance, ('ram', 'cores', 'disk', 'internal_ips', 'external_ips'))
 
     @log_backend_action()
     def cleanup_tenant(self, tenant, dryrun=True):
@@ -1956,20 +1961,12 @@ class OpenStackBackend(ServiceBackend):
     @log_backend_action()
     def pull_volume(self, volume):
         import_time = timezone.now()
-        try:
-            imported_volume = self.import_volume(volume.backend_id, save=False)
-        except OpenStackBackendError as e:
-            volume.set_erred()
-            volume.error_message = str(e)
-            volume.save()
-            raise
+        imported_volume = self.import_volume(volume.backend_id, save=False)
 
         volume.refresh_from_db()
         if volume.modified < import_time:
             update_fields = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'state')
-            for field in update_fields:
-                setattr(volume, field, getattr(imported_volume, field))
-                volume.save()
+            _update_pulled_feilds(volume, imported_volume, update_fields)
 
     @log_backend_action()
     def create_snapshot(self, snapshot, force=False):
