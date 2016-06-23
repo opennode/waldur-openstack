@@ -63,4 +63,16 @@ class OpenStackExtension(NodeConductorExtension):
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },
+
+            'openstack-pull-instances': {
+                'task': 'nodeconductor.openstack.pull_instances',
+                'schedule': timedelta(minutes=30),
+                'args': (),
+            },
+
+            'openstack-pull-volumes': {
+                'task': 'nodeconductor.openstack.pull_volumes',
+                'schedule': timedelta(minutes=30),
+                'args': (),
+            },
         }

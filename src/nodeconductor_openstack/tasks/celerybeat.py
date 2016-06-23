@@ -1,14 +1,19 @@
+import logging
+
 from celery import shared_task, chain
+from django.utils import six
 
 from nodeconductor.core import tasks as core_tasks, utils as core_utils
+from nodeconductor.structure import ServiceBackendError
+
 from . import models
+
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task(name='nodeconductor.openstack.pull_tenants')
 def pull_tenants():
-    # XXX: It is unsafe to pull tenant without any checks.
-    #      This can lead to conflicts with user updates in case of
-    #      simultaneous operations. (Issue NC-1275)
     for tenant in models.Tenant.objects.filter(state=models.Tenant.States.ERRED):
         serialized_tenant = core_utils.serialize_instance(tenant)
         core_tasks.BackendMethodTask().apply_async(
@@ -35,10 +40,67 @@ def recover_tenant(serialized_tenant):
 def pull_tenants_properties():
     for tenant in models.Tenant.objects.filter(state=models.Tenant.States.OK):
         serialized_tenant = core_utils.serialize_instance(tenant)
-        # XXX: It is unsafe to pull security groups without any checks.
-        #      This can lead to conflicts with user updates in case of
-        #      simultaneous operations. (Issue NC-1275)
         core_tasks.BackendMethodTask().delay(serialized_tenant, 'pull_tenant_security_groups')
         core_tasks.BackendMethodTask().delay(serialized_tenant, 'pull_tenant_floating_ips')
         core_tasks.BackendMethodTask().delay(serialized_tenant, 'pull_tenant_quotas')
-        core_tasks.BackendMethodTask().delay(serialized_tenant, 'pull_tenant_instances')
+
+
+@shared_task(name='nodeconductor.openstack.pull_instances')
+def pull_instances():
+    for tenant in models.Tenant.objects.exclude(state=models.Tenant.States.ERRED):
+        # group instance update by tenant to reduce amount of logins and update
+        # all instance with one session.
+        # Ideally session should be cached in backend module.
+        pull_tenant_instances.delay(core_utils.serialize_instance(tenant))
+
+
+@shared_task
+def pull_tenant_instances(serialized_tenant):
+    tenant = core_utils.deserialize_instance(serialized_tenant)
+    backend = tenant.get_backend()
+    States = models.Instance.States
+    stable_states = [States.ONLINE, States.OFFLINE, States.ERRED]
+    for instance in tenant.instances.filter(state__in=stable_states).exclude(backend_id=''):
+        try:
+            backend.pull_instance(instance)
+        except ServiceBackendError as e:
+            message = six.text_type(e)
+            logger.error('Failed to pull instance %s (PK: %s). Error: %s' % (instance.name, instance.pk, message))
+            instance.set_erred()
+            instance.error_message = message
+            instance.save(update_fields=['state', 'error_message'])
+        else:
+            if instance.state != States.ERRED and instance.error_message:
+                # for instance state should be updated during pull
+                instance.error_message = ''
+                instance.save(update_fields=['error_message'])
+
+
+@shared_task(name='nodeconductor.openstack.pull_volumes')
+def pull_volumes():
+    for tenant in models.Tenant.objects.exclude(state=models.Tenant.States.ERRED):
+        # group volumes update by tenant to reduce amount of logins and update
+        # all volumes with one session.
+        # Ideally session should be cached in backend module.
+        pull_tenant_volumes.delay(core_utils.serialize_instance(tenant))
+
+
+@shared_task
+def pull_tenant_volumes(serialized_tenant):
+    tenant = core_utils.deserialize_instance(serialized_tenant)
+    backend = tenant.get_backend()
+    States = models.Volume.States
+    for volume in tenant.volumes.filter(state__in=[States.OK, States.ERRED]).exclude(backend_id=''):
+        try:
+            backend.pull_volume(volume)
+        except ServiceBackendError as e:
+            message = six.text_type(e)
+            logger.error('Failed to pull volume %s (PK: %s). Error: %s' % (volume.name, volume.pk, message))
+            volume.set_erred()
+            volume.error_message = message
+            volume.save(update_fields=['state', 'error_message'])
+        else:
+            if volume.state == States.ERRED:
+                volume.recover()
+                volume.error_message = ''
+                volume.save(update_fields=['state', 'error_message'])

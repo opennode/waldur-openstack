@@ -179,6 +179,21 @@ class OpenStackClient(object):
         return ceilometer_client.Client('2', **kwargs)
 
 
+def _update_pulled_fields(instance, imported_instance, fields):
+    """ Update instance fields based on imported from backend data.
+
+        Save changes to DB only one or more fields were changed.
+    """
+    modified = False
+    for field in fields:
+        pulled_value = getattr(imported_instance, field)
+        if getattr(instance, field) != pulled_value:
+            setattr(instance, field, pulled_value)
+            modified = True
+    if modified:
+        instance.save()
+
+
 class OpenStackBackend(ServiceBackend):
 
     DEFAULTS = {
@@ -248,7 +263,7 @@ class OpenStackBackend(ServiceBackend):
         try:
             self.pull_flavors()
             self.pull_images()
-            self.pull_stats()
+            self.pull_service_settings_quotas()
         except (nova_exceptions.ClientException, glance_exceptions.ClientException) as e:
             logger.exception('Failed to synchronize OpenStack service %s', self.settings.backend_url)
             six.reraise(OpenStackBackendError, e)
@@ -590,113 +605,105 @@ class OpenStackBackend(ServiceBackend):
     def pull_tenant_floating_ips(self, tenant):
         neutron = self.neutron_client
 
+        nc_floating_ips = {ip.backend_id: ip for ip in tenant.floating_ips.all()}
         try:
-            nc_floating_ips = {ip.backend_id: ip for ip in tenant.floating_ips.all()}
-            try:
-                backend_floating_ips = {
-                    ip['id']: ip
-                    for ip in neutron.list_floatingips(tenant_id=self.tenant_id)['floatingips']
-                    if ip.get('floating_ip_address') and ip.get('status')
-                }
-            except neutron_exceptions.NeutronClientException as e:
-                six.reraise(OpenStackBackendError, e)
-
-            backend_ids = set(backend_floating_ips.keys())
-            nc_ids = set(nc_floating_ips.keys())
-
-            with transaction.atomic():
-                for ip_id in nc_ids - backend_ids:
-                    ip = nc_floating_ips[ip_id]
-                    ip.delete()
-                    logger.info('Deleted stale floating IP port %s in database', ip.uuid)
-
-                for ip_id in backend_ids - nc_ids:
-                    ip = backend_floating_ips[ip_id]
-                    created_ip = tenant.floating_ips.create(
-                        status=ip['status'],
-                        backend_id=ip['id'],
-                        address=ip['floating_ip_address'],
-                        backend_network_id=ip['floating_network_id'],
-                        service_project_link=tenant.service_project_link
-                    )
-                    logger.info('Created new floating IP port %s in database', created_ip.uuid)
-
-                for ip_id in nc_ids & backend_ids:
-                    nc_ip = nc_floating_ips[ip_id]
-                    backend_ip = backend_floating_ips[ip_id]
-                    if nc_ip.status != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
-                            or nc_ip.backend_network_id != backend_ip['floating_network_id']:
-                        # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
-                        if not (nc_ip.status == 'BOOKED' and backend_ip['status'] == 'DOWN'):
-                            nc_ip.status = backend_ip['status']
-                        nc_ip.address = backend_ip['floating_ip_address']
-                        nc_ip.backend_network_id = backend_ip['floating_network_id']
-                        nc_ip.save()
-                        logger.info('Updated existing floating IP port %s in database', nc_ip.uuid)
-
-        except Exception as e:
+            backend_floating_ips = {
+                ip['id']: ip
+                for ip in neutron.list_floatingips(tenant_id=self.tenant_id)['floatingips']
+                if ip.get('floating_ip_address') and ip.get('status')
+            }
+        except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
+
+        backend_ids = set(backend_floating_ips.keys())
+        nc_ids = set(nc_floating_ips.keys())
+
+        with transaction.atomic():
+            for ip_id in nc_ids - backend_ids:
+                ip = nc_floating_ips[ip_id]
+                ip.delete()
+                logger.info('Deleted stale floating IP port %s in database', ip.uuid)
+
+            for ip_id in backend_ids - nc_ids:
+                ip = backend_floating_ips[ip_id]
+                created_ip = tenant.floating_ips.create(
+                    status=ip['status'],
+                    backend_id=ip['id'],
+                    address=ip['floating_ip_address'],
+                    backend_network_id=ip['floating_network_id'],
+                    service_project_link=tenant.service_project_link
+                )
+                logger.info('Created new floating IP port %s in database', created_ip.uuid)
+
+            for ip_id in nc_ids & backend_ids:
+                nc_ip = nc_floating_ips[ip_id]
+                backend_ip = backend_floating_ips[ip_id]
+                if nc_ip.status != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
+                        or nc_ip.backend_network_id != backend_ip['floating_network_id']:
+                    # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
+                    if not (nc_ip.status == 'BOOKED' and backend_ip['status'] == 'DOWN'):
+                        nc_ip.status = backend_ip['status']
+                    nc_ip.address = backend_ip['floating_ip_address']
+                    nc_ip.backend_network_id = backend_ip['floating_network_id']
+                    nc_ip.save()
+                    logger.info('Updated existing floating IP port %s in database', nc_ip.uuid)
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
         nova = self.nova_client
 
         try:
-            try:
-                backend_security_groups = nova.security_groups.list()
-            except nova_exceptions.ClientException as e:
-                six.reraise(OpenStackBackendError, e)
-
-            # list of openstack security groups that do not exist in nc
-            nonexistent_groups = []
-            # list of openstack security groups that have wrong parameters in in nc
-            unsynchronized_groups = []
-            # list of nc security groups that do not exist in openstack
-
-            extra_groups = tenant.security_groups.exclude(
-                backend_id__in=[g.id for g in backend_security_groups],
-            )
-
-            with transaction.atomic():
-                for backend_group in backend_security_groups:
-                    try:
-                        nc_group = tenant.security_groups.get(backend_id=backend_group.id)
-                        if not self._are_security_groups_equal(backend_group, nc_group):
-                            unsynchronized_groups.append(backend_group)
-                    except models.SecurityGroup.DoesNotExist:
-                        nonexistent_groups.append(backend_group)
-
-                # deleting extra security groups
-                extra_groups.delete()
-                if extra_groups:
-                    logger.debug('Deleted stale security group: %s.',
-                                 ' ,'.join('%s (PK: %s)' % (sg.name, sg.pk) for sg in extra_groups))
-
-                # synchronizing unsynchronized security groups
-                for backend_group in unsynchronized_groups:
-                    nc_security_group = tenant.security_groups.get(backend_id=backend_group.id)
-                    if backend_group.name != nc_security_group.name:
-                        nc_security_group.name = backend_group.name
-                        nc_security_group.state = StateMixin.States.OK
-                        nc_security_group.save()
-                    self.pull_security_group_rules(nc_security_group)
-                    logger.debug('Updated existing security group %s (PK: %s).',
-                                 nc_security_group.name, nc_security_group.pk)
-
-                # creating non-existed security groups
-                for backend_group in nonexistent_groups:
-                    nc_security_group = tenant.security_groups.create(
-                        backend_id=backend_group.id,
-                        name=backend_group.name,
-                        state=StateMixin.States.OK,
-                        service_project_link=tenant.service_project_link,
-                    )
-                    self.pull_security_group_rules(nc_security_group)
-                    logger.debug('Created new security group %s (PK: %s).',
-                                 nc_security_group.name, nc_security_group.pk)
-
-        except Exception as e:
+            backend_security_groups = nova.security_groups.list()
+        except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+
+        states = models.SecurityGroup.States
+        # list of openstack security groups that do not exist in nc
+        nonexistent_groups = []
+        # list of openstack security groups that have wrong parameters in in nc
+        unsynchronized_groups = []
+        # list of nc security groups that do not exist in openstack
+        extra_groups = tenant.security_groups.exclude(backend_id__in=[g.id for g in backend_security_groups])
+        extra_groups = extra_groups.exclude(state__in=[states.CREATION_SCHEDULED, states.CREATING])
+
+        with transaction.atomic():
+            for backend_group in backend_security_groups:
+                try:
+                    nc_group = tenant.security_groups.get(backend_id=backend_group.id)
+                    if (not self._are_security_groups_equal(backend_group, nc_group) and
+                            nc_group.state not in [states.UPDATING, states.UPDATE_SCHEDULED]):
+                        unsynchronized_groups.append(backend_group)
+                except models.SecurityGroup.DoesNotExist:
+                    nonexistent_groups.append(backend_group)
+
+            # deleting extra security groups
+            extra_groups.delete()
+            if extra_groups:
+                logger.debug('Deleted stale security group: %s.',
+                             ' ,'.join('%s (PK: %s)' % (sg.name, sg.pk) for sg in extra_groups))
+
+            # synchronizing unsynchronized security groups
+            for backend_group in unsynchronized_groups:
+                nc_security_group = tenant.security_groups.get(backend_id=backend_group.id)
+                if backend_group.name != nc_security_group.name:
+                    nc_security_group.name = backend_group.name
+                    nc_security_group.state = StateMixin.States.OK
+                    nc_security_group.save()
+                self.pull_security_group_rules(nc_security_group)
+                logger.debug('Updated existing security group %s (PK: %s).',
+                             nc_security_group.name, nc_security_group.pk)
+
+            # creating non-existed security groups
+            for backend_group in nonexistent_groups:
+                nc_security_group = tenant.security_groups.create(
+                    backend_id=backend_group.id,
+                    name=backend_group.name,
+                    state=StateMixin.States.OK,
+                    service_project_link=tenant.service_project_link,
+                )
+                self.pull_security_group_rules(nc_security_group)
+                logger.debug('Created new security group %s (PK: %s).',
+                             nc_security_group.name, nc_security_group.pk)
 
     def pull_security_group_rules(self, security_group):
         nova = self.nova_client
@@ -790,19 +797,29 @@ class OpenStackBackend(ServiceBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    @log_backend_action()
-    def pull_tenant(self, tenant):
+    def import_tenant(self, tenant_backend_id, save=True):
+        if save:
+            raise NotImplementedError('Tenant import operation with save == True is not implemented.')
         keystone = self.keystone_admin_client
-        if not tenant.backend_id:
-            raise OpenStackBackendError('Cannot pull tenant without backend_id')
         try:
-            backend_tenant = keystone.tenants.get(tenant.backend_id)
+            backend_tenant = keystone.tenants.get(tenant_backend_id)
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
-        else:
-            tenant.name = backend_tenant.name
-            tenant.description = backend_tenant.description
-            tenant.save()
+        tenant = models.Tenant()
+        tenant.name = backend_tenant.name
+        tenant.description = backend_tenant.description
+        tenant.backend_id = tenant_backend_id
+        return tenant
+
+    @log_backend_action()
+    def pull_tenant(self, tenant):
+        import_time = timezone.now()
+        imported_tenant = self.import_tenant(tenant.backend_id, save=False)
+
+        tenant.refresh_from_db()
+        # if tenant was not modified in NC database after import.
+        if tenant.modified < import_time:
+            _update_pulled_fields(tenant, imported_tenant, ('name', 'description'))
 
     @log_backend_action()
     def add_admin_user_to_tenant(self, tenant):
@@ -1064,20 +1081,17 @@ class OpenStackBackend(ServiceBackend):
         else:
             logger.info("Successfully provisioned instance %s", instance.uuid)
 
-    @log_backend_action('pull instances for tenant')
-    def pull_tenant_instances(self, tenant):
-        States = models.Instance.States
-        for instance in tenant.instances.filter(state__in=[States.ONLINE, States.OFFLINE]):
-            try:
-                imported_instance = self.import_instance(instance.backend_id, save=False)
-            except OpenStackBackendError as e:
-                logger.error('Cannot get data for instance %s (PK: %s). Error: %s', instance, instance.pk, e)
-            else:
-                instance.ram = imported_instance.ram
-                instance.cores = imported_instance.core
-                instance.disk = imported_instance.disk
-                instance.save()
-                logger.debug('Instance %s (PK: %s) has been successfully pulled from OpenStack.', instance, instance.pk)
+    @log_backend_action()
+    def pull_instance(self, instance):
+        import_time = timezone.now()
+        imported_instance = self.import_instance(instance.backend_id, save=False)
+
+        instance.refresh_from_db()
+        if instance.modified < import_time:
+            # XXX: It is not right to update instance state here, should be fixed in NC-1207.
+            # We should update runtime_state here and state in corresponding task.
+            update_fields = ('ram', 'cores', 'disk', 'internal_ips', 'external_ips', 'state')
+            _update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
     def cleanup_tenant(self, tenant, dryrun=True):
@@ -1949,20 +1963,13 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action()
     def pull_volume(self, volume):
-        cinder = self.cinder_client
-        try:
-            backend_volume = cinder.volumes.get(volume.backend_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        volume.name = backend_volume.display_name
-        volume.description = backend_volume.display_description
-        volume.size = self.gb2mb(backend_volume.size)
-        volume.metadata = backend_volume.metadata
-        volume.type = backend_volume.volume_type
-        volume.bootable = backend_volume.bootable == 'true'
-        volume.runtime_state = backend_volume.status
-        volume.save()
-        return volume
+        import_time = timezone.now()
+        imported_volume = self.import_volume(volume.backend_id, save=False)
+
+        volume.refresh_from_db()
+        if volume.modified < import_time:
+            update_fields = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state')
+            _update_pulled_fields(volume, imported_volume, update_fields)
 
     @log_backend_action()
     def create_snapshot(self, snapshot, force=False):
@@ -2094,7 +2101,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         return volume_backup
 
-    def pull_stats(self):
+    def pull_service_settings_quotas(self):
         nova = self.nova_admin_client
         stats = nova.hypervisor_stats.statistics()
 
