@@ -176,6 +176,8 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
         'resize': serializers.InstanceResizeSerializer,
+        'change_flavor': serializers.InstanceFlavorChangeSerializer,
+        'extend_volume': serializers.InstanceVolumeExtendSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -319,7 +321,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         Note, that instance must be OFFLINE.
         Example of a valid request:
 
-
         .. code-block:: http
 
             POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/resize/ HTTP/1.1
@@ -349,38 +350,37 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 "disk_size": 1024
             }
         """
-        # TODO: refactor resizing with executors.
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
 
         flavor = serializer.validated_data.get('flavor')
         new_size = serializer.validated_data.get('disk_size')
 
-        instance.schedule_resizing()
-        instance.save()
-
         # Serializer makes sure that exactly one of the branches will match
         if flavor is not None:
-            # TODO: Move quotas update to serialzer.
-            instance.tenant.add_quota_usage('ram', flavor.ram - instance.ram)
-            instance.tenant.add_quota_usage('vcpu', flavor.cores - instance.cores)
-            send_task('openstack', 'change_flavor')(instance.uuid.hex, flavor_uuid=flavor.uuid.hex)
-            event_logger.openstack_flavor.info(
-                'Virtual machine {resource_name} has been scheduled to change flavor.',
-                event_type='resource_flavor_change_scheduled',
-                event_context={'resource': instance, 'flavor': flavor}
-            )
+            executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
         else:
-            # TODO: Move quotas update to serialzer.
-            instance.tenant.add_quota_usage('storage', new_size - instance.disk)
-            send_task('openstack', 'extend_disk')(instance.uuid.hex, disk_size=new_size)
-            event_logger.openstack_volume.info(
-                'Virtual machine {resource_name} has been scheduled to extend disk.',
-                event_type='resource_volume_extension_scheduled',
-                event_context={'resource': instance, 'volume_size': new_size}
-            )
+            executors.InstanceVolumeExtendExecutor().execute(instance, new_size=new_size)
 
     resize.title = 'Resize virtual machine'
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
+    def change_flavor(self, request, instance, uuid=None):
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        flavor = serializer.validated_data.get('flavor')
+        executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
+    def extend_volume(self, request, instance, uuid=None):
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        new_size = serializer.validated_data.get('disk_size')
+        executors.InstanceVolumeExtendExecutor().execute(instance, new_size=new_size)
 
 
 class SecurityGroupViewSet(StateExecutorViewSet):

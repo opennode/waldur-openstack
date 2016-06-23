@@ -1198,7 +1198,28 @@ class OpenStackBackend(ServiceBackend):
             except keystone_exceptions.ClientException as e:
                 six.reraise(OpenStackBackendError, e)
 
-    def extend_disk(self, instance):
+    @log_backend_action()
+    def change_flavor(self, instance, flavor_id):
+        nova = self.nova_client
+        try:
+            nova.servers.resize(instance.backend_id, flavor_id, 'MANUAL')
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        if not self._wait_for_instance_status(instance.backend_id, nova, 'VERIFY_RESIZE'):
+            logger.error('Failed to resize instance %s', instance.uuid)
+            raise OpenStackBackendError('Timed out waiting for instance %s to resize' % instance.uuid)
+
+        try:
+            nova.servers.confirm_resize(instance.backend_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        if not self._wait_for_instance_status(instance.backend_id, nova, 'SHUTOFF'):
+            logger.error('Failed to stop instance %s', instance.uuid)
+            raise OpenStackBackendError('Timed out waiting for instance %s to stop' % instance.uuid)
+
+    def extend_disk(self, instance, new_size):
         nova = self.nova_client
         cinder = self.cinder_client
 
@@ -1209,7 +1230,7 @@ class OpenStackBackend(ServiceBackend):
             server_id = instance.backend_id
             volume_id = volume.id
 
-            new_core_size = instance.data_volume_size
+            new_core_size = new_size
             old_core_size = self.gb2mb(volume.size)
             new_backend_size = self.mb2gb(new_core_size)
 
@@ -1240,7 +1261,14 @@ class OpenStackBackend(ServiceBackend):
                     'Timed out waiting volume %s to detach from instance %s' % (volume_id, instance.uuid))
 
             try:
-                self._extend_volume(cinder, volume, new_backend_size)
+                cinder.volumes.extend(volume, new_backend_size)
+                if not self._wait_for_volume_status(volume.id, cinder, 'available', 'error'):
+                    logger.error(
+                        'Failed to extend volume: timed out waiting volume %s to extend',
+                        volume.id,
+                    )
+                    raise OpenStackBackendError('Timed out waiting volume %s to extend' % volume.id)
+
                 storage_delta = new_core_size - old_core_size
                 instance.tenant.add_quota_usage('storage', storage_delta)
             except cinder_exceptions.OverLimit as e:
@@ -1253,10 +1281,6 @@ class OpenStackBackend(ServiceBackend):
                     event_type='resource_volume_extension_failed',
                     event_context={'resource': instance},
                 )
-                # Reset instance.data_volume_size back so that model reflects actual state
-                instance.data_volume_size = old_core_size
-                instance.save()
-
                 # Omit logging success
                 six.reraise(OpenStackBackendError, e)
             finally:

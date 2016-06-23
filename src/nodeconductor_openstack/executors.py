@@ -1,10 +1,13 @@
 from celery import chain, group
 
 from nodeconductor.core import tasks, executors, utils
+from nodeconductor.core.executors import BaseExecutor
 
+from .log import event_logger
 from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
-                    CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask)
+                    CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask,
+                    LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed)
 
 
 class SecurityGroupCreateExecutor(executors.CreateExecutor):
@@ -287,7 +290,7 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
 
 # TODO: Add runtime state messages.
 class DRBackupCreateExecutor(executors.BaseChordExecutor):
-    """ Create backup for each instance volume separately using temporary volumes and snaphots """
+    """ Create backup for each instance volume separately using temporary volumes and snapshots """
 
     @classmethod
     def get_task_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
@@ -516,3 +519,60 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
             )
         else:
             return tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_deleting')
+
+
+class InstanceFlavorChangeExecutor(BaseExecutor):
+
+    @classmethod
+    def pre_apply(cls, instance, **kwargs):
+        instance.schedule_resizing()
+        instance.save(update_fields=['state'])
+
+        event_logger.openstack_flavor.info(
+            'Virtual machine {resource_name} has been scheduled to change flavor.',
+            event_type='resource_flavor_change_scheduled',
+            event_context={'resource': instance, 'flavor': kwargs['flavor']}
+        )
+
+    @classmethod
+    def get_task_signature(cls, instance, serialized_instance, flavor, **kwargs):
+        return tasks.BackendMethodTask().si(
+                serialized_instance, 'change_flavor', state_transition='begin_resizing',
+                flavor_id=flavor.backend_id)
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, flavor, **kwargs):
+        return LogFlavorChangeSucceeded().si(
+            serialized_instance, utils.serialize_instance(flavor), state_transition='set_resized')
+
+    @classmethod
+    def get_failure_signature(cls, instance, serialized_instance, flavor, **kwargs):
+        return LogFlavorChangeFailed().s(serialized_instance, utils.serialize_instance(flavor))
+
+
+class InstanceVolumeExtendExecutor(BaseExecutor):
+
+    @classmethod
+    def pre_apply(cls, instance, **kwargs):
+        instance.schedule_resizing()
+        instance.save(update_fields=['state'])
+
+        event_logger.openstack_volume.info(
+            'Virtual machine {resource_name} has been scheduled to extend disk.',
+            event_type='resource_volume_extension_scheduled',
+            event_context={'resource': instance, 'volume_size': kwargs['new_size']}
+        )
+
+    @classmethod
+    def get_task_signature(cls, instance, serialized_instance, new_size, **kwargs):
+        return tasks.BackendMethodTask().si(
+            serialized_instance, 'extend_disk', state_transition='begin_resizing', new_size=new_size)
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, new_size, **kwargs):
+        return LogVolumeExtendSucceeded().si(
+            serialized_instance, state_transition='set_resized', new_size=new_size)
+
+    @classmethod
+    def get_failure_signature(cls, instance, serialized_instance, new_size, **kwargs):
+        return LogVolumeExtendFailed().s(serialized_instance, new_size)

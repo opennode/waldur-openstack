@@ -664,20 +664,46 @@ class InstanceImportSerializer(structure_serializers.BaseResourceImportSerialize
         return instance
 
 
-class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMixin,
-                               serializers.Serializer):
+class InstanceVolumeExtendSerializer(serializers.Serializer):
+    disk_size = serializers.IntegerField(min_value=1, label='Disk size')
+
+    def get_fields(self):
+        fields = super(InstanceVolumeExtendSerializer, self).get_fields()
+        if self.instance:
+            fields['disk_size'].min_value = self.instance.data_volume_size
+        return fields
+
+    def validate_disk_size(self, value):
+        if value is not None:
+            if value <= self.instance.data_volume_size:
+                raise serializers.ValidationError(
+                    "Disk size must be strictly greater than the current one")
+
+            quota_errors = self.instance.tenant.validate_quota_change({
+                'storage': value - self.instance.data_volume_size,
+            })
+            if quota_errors:
+                raise serializers.ValidationError(
+                    "One or more quotas are over limit: \n" + "\n".join(quota_errors))
+        return value
+
+    def update(self, instance, validated_data):
+        new_size = validated_data.get('disk_size')
+        instance.tenant.add_quota_usage('storage', new_size - instance.disk)
+        return super(InstanceVolumeExtendSerializer, self).update(instance, validated_data)
+
+
+class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin,
+                                     serializers.Serializer):
     flavor = serializers.HyperlinkedRelatedField(
         view_name='openstack-flavor-detail',
         lookup_field='uuid',
         queryset=models.Flavor.objects.all(),
-        required=False,
     )
-    disk_size = serializers.IntegerField(min_value=1, required=False, label='Disk size')
 
     def get_fields(self):
-        fields = super(InstanceResizeSerializer, self).get_fields()
+        fields = super(InstanceFlavorChangeSerializer, self).get_fields()
         if self.instance:
-            fields['disk_size'].min_value = self.instance.data_volume_size
             fields['flavor'].query_params = {
                 'settings_uuid': self.instance.service_project_link.service.settings.uuid
             }
@@ -706,19 +732,30 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
                     "One or more quotas are over limit: \n" + "\n".join(quota_errors))
         return value
 
-    def validate_disk_size(self, value):
-        if value is not None:
-            if value <= self.instance.data_volume_size:
-                raise serializers.ValidationError(
-                    "Disk size must be strictly greater than the current one")
+    def update(self, instance, validated_data):
+        flavor = validated_data.get('flavor')
 
-            quota_errors = self.instance.tenant.validate_quota_change({
-                'storage': value - self.instance.data_volume_size,
-            })
-            if quota_errors:
-                raise serializers.ValidationError(
-                    "One or more quotas are over limit: \n" + "\n".join(quota_errors))
-        return value
+        instance.tenant.add_quota_usage('ram', flavor.ram - instance.ram)
+        instance.tenant.add_quota_usage('vcpu', flavor.cores - instance.cores)
+
+        instance.ram = flavor.ram
+        instance.cores = flavor.cores
+        instance.flavor_disk = flavor.disk
+        instance.flavor_name = flavor.name
+        instance.save(update_fields=['ram', 'cores', 'flavor_name', 'flavor_disk'])
+
+        return super(InstanceFlavorChangeSerializer, self).update(instance, validated_data)
+
+
+class InstanceResizeSerializer(InstanceFlavorChangeSerializer,
+                               InstanceVolumeExtendSerializer):
+
+    def get_fields(self):
+        fields = super(InstanceResizeSerializer, self).get_fields()
+        if self.instance:
+            fields['disk_size'].required = False
+            fields['flavor'].required = False
+        return fields
 
     def validate(self, attrs):
         flavor = attrs.get('flavor')
