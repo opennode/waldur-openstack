@@ -186,9 +186,9 @@ def _update_pulled_fields(instance, imported_instance, fields):
     """
     modified = False
     for field in fields:
-        pulled_valued = getattr(imported_instance, field)
-        if getattr(instance, field) != pulled_valued:
-            setattr(instance, pulled_valued)
+        pulled_value = getattr(imported_instance, field)
+        if getattr(instance, field) != pulled_value:
+            setattr(instance, field, pulled_value)
             modified = True
     if modified:
         instance.save()
@@ -1088,7 +1088,10 @@ class OpenStackBackend(ServiceBackend):
 
         instance.refresh_from_db()
         if instance.modified < import_time:
-            _update_pulled_fields(instance, imported_instance, ('ram', 'cores', 'disk', 'internal_ips', 'external_ips'))
+            # XXX: It is not right to update instance state here, should be fixed in NC-1207.
+            # We should update runtime_state here and state in corresponding task.
+            update_fields = ('ram', 'cores', 'disk', 'internal_ips', 'external_ips', 'state')
+            _update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
     def cleanup_tenant(self, tenant, dryrun=True):
@@ -1965,7 +1968,7 @@ class OpenStackBackend(ServiceBackend):
 
         volume.refresh_from_db()
         if volume.modified < import_time:
-            update_fields = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'state')
+            update_fields = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state')
             _update_pulled_fields(volume, imported_volume, update_fields)
 
     @log_backend_action()

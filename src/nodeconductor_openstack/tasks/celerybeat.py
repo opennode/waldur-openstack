@@ -64,15 +64,16 @@ def pull_tenant_instances(serialized_tenant):
         try:
             backend.pull_instance(instance)
         except ServiceBackendError as e:
-            logger.error('Failed to pull instance %s (PK: %s).' % (instance.name, instance.pk))
+            message = six.text_type(e)
+            logger.error('Failed to pull instance %s (PK: %s). Error: %s' % (instance.name, instance.pk, message))
             instance.set_erred()
-            instance.error_message = six.text_type(e)
+            instance.error_message = message
             instance.save(update_fields=['state', 'error_message'])
         else:
             if instance.state == States.ERRED:
-                instance.recover()
+                # for instance state should be updated during pull
                 instance.error_message = ''
-                instance.save(update_fields=['state', 'error_message'])
+                instance.save(update_fields=['error_message'])
 
 
 @shared_task(name='nodeconductor.openstack.pull_volumes')
@@ -93,9 +94,10 @@ def pull_tenant_volumes(serialized_tenant):
         try:
             backend.pull_volume(volume)
         except ServiceBackendError as e:
-            logger.error('Failed to pull volume %s (PK: %s).' % (volume.name, volume.pk))
+            message = six.text_type(e)
+            logger.error('Failed to pull volume %s (PK: %s). Error: %s' % (volume.name, volume.pk, message))
             volume.set_erred()
-            volume.error_message = six.text_type(e)
+            volume.error_message = message
             volume.save(update_fields=['state', 'error_message'])
         else:
             if volume.state == States.ERRED:
