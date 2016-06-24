@@ -7,7 +7,8 @@ from .log import event_logger
 from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask,
-                    LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed)
+                    LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed,
+                    SetBackupErredTask, ForceDeleteBackupTask)
 
 
 class SecurityGroupCreateExecutor(executors.CreateExecutor):
@@ -288,7 +289,6 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
             return tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
 
 
-# TODO: Add runtime state messages.
 class DRBackupCreateExecutor(executors.BaseChordExecutor):
     """ Create backup for each instance volume separately using temporary volumes and snapshots """
 
@@ -677,8 +677,39 @@ class BackupCreateExecutor(executors.CreateExecutor, executors.BaseChordExecutor
                 ).set(countdown=10),
                 tasks.StateTransitionTask().si(serialized_snapshot, state_transition='set_ok'),
             ))
+        return group(creations_tasks)
 
     @classmethod
-    def get_failure_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
-        # TODO
-        pass
+    def get_failure_signature(cls, backup, serialized_backup, **kwargs):
+        return SetBackupErredTask().s(serialized_backup)
+
+
+class BackupDeleteExecutor(executors.DeleteExecutor, executors.BaseChordExecutor):
+
+    @classmethod
+    def pre_apply(cls, backup, **kwargs):
+        for snapshot in backup.snapshots.all():
+            snapshot.schedule_deleting()
+            snapshot.save(update_fields=['state'])
+        executors.DeleteExecutor.pre_apply(backup)
+
+    @classmethod
+    def get_task_signature(cls, backup, serialized_backup, force=False, **kwargs):
+        deletion_tasks = [tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_deleting')]
+        # remove volume backups
+        for snapshot in backup.snapshots.all():
+            serialized = utils.serialize_instance(snapshot)
+            deletion_tasks.append(chain(
+                tasks.BackendMethodTask().si(serialized, 'delete_snapshot', state_transition='begin_deleting'),
+                PollBackendCheckTask().si(serialized, 'is_snapshot_deleted'),
+                tasks.DeletionTask().si(serialized),
+            ))
+
+        return group(deletion_tasks)
+
+    @classmethod
+    def get_failure_signature(cls, backup, serialized_backup, force=False, **kwargs):
+        if not force:
+            return SetBackupErredTask().s(serialized_backup)
+        else:
+            return ForceDeleteBackupTask().s(serialized_backup)

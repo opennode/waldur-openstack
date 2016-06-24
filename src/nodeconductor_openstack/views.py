@@ -627,21 +627,10 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
         return response.Response({'status': 'BackupSchedule was deactivated'})
 
 
-class BackupViewSet(mixins.CreateModelMixin,
-                    mixins.RetrieveModelMixin,
-                    mixins.ListModelMixin,
-                    viewsets.GenericViewSet):
+class BackupViewSet(StateExecutorViewSet):
     """
     Please note, that backups can be both manual and automatic, triggered by the schedule.
     In the first case, **backup_schedule** field will be **null**, in the latter - contain a link to the schedule.
-
-    Backup has a state, currently supported states are:
-
-    - Ready
-    - Backing up
-    - Restoring
-    - Deleting
-    - Erred
 
     You can filter backup by description or instance field, which should match object URL.
     It is useful when one resource has several backups and you want to get all backups related to this resource.
@@ -652,6 +641,8 @@ class BackupViewSet(mixins.CreateModelMixin,
     filter_class = filters.BackupFilter
     filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
     permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
+    create_executor = executors.BackupCreateExecutor
+    delete_executor = executors.BackupDeleteExecutor
 
     def list(self, request, *args, **kwargs):
         """
@@ -689,67 +680,7 @@ class BackupViewSet(mixins.CreateModelMixin,
     def perform_create(self, serializer):
         if not has_user_permission_for_instance(self.request.user, serializer.validated_data['instance']):
             raise exceptions.PermissionDenied('You do not have permission to perform this action.')
-
-        # Check that instance is in stable state.
-        instance = serializer.validated_data.get('instance')
-        state = getattr(instance, 'state')
-
-        if state not in instance.States.STABLE_STATES:
-            raise IncorrectStateException('Instance should be in stable state.')
-
-        backup = serializer.save()
-        backend = backup.get_backend()
-        backend.start_backup()
-
-    def get_backup(self):
-        backup = self.get_object()
-        if not has_user_permission_for_instance(self.request.user, backup.instance):
-            raise exceptions.PermissionDenied('You do not have permission to perform this action.')
-        return backup
-
-    @decorators.detail_route(methods=['post'])
-    def restore(self, request, uuid):
-        """
-        Restore a specified backup.
-        Restoring a backup can take user input that should contain fields `flavor` and `name`.
-        Restoration is available only for backups in state ``READY``. If backup is not ready,
-        status code of the response will be **409 CONFLICT**.
-        """
-        backup = self.get_backup()
-        if backup.state != models.Backup.States.READY:
-            return response.Response(
-                {'detail': 'Cannot restore a backup in state \'%s\'' % backup.get_state_display()},
-                status=status.HTTP_409_CONFLICT)
-
-        backend = backup.get_backend()
-        instance, user_input, snapshot_ids, errors = backend.deserialize(request.data)
-
-        if not errors:
-            try:
-                backend.start_restoration(instance.uuid.hex, user_input=user_input, snapshot_ids=snapshot_ids)
-            except BackupError:
-                # this should never be hit as the check is done on function entry
-                return response.Response(
-                    {'detail': 'Cannot restore a backup in state \'%s\'' % backup.get_state_display()},
-                    status=status.HTTP_409_CONFLICT)
-            return response.Response({'status': 'Backup restoration process was started'})
-
-        return response.Response({'detail': errors}, status=status.HTTP_400_BAD_REQUEST)
-
-    @decorators.detail_route(methods=['post'])
-    def delete(self, request, uuid):
-        """
-        Backup can be deleted by issuing **POST** request
-        to the */api/backup/<backup_uuid>/delete/*
-        """
-        backup = self.get_backup()
-        if backup.state != models.Backup.States.READY:
-            return response.Response(
-                {'detail': 'Cannot delete a backup in state \'%s\'' % backup.get_state_display()},
-                status=status.HTTP_409_CONFLICT)
-        backend = backup.get_backend()
-        backend.start_deletion()
-        return response.Response({'status': 'Backup deletion was started'})
+        super(BackupViewSet, self).perform_create(serializer)
 
 
 class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):

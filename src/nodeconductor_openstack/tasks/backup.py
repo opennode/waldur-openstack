@@ -3,11 +3,12 @@ import logging
 from celery import shared_task
 from django.utils import timezone
 
+from nodeconductor.core import tasks
 from nodeconductor.core.tasks import transition
 from nodeconductor.structure.log import event_logger
 
 from ..backup import BackupError
-from ..models import BackupSchedule, Backup, DRBackup
+from ..models import BackupSchedule, Backup, DRBackup, Snapshot
 
 
 logger = logging.getLogger(__name__)
@@ -171,3 +172,34 @@ def backup_restoration_complete(backup_uuid, transition_entity=None):
 @transition(Backup, 'set_erred')
 def backup_failed(backup_uuid, transition_entity=None):
     pass
+
+
+class SetBackupErredTask(tasks.ErrorStateTransitionTask):
+    """ Mark DR backup and all related resources that are not in state OK as Erred """
+
+    def execute(self, backup):
+        super(SetBackupErredTask, self).execute(backup)
+        for snapshot in backup.snapshots.all():
+            # If snapshot creation was not started - delete it from NC DB.
+            if snapshot.state == Snapshot.States.CREATION_SCHEDULED:
+                snapshot.decrease_backend_quotas_usage()
+                snapshot.delete()
+            else:
+                snapshot.set_erred()
+                snapshot.save(update_fields=['state'])
+
+        # Deactivate schedule if its backup become erred.
+        schedule = backup.backup_schedule
+        if schedule:
+            schedule.error_message = 'Failed to execute backup for %s. Error: %s' % (
+                backup.instance, backup.error_message)
+            schedule.runtime_state = 'Failed to create backup'
+            schedule.is_active = False
+            schedule.save()
+
+
+class ForceDeleteBackupTask(tasks.StateTransitionTask):
+
+    def execute(self, backup):
+        backup.snapshots.all().delete()
+        backup.delete()
