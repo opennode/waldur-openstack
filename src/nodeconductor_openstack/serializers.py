@@ -1047,7 +1047,7 @@ def create_dr_backup_related_resources(dr_backup):
 
 class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, BasicDRBackupRestorationSerializer):
     name = serializers.CharField(
-        required=False, help_text='New instance name. Leave blank to use source instance name.')
+        required=False, allow_null=True, help_text='New instance name. Leave blank to use source instance name.')
 
     class Meta(BasicDRBackupRestorationSerializer.Meta):
         fields = BasicDRBackupRestorationSerializer.Meta.fields + ('tenant', 'dr_backup', 'flavor', 'name')
