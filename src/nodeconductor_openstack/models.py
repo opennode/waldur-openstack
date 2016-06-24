@@ -4,7 +4,6 @@ from django.db import models
 from django.core.validators import MaxValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.encoding import python_2_unicode_compatible, force_text
-from django_fsm import transition, FSMIntegerField
 from jsonfield import JSONField
 from iptools.ipv4 import validate_cidr
 from model_utils import FieldTracker
@@ -18,8 +17,7 @@ from nodeconductor.quotas.models import QuotaModelMixin
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.utils import get_coordinates_by_ip, Coordinates
 
-from .backup import BackupBackend, BackupScheduleBackend
-from .managers import BackupManager
+from .backup import BackupScheduleBackend
 
 
 class OpenStackService(structure_models.Service):
@@ -350,6 +348,7 @@ class BackupSchedule(core_models.UuidMixin,
 
 class Backup(core_models.UuidMixin,
              core_models.DescribableMixin,
+             core_models.StateMixin,
              LoggableMixin):
 
     class Permissions(object):
@@ -357,24 +356,8 @@ class Backup(core_models.UuidMixin,
         project_path = 'instance__service_project_link__project'
         project_group_path = 'instance__service_project_link__project__project_groups'
 
-    class States(object):
-        READY = 1
-        BACKING_UP = 2
-        RESTORING = 3
-        DELETING = 4
-        ERRED = 5
-        DELETED = 6
-
-        CHOICES = (
-            (READY, 'Ready'),
-            (BACKING_UP, 'Backing up'),
-            (RESTORING, 'Restoring'),
-            (DELETING, 'Deleting'),
-            (ERRED, 'Erred'),
-            (DELETED, 'Deleted'),
-        )
-
     instance = models.ForeignKey(Instance, related_name='backups')
+    tenant = models.ForeignKey('Tenant', related_name='backups')
     backup_schedule = models.ForeignKey(BackupSchedule, blank=True, null=True,
                                         on_delete=models.SET_NULL,
                                         related_name='backups')
@@ -382,54 +365,22 @@ class Backup(core_models.UuidMixin,
         null=True,
         blank=True,
         help_text='Guaranteed time of backup retention. If null - keep forever.')
-
     created_at = models.DateTimeField(auto_now_add=True)
-
-    state = FSMIntegerField(default=States.READY, choices=States.CHOICES)
     metadata = JSONField(
         blank=True,
         help_text='Additional information about backup, can be used for backup restoration or deletion',
     )
-
-    objects = BackupManager()
+    snapshots = models.ManyToManyField('Snapshot', related_name='backups')
 
     def __str__(self):
         return 'Backup of %s (%s)' % (self.instance, self.state)
 
     def get_backend(self):
-        return BackupBackend(self)
+        return self.tenant.get_backend()
 
     @classmethod
     def get_url_name(cls):
         return 'openstack-backup'
-
-    @transition(field=state, source=States.READY, target=States.BACKING_UP)
-    def starting_backup(self):
-        pass
-
-    @transition(field=state, source=States.BACKING_UP, target=States.READY)
-    def confirm_backup(self):
-        pass
-
-    @transition(field=state, source=States.READY, target=States.RESTORING)
-    def starting_restoration(self):
-        pass
-
-    @transition(field=state, source=States.RESTORING, target=States.READY)
-    def confirm_restoration(self):
-        pass
-
-    @transition(field=state, source=States.READY, target=States.DELETING)
-    def starting_deletion(self):
-        pass
-
-    @transition(field=state, source=States.DELETING, target=States.DELETED)
-    def confirm_deletion(self):
-        pass
-
-    @transition(field=state, source='*', target=States.ERRED)
-    def set_erred(self):
-        pass
 
 
 class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
