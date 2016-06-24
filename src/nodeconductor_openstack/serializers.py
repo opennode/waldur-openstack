@@ -683,11 +683,7 @@ class VolumeExtendSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'disk_size': ['Disk size must be strictly greater than the current one']
             })
-        if models.Instance.volumes.through.objects.filter(
-            volume=self.instance
-        ).exclude(
-            instance__state=models.Instance.States.OFFLINE
-        ).exists():
+        if self.instance.instances.all().exclude(state=models.Instance.States.OFFLINE).exists():
             raise serializers.ValidationError({
                 'non_field_errors': ['All instances attached to the volume should be in OFFLINE state']
             })

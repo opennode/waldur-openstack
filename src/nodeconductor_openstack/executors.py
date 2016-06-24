@@ -595,7 +595,7 @@ class VolumeExtendExecutor(executors.BaseChordExecutor):
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
 
-        detach = group([
+        detach = [
             tasks.BackendMethodTask().si(
                 utils.serialize_instance(instance),
                 backend_method='detach_instance_volume',
@@ -603,9 +603,9 @@ class VolumeExtendExecutor(executors.BaseChordExecutor):
                 backend_volume_id=volume.backend_id
             )
             for instance in volume.instances.all()
-        ])
+        ]
 
-        extend = chain(
+        extend = [
             PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
@@ -623,16 +623,16 @@ class VolumeExtendExecutor(executors.BaseChordExecutor):
                 success_state='available',
                 erred_state='error'
             )
-        )
+        ]
 
-        attach = group([
+        attach = [
             tasks.BackendMethodTask().si(
                 utils.serialize_instance(instance),
                 backend_method='attach_instance_volume',
                 backend_volume_id=volume.backend_id
             )
             for instance in volume.instances.all()
-        ])
+        ]
 
         check = PollRuntimeStateTask().si(
             serialized_volume,
@@ -641,10 +641,7 @@ class VolumeExtendExecutor(executors.BaseChordExecutor):
             erred_state='error'
         )
 
-        if attach and detach:
-            return chain(detach, extend, attach, check)
-        else:
-            return chain(extend, check)
+        return chain(detach + extend + attach + [check])
 
     @classmethod
     def get_success_signature(cls, volume, serialized_volume, **kwargs):
