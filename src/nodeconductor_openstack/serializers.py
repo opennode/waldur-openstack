@@ -670,20 +670,16 @@ class VolumeExtendSerializer(serializers.Serializer):
     def get_fields(self):
         fields = super(VolumeExtendSerializer, self).get_fields()
         if self.instance:
-            fields['disk_size'].min_value = self.instance.size
+            fields['disk_size'].min_value = self.instance.size + 1
         return fields
 
     def validate(self, attrs):
-        if not self.instance.backend_id:
+        volume = self.instance
+        if not volume.backend_id:
             raise serializers.ValidationError({
                 'non_field_errors': ['Unable to extend volume without backend_id']
             })
-        disk_size = attrs.get('disk_size')
-        if disk_size == self.instance.size:
-            raise serializers.ValidationError({
-                'disk_size': ['Disk size must be strictly greater than the current one']
-            })
-        if self.instance.instances.all().exclude(state=models.Instance.States.OFFLINE).exists():
+        if volume.instances.all().exclude(state=models.Instance.States.OFFLINE).exists():
             raise serializers.ValidationError({
                 'non_field_errors': ['All instances attached to the volume should be in OFFLINE state']
             })
