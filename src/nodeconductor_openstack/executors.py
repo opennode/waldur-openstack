@@ -540,7 +540,7 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
         return chain(
             tasks.BackendMethodTask().si(
                 serialized_instance,
-                backend_method='resize',
+                backend_method='resize_instance',
                 state_transition='begin_resizing',
                 flavor_id=flavor.backend_id
             ),
@@ -552,7 +552,7 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
             ),
             tasks.BackendMethodTask().si(
                 instance=serialized_instance,
-                backend_method='confirm_resize'
+                backend_method='confirm_resize_instance'
             ),
             PollRuntimeStateTask().si(
                 serialized_instance,
