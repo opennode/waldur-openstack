@@ -3,7 +3,6 @@ from celery import chain, group
 from nodeconductor.core import tasks, executors, utils
 from nodeconductor.core.executors import BaseExecutor
 
-from . import models
 from .log import event_logger
 from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
@@ -572,7 +571,7 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
         return LogFlavorChangeFailed().s(serialized_instance, utils.serialize_instance(flavor))
 
 
-class VolumeExtendExecutor(executors.BaseChordExecutor):
+class VolumeExtendExecutor(executors.ActionExecutor):
 
     @classmethod
     def pre_apply(cls, volume, **kwargs):
@@ -646,24 +645,9 @@ class VolumeExtendExecutor(executors.BaseChordExecutor):
     @classmethod
     def get_success_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
-
-        return group([
-            LogVolumeExtendSucceeded().si(
-                utils.serialize_instance(instance),
-                state_transition='set_resized',
-                new_size=new_size
-            )
-            for instance in volume.instances.all()
-        ])
+        return LogVolumeExtendSucceeded().si(serialized_volume, new_size=new_size)
 
     @classmethod
     def get_failure_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
-
-        return group([
-            LogVolumeExtendFailed().s(
-                utils.serialize_instance(instance),
-                new_size=new_size
-            )
-            for instance in volume.instances.all()
-        ])
+        return LogVolumeExtendFailed().s(serialized_volume, new_size=new_size)
