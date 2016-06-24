@@ -1,3 +1,5 @@
+import uuid
+
 import factory
 
 from random import randint
@@ -103,6 +105,27 @@ class TenantMixin(object):
         kwargs['tenant'] = tenant
 
         return manager.create(*args, **kwargs)
+
+
+class VolumeFactory(TenantMixin, factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.Volume
+
+    name = factory.Sequence(lambda n: 'volume%s' % n)
+    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+    size = 10 * 1024
+    backend_id = uuid.uuid4
+
+    @classmethod
+    def get_url(cls, instance=None, action=None):
+        if instance is None:
+            instance = InstanceFactory()
+        url = 'http://testserver' + reverse('openstack-volume-detail', kwargs={'uuid': instance.uuid})
+        return url if action is None else url + action + '/'
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstack-volume-list')
 
 
 class InstanceFactory(TenantMixin, factory.DjangoModelFactory):
