@@ -946,10 +946,10 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
         model = models.DRBackup
         view_name = 'openstack-dr-backup-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'source_instance', 'tenant', 'restorations', 'kept_until', 'runtime_state',
+            'source_instance', 'tenant', 'restorations', 'kept_until', 'runtime_state', 'backup_schedule',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'tenant', 'kept_until', 'runtime_state',
+            'tenant', 'kept_until', 'runtime_state', 'backup_schedule',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'source_instance',
@@ -958,13 +958,14 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             source_instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail',
                              'allow_null': False, 'required': True},
+            backup_schedule={'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
     @staticmethod
     def eager_load(queryset):
         queryset = structure_serializers.BaseResourceSerializer.eager_load(queryset)
-        queryset = queryset.select_related('tenant')
+        queryset = queryset.select_related('tenant', 'backup_schedule')
         return queryset.prefetch_related('restorations', 'restorations__instance')
 
     @transaction.atomic
@@ -1035,12 +1036,12 @@ def create_dr_backup_related_resources(dr_backup):
 
 
 class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, BasicDRBackupRestorationSerializer):
-    instance_name = serializers.CharField(
-        source='instance.name', required=False, help_text='New instance name. Leave blank to use source instance name.')
+    name = serializers.CharField(
+        required=False, help_text='New instance name. Leave blank to use source instance name.')
 
     class Meta(BasicDRBackupRestorationSerializer.Meta):
-        fields = BasicDRBackupRestorationSerializer.Meta.fields + ('tenant', 'dr_backup', 'flavor',)
-        protected_fields = ('tenant', 'dr_backup', 'flavor',)
+        fields = BasicDRBackupRestorationSerializer.Meta.fields + ('tenant', 'dr_backup', 'flavor', 'name')
+        protected_fields = ('tenant', 'dr_backup', 'flavor', 'name')
         extra_kwargs = dict(
             dr_backup={'lookup_field': 'uuid', 'view_name': 'openstack-dr-backup-detail'},
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
@@ -1077,7 +1078,7 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
         dr_backup = validated_data['dr_backup']
         # instance that will be restored
         instance = models.Instance.objects.create(
-            name=validated_data.pop('instance_name', None) or dr_backup.metadata['name'],
+            name=validated_data.pop('name', None) or dr_backup.metadata['name'],
             description=dr_backup.metadata['description'],
             service_project_link=tenant.service_project_link,
             tenant=tenant,
