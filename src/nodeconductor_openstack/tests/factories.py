@@ -140,6 +140,7 @@ class InstanceFactory(TenantMixin, factory.DjangoModelFactory):
             service_project_link=self.service_project_link,
             size=20 * 1024,
             name='{0}-system'.format(self.name),
+            backend_id='volume-1'
         )
 
 

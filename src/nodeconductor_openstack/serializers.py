@@ -674,6 +674,10 @@ class VolumeExtendSerializer(serializers.Serializer):
         return fields
 
     def validate(self, attrs):
+        if not self.instance.backend_id:
+            raise serializers.ValidationError({
+                'non_field_errors': ['Unable to extend volume without backend_id']
+            })
         disk_size = attrs.get('disk_size')
         if disk_size == self.instance.size:
             raise serializers.ValidationError({

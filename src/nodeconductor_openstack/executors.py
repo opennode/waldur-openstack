@@ -572,7 +572,7 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
         return LogFlavorChangeFailed().s(serialized_instance, utils.serialize_instance(flavor))
 
 
-class VolumeExtendExecutor(BaseExecutor):
+class VolumeExtendExecutor(executors.BaseChordExecutor):
 
     @classmethod
     def get_attached_instances(cls, volume):
@@ -648,7 +648,10 @@ class VolumeExtendExecutor(BaseExecutor):
             erred_state='error'
         )
 
-        return chain(detach, extend, attach, check)
+        if serialized_instances:
+            return chain(detach, extend, attach, check)
+        else:
+            return chain(extend, check)
 
     @classmethod
     def get_success_signature(cls, volume, serialized_volume, **kwargs):
