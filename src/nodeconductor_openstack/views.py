@@ -7,10 +7,10 @@ from rest_framework.reverse import reverse
 from taggit.models import TaggedItem
 
 from nodeconductor.core import mixins as core_mixins
+from nodeconductor.core import utils as core_utils
 from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
-from nodeconductor.core.utils import request_api
 from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import views as structure_views
 from nodeconductor.structure import filters as structure_filters
@@ -176,8 +176,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
-        'change_flavor': serializers.InstanceFlavorChangeSerializer,
-        'extend_volume': serializers.InstanceVolumeExtendSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -277,7 +275,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         instance = self.get_object()
         kwargs = {'uuid': instance.tenant.uuid.hex}
         url = reverse('openstack-tenant-detail', kwargs=kwargs, request=request) + 'allocate_floating_ip/'
-        resp = request_api(request, url, 'POST')
+        resp = core_utils.request_api(request, url, 'POST')
         return response.Response(resp.json(), resp.status_code)
 
     allocate_floating_ip.title = 'Allocate floating IP'
@@ -371,32 +369,25 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
 
         if disk_size:
-            serializer = serializers.InstanceVolumeExtendSerializer(instance, data=request.data)
+            volume = instance.data_volume
+            serializer = serializers.VolumeExtendSerializer(volume, data=request.data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
 
             new_size = serializer.validated_data.get('disk_size')
-            executors.InstanceVolumeExtendExecutor().execute(instance, new_size=new_size)
+            executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
 
     resize.title = 'Resize virtual machine'
 
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
     def change_flavor(self, request, instance, uuid=None):
-        serializer = self.get_serializer(instance, data=request.data)
+        serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
+        serializer.save()
 
         flavor = serializer.validated_data.get('flavor')
         executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
-
-    @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
-    def extend_volume(self, request, instance, uuid=None):
-        serializer = self.get_serializer(instance, data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        new_size = serializer.validated_data.get('disk_size')
-        executors.InstanceVolumeExtendExecutor().execute(instance, new_size=new_size)
 
 
 class SecurityGroupViewSet(StateExecutorViewSet):
@@ -1049,6 +1040,16 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def extend(self, request, volume, uuid=None):
+        serializer = serializers.VolumeExtendSerializer(volume, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        new_size = serializer.validated_data.get('disk_size')
+        executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
 
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,

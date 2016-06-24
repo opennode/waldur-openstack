@@ -664,26 +664,37 @@ class InstanceImportSerializer(structure_serializers.BaseResourceImportSerialize
         return instance
 
 
-class InstanceVolumeExtendSerializer(serializers.Serializer):
+class VolumeExtendSerializer(serializers.Serializer):
     disk_size = serializers.IntegerField(min_value=1, label='Disk size')
 
     def get_fields(self):
-        fields = super(InstanceVolumeExtendSerializer, self).get_fields()
+        fields = super(VolumeExtendSerializer, self).get_fields()
         if self.instance:
-            fields['disk_size'].min_value = self.instance.data_volume_size
+            fields['disk_size'].min_value = self.instance.size
         return fields
 
-    def validate_disk_size(self, value):
-        if value is not None:
-            if value == self.instance.data_volume_size:
-                raise serializers.ValidationError(
-                    "Disk size must be strictly greater than the current one")
-        return value
+    def validate(self, attrs):
+        disk_size = attrs.get('disk_size')
+        if disk_size == self.instance.size:
+            raise serializers.ValidationError({
+                'disk_size': ['Disk size must be strictly greater than the current one']
+            })
+        if models.Instance.volumes.through.objects.filter(
+            volume=self.instance
+        ).exclude(
+            instance__state=models.Instance.States.OFFLINE
+        ).exists():
+            raise serializers.ValidationError({
+                'non_field_errors': ['All instances attached to the volume should be in OFFLINE state']
+            })
+        return attrs
 
     @transaction.atomic
     def update(self, instance, validated_data):
         new_size = validated_data.get('disk_size')
-        instance.tenant.add_quota_usage('storage', new_size - instance.disk, validate=True)
+        instance.tenant.add_quota_usage('storage', new_size - instance.size, validate=True)
+        instance.size = new_size
+        instance.save(update_fields=['size'])
         return instance
 
 

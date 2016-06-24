@@ -1,5 +1,3 @@
-import unittest
-
 from rest_framework import test, status
 
 from nodeconductor.structure.models import ProjectRole, ProjectGroupRole
@@ -299,7 +297,6 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         self.assertDictContainsSubset(
             {'non_field_errors': ['Either disk_size or flavor is required']}, response.data)
 
-    @unittest.skip('Data volume size is not increased before resize task has been scheduled')
     def test_user_can_resize_disk_of_flavor_of_instance_he_is_administrator_of(self):
         self.client.force_authenticate(user=self.user)
 
