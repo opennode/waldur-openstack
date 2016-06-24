@@ -287,7 +287,7 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
 
 # TODO: Add runtime state messages.
 class DRBackupCreateExecutor(executors.BaseChordExecutor):
-    """ Create backup for each instance volume separately using temporary volumes and snaphots """
+    """ Create backup for each instance volume separately using temporary volumes and snapshots """
 
     @classmethod
     def get_task_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
@@ -522,3 +522,28 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
             )
         else:
             return tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_deleting')
+
+
+class BackupCreateExecutor(executors.CreateExecutor, executors.BaseChordExecutor):
+
+    @classmethod
+    def get_task_signature(cls, backup, serialized_backup, **kwargs):
+        creations_tasks = [tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_creating')]
+        for snapshot in backup.snapshots.all():
+            serialized_snapshot = utils.serialize_instance(snapshot)
+            creations_tasks.append(chain(
+                tasks.BackendMethodTask().si(
+                    serialized_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'),
+                PollRuntimeStateTask().si(
+                    serialized_snapshot,
+                    backend_pull_method='pull_snapshot_runtime_state',
+                    success_state='available',
+                    erred_state='error',
+                ).set(countdown=10),
+                tasks.StateTransitionTask().si(serialized_snapshot, state_transition='set_ok'),
+            ))
+
+    @classmethod
+    def get_failure_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
+        # TODO
+        pass
