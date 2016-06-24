@@ -575,6 +575,7 @@ class VolumeExtendExecutor(executors.ActionExecutor):
 
     @classmethod
     def pre_apply(cls, volume, **kwargs):
+        super(VolumeExtendExecutor, cls).pre_apply(volume, **kwargs)
         new_size = kwargs.pop('new_size')
 
         for instance in volume.instances.all():
@@ -645,7 +646,7 @@ class VolumeExtendExecutor(executors.ActionExecutor):
     @classmethod
     def get_success_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
-        return LogVolumeExtendSucceeded().si(serialized_volume, new_size=new_size)
+        return LogVolumeExtendSucceeded().si(serialized_volume, state_transition='set_ok', new_size=new_size)
 
     @classmethod
     def get_failure_signature(cls, volume, serialized_volume, **kwargs):
