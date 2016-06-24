@@ -19,6 +19,7 @@ def populate_instance_volumes(apps, schema_editor):
                 size=instance.system_volume_size,
                 backend_id=instance.system_volume_id,
                 name='{0}-system'.format(instance.name[:143]),
+                state=3,
             )
             instance.volumes.add(system_volume)
         if instance.data_volume_id:
@@ -30,6 +31,7 @@ def populate_instance_volumes(apps, schema_editor):
                 size=instance.data_volume_size,
                 backend_id=instance.data_volume_id,
                 name='{0}-data'.format(instance.name[:145]),
+                state=3,
             )
             instance.volumes.add(data_volume)
 
