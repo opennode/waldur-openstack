@@ -910,6 +910,8 @@ class OpenStackBackend(ServiceBackend):
 
             instance = models.Instance(
                 name=backend_instance.name or backend_instance.id,
+                tenant=tenant,
+                service_project_link=tenant.service_project_link,
                 key_name=backend_instance.key_name or '',
                 start_time=launch_time,
                 state=self._get_instance_state(backend_instance),
@@ -930,7 +932,7 @@ class OpenStackBackend(ServiceBackend):
                 instance.save()
                 instance.volumes.add(*volumes)
                 for security_group in security_groups:
-                    models.InstanceSecurityGroup.create(instance=instance, security_group=security_group)
+                    models.InstanceSecurityGroup.objects.create(instance=instance, security_group=security_group)
 
         return instance
 

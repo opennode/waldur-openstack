@@ -32,6 +32,8 @@ class SetDRBackupErredTask(tasks.ErrorStateTransitionTask):
             schedule.runtime_state = 'Failed to create backup'
             schedule.is_active = False
             schedule.save()
+        dr_backup.runtime_state = 'Erred'
+        dr_backup.save(update_fields=['runtime_state'])
 
 
 class CleanUpDRBackupTask(tasks.StateTransitionTask):
@@ -47,6 +49,8 @@ class CleanUpDRBackupTask(tasks.StateTransitionTask):
             SnapshotDeleteExecutor.execute(snapshot, force=force)
         for volume in dr_backup.temporary_volumes.all():
             VolumeDeleteExecutor.execute(volume, force=force)
+        dr_backup.runtime_state = 'Available'
+        dr_backup.save(update_fields=['runtime_state'])
 
 
 class ForceDeleteDRBackupTask(tasks.StateTransitionTask):
