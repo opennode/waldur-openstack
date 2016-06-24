@@ -291,7 +291,10 @@ class DRBackupCreateExecutor(executors.BaseChordExecutor):
 
     @classmethod
     def get_task_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
-        creation_tasks = [tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_creating')]
+        creation_tasks = [
+            tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_creating'),
+            tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Creating temporary snapshots')
+        ]
         for volume_backup in dr_backup.volume_backups.all():
             tmp_volume = volume_backup.source_volume
             tmp_snapshot = tmp_volume.source_snapshot
@@ -310,6 +313,7 @@ class DRBackupCreateExecutor(executors.BaseChordExecutor):
                     erred_state='error',
                 ).set(countdown=10),
                 tasks.StateTransitionTask().si(serialized_tmp_snapshot, state_transition='set_ok'),
+                tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Creating temporary volumes'),
                 # 2. Create temporary volume on backend.
                 tasks.BackendMethodTask().si(
                     serialzied_tmp_volume, 'create_volume', state_transition='begin_creating'),
@@ -320,6 +324,7 @@ class DRBackupCreateExecutor(executors.BaseChordExecutor):
                     erred_state='error',
                 ).set(countdown=30),
                 tasks.StateTransitionTask().si(serialzied_tmp_volume, state_transition='set_ok'),
+                tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Backing up temporary volumes'),
                 # 3. Create volume_backup on backend
                 tasks.BackendMethodTask().si(
                     serialized_volume_backup, 'create_volume_backup', state_transition='begin_creating'),
@@ -358,6 +363,7 @@ class DRBackupDeleteExecutor(executors.DeleteExecutor, executors.BaseChordExecut
     def get_task_signature(cls, dr_backup, serialized_dr_backup, force=False, **kwargs):
         deletion_tasks = [
             tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_deleting'),
+            tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Deleting volume backups'),
             CleanUpDRBackupTask().si(serialized_dr_backup, force=force),  # remove temporary volumes and snapshots
         ]
         # remove volume backups
