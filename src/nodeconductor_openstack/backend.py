@@ -1221,7 +1221,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
-    def confirm_resize_instance(self, instance):
+    def confirm_instance_resize(self, instance):
         nova = self.nova_client
         try:
             nova.servers.confirm_resize(instance.backend_id)

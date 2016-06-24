@@ -552,7 +552,7 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
             ),
             tasks.BackendMethodTask().si(
                 instance=serialized_instance,
-                backend_method='confirm_resize_instance'
+                backend_method='confirm_instance_resize'
             ),
             PollRuntimeStateTask().si(
                 serialized_instance,
@@ -575,41 +575,34 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
 class VolumeExtendExecutor(executors.BaseChordExecutor):
 
     @classmethod
-    def get_attached_instances(cls, volume):
-        return [utils.serialize_instance(link.instance) for link in
-                 models.Instance.volumes.through.objects.filter(volume=volume)]
-
-    @classmethod
     def pre_apply(cls, volume, **kwargs):
-        serialized_instances = cls.get_attached_instances(volume)
         new_size = kwargs.pop('new_size')
 
-        for serialized_instance in serialized_instances:
-            instance = utils.deserialize_instance(serialized_instance)
+        for instance in volume.instances.all():
             instance.schedule_resizing()
             instance.save(update_fields=['state'])
-        event_logger.openstack_volume.info(
-            'Virtual machine {resource_name} has been scheduled to extend disk.',
-            event_type='resource_volume_extension_scheduled',
-            event_context={
-                'resource': instance,
-                'volume_size': new_size
-            }
-        )
+
+            event_logger.openstack_volume.info(
+                'Virtual machine {resource_name} has been scheduled to extend disk.',
+                event_type='resource_volume_extension_scheduled',
+                event_context={
+                    'resource': instance,
+                    'volume_size': new_size
+                }
+            )
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
-        serialized_instances = cls.get_attached_instances(volume)
         new_size = kwargs.pop('new_size')
 
         detach = group([
             tasks.BackendMethodTask().si(
-                serialized_instance,
+                utils.serialize_instance(instance),
                 backend_method='detach_instance_volume',
                 state_transition='begin_resizing',
                 backend_volume_id=volume.backend_id
             )
-            for serialized_instance in serialized_instances
+            for instance in volume.instances.all()
         ])
 
         extend = chain(
@@ -634,11 +627,11 @@ class VolumeExtendExecutor(executors.BaseChordExecutor):
 
         attach = group([
             tasks.BackendMethodTask().si(
-                serialized_instance,
+                utils.serialize_instance(instance),
                 backend_method='attach_instance_volume',
                 backend_volume_id=volume.backend_id
             )
-            for serialized_instance in serialized_instances
+            for instance in volume.instances.all()
         ])
 
         check = PollRuntimeStateTask().si(
@@ -648,34 +641,32 @@ class VolumeExtendExecutor(executors.BaseChordExecutor):
             erred_state='error'
         )
 
-        if serialized_instances:
+        if attach and detach:
             return chain(detach, extend, attach, check)
         else:
             return chain(extend, check)
 
     @classmethod
     def get_success_signature(cls, volume, serialized_volume, **kwargs):
-        serialized_instances = cls.get_attached_instances(volume)
         new_size = kwargs.pop('new_size')
 
         return group([
             LogVolumeExtendSucceeded().si(
-                serialized_instance,
+                utils.serialize_instance(instance),
                 state_transition='set_resized',
                 new_size=new_size
             )
-            for serialized_instance in serialized_instances
+            for instance in volume.instances.all()
         ])
 
     @classmethod
     def get_failure_signature(cls, volume, serialized_volume, **kwargs):
-        serialized_instances = cls.get_attached_instances(volume)
         new_size = kwargs.pop('new_size')
 
         return group([
             LogVolumeExtendFailed().s(
-                serialized_instance,
+                utils.serialize_instance(instance),
                 new_size=new_size
             )
-            for serialized_instance in serialized_instances
+            for instance in volume.instances.all()
         ])
