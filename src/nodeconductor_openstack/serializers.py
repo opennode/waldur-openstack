@@ -677,14 +677,14 @@ class InstanceVolumeExtendSerializer(serializers.Serializer):
         if value is not None:
             if value == self.instance.data_volume_size:
                 raise serializers.ValidationError(
-                    "Disk size must be strictly greater than the current one.")
+                    "Disk size must be strictly greater than the current one")
         return value
 
     @transaction.atomic
     def update(self, instance, validated_data):
         new_size = validated_data.get('disk_size')
         instance.tenant.add_quota_usage('storage', new_size - instance.disk, validate=True)
-        return super(InstanceVolumeExtendSerializer, self).update(instance, validated_data)
+        return instance
 
 
 class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin,
@@ -712,11 +712,11 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 
             if value.settings != spl.service.settings:
                 raise serializers.ValidationError(
-                    "New flavor is not within the same service settings.")
+                    "New flavor is not within the same service settings")
 
             if value.disk < self.instance.flavor_disk:
                 raise serializers.ValidationError(
-                    "New flavor disk should be greater than the previous value.")
+                    "New flavor disk should be greater than the previous value")
         return value
 
     @transaction.atomic
@@ -731,8 +731,7 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
         instance.flavor_disk = flavor.disk
         instance.flavor_name = flavor.name
         instance.save(update_fields=['ram', 'cores', 'flavor_name', 'flavor_disk'])
-
-        return super(InstanceFlavorChangeSerializer, self).update(instance, validated_data)
+        return instance
 
 
 class TenantSerializer(structure_serializers.BaseResourceSerializer):

@@ -353,15 +353,19 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         flavor = request.data.get('flavor')
         disk_size = request.data.get('disk_size')
 
+        def fail(message):
+            raise ValidationError({'non_field_errors': [message]})
+
         if flavor is not None and disk_size is not None:
-            raise ValidationError("Cannot resize both disk size and flavor simultaneously")
+            fail('Cannot resize both disk size and flavor simultaneously')
 
         if flavor is None and disk_size is None:
-            raise ValidationError("Either disk_size or flavor is required")
+            fail('Either disk_size or flavor is required')
 
         if flavor:
             serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
             serializer.is_valid(raise_exception=True)
+            serializer.save()
 
             flavor = serializer.validated_data.get('flavor')
             executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
@@ -369,6 +373,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         if disk_size:
             serializer = serializers.InstanceVolumeExtendSerializer(instance, data=request.data)
             serializer.is_valid(raise_exception=True)
+            serializer.save()
 
             new_size = serializer.validated_data.get('disk_size')
             executors.InstanceVolumeExtendExecutor().execute(instance, new_size=new_size)
