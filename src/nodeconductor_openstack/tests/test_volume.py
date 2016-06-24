@@ -16,7 +16,7 @@ class VolumeTestCase(test.APITransactionTestCase):
         admined_project = self.admined_volume.service_project_link.project
         admined_project.add_user(self.user, ProjectRole.ADMINISTRATOR)
 
-    def test_user_can_resize_disk_of_flavor_of_instance_he_is_administrator_of(self):
+    def test_user_can_resize_size_of_volume_he_is_administrator_of(self):
         self.client.force_authenticate(user=self.user)
         new_size = self.admined_volume.size + 1024
 

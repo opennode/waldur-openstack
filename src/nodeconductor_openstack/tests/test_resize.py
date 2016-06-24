@@ -308,7 +308,7 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         data = {'disk_size': new_size}
         response = self.client.post(factories.InstanceFactory.get_url(instance, action='resize'), data)
 
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
 
         reread_instance = Instance.objects.get(pk=instance.pk)
         self.assertEqual(reread_instance.data_volume_size, new_size)
