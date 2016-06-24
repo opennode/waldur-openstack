@@ -682,6 +682,10 @@ class BackupViewSet(StateExecutorViewSet):
             raise exceptions.PermissionDenied('You do not have permission to perform this action.')
         super(BackupViewSet, self).perform_create(serializer)
 
+    def perform_update(self, serializer):
+        # Update do not make any changes at backend, so there is no executor
+        serializer.save()
+
 
 class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = serializers.LicenseSerializer

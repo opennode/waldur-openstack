@@ -379,7 +379,7 @@ class BackupSerializer(serializers.HyperlinkedModelSerializer):
         view_name = 'openstack-backup-detail'
         fields = ('url', 'uuid', 'description', 'created_at', 'kept_until', 'instance', 'state', 'backup_schedule',
                   'metadata', 'instance_name', 'tenant')
-        read_only_fields = ('created_at', 'kept_until', 'backup_schedule', 'tenant')
+        read_only_fields = ('created_at', 'kept_until', 'backup_schedule', 'tenant', 'instance')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
