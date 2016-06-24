@@ -373,23 +373,43 @@ class BackupSerializer(serializers.HyperlinkedModelSerializer):
     state = serializers.ReadOnlyField(source='get_state_display')
     metadata = JsonField(read_only=True)
     instance_name = serializers.ReadOnlyField(source='instance.name')
-    instance = serializers.HyperlinkedRelatedField(
-        lookup_field='uuid',
-        view_name='openstack-instance-detail',
-        queryset=models.Instance.objects.all(),
-    )
 
     class Meta(object):
         model = models.Backup
         view_name = 'openstack-backup-detail'
         fields = ('url', 'uuid', 'description', 'created_at', 'kept_until', 'instance', 'state', 'backup_schedule',
-                  'metadata', 'instance_name')
-        read_only_fields = ('created_at', 'kept_until', 'backup_schedule')
+                  'metadata', 'instance_name', 'tenant')
+        read_only_fields = ('created_at', 'kept_until', 'backup_schedule', 'tenant')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
         }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        instance = validated_data['instance']
+        tenant = instance.tenant
+        validated_data['tenant'] = tenant
+        backup = super(BackupSerializer, self).create(validated_data)
+        create_backup_snapshots(backup)
+        return backup
+
+
+def create_backup_snapshots(backup):
+    for volume in backup.instance.volumes.all():
+        snapshot = models.Snapshot.objects.create(
+            name='Snapshot for volume %s' % volume.name,
+            service_project_link=backup.tenant.service_project_link,
+            tenant=backup.tenant,
+            size=volume.size,
+            source_volume=volume,
+            description='Part of backup %s' % backup.uuid.hex,
+            metadata={'source_volume_name': volume.name, 'source_volume_description': volume.description},
+        )
+        snapshot.increase_backend_quotas_usage()
+        backup.snapshots.add(snapshot)
 
 
 class BackupRestorationSerializer(serializers.ModelSerializer):
