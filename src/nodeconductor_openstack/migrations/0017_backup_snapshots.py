@@ -31,7 +31,7 @@ def init_backup_snapshots(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('openstack', '0015_auto_20160624_1243'),
+        ('openstack', '0016_backup_state'),
     ]
 
     operations = [

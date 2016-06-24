@@ -2,14 +2,15 @@ from django.http import Http404
 from django.utils import six
 from rest_framework import viewsets, decorators, exceptions, response, permissions, mixins, status
 from rest_framework import filters as rf_filters
+from rest_framework.exceptions import ValidationError
 from rest_framework.reverse import reverse
 from taggit.models import TaggedItem
 
 from nodeconductor.core import mixins as core_mixins
+from nodeconductor.core import utils as core_utils
 from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
-from nodeconductor.core.utils import request_api
 from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import views as structure_views
 from nodeconductor.structure import filters as structure_filters
@@ -175,7 +176,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
-        'resize': serializers.InstanceResizeSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -275,7 +275,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         instance = self.get_object()
         kwargs = {'uuid': instance.tenant.uuid.hex}
         url = reverse('openstack-tenant-detail', kwargs=kwargs, request=request) + 'allocate_floating_ip/'
-        resp = request_api(request, url, 'POST')
+        resp = core_utils.request_api(request, url, 'POST')
         return response.Response(resp.json(), resp.status_code)
 
     allocate_floating_ip.title = 'Allocate floating IP'
@@ -319,7 +319,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         Note, that instance must be OFFLINE.
         Example of a valid request:
 
-
         .. code-block:: http
 
             POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/resize/ HTTP/1.1
@@ -349,38 +348,46 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 "disk_size": 1024
             }
         """
-        # TODO: refactor resizing with executors.
-        serializer = self.get_serializer(instance, data=request.data)
-        serializer.is_valid(raise_exception=True)
+        flavor = request.data.get('flavor')
+        disk_size = request.data.get('disk_size')
 
-        flavor = serializer.validated_data.get('flavor')
-        new_size = serializer.validated_data.get('disk_size')
+        def fail(message):
+            raise ValidationError({'non_field_errors': [message]})
 
-        instance.schedule_resizing()
-        instance.save()
+        if flavor is not None and disk_size is not None:
+            fail('Cannot resize both disk size and flavor simultaneously')
 
-        # Serializer makes sure that exactly one of the branches will match
-        if flavor is not None:
-            # TODO: Move quotas update to serialzer.
-            instance.tenant.add_quota_usage('ram', flavor.ram - instance.ram)
-            instance.tenant.add_quota_usage('vcpu', flavor.cores - instance.cores)
-            send_task('openstack', 'change_flavor')(instance.uuid.hex, flavor_uuid=flavor.uuid.hex)
-            event_logger.openstack_flavor.info(
-                'Virtual machine {resource_name} has been scheduled to change flavor.',
-                event_type='resource_flavor_change_scheduled',
-                event_context={'resource': instance, 'flavor': flavor}
-            )
-        else:
-            # TODO: Move quotas update to serialzer.
-            instance.tenant.add_quota_usage('storage', new_size - instance.disk)
-            send_task('openstack', 'extend_disk')(instance.uuid.hex, disk_size=new_size)
-            event_logger.openstack_volume.info(
-                'Virtual machine {resource_name} has been scheduled to extend disk.',
-                event_type='resource_volume_extension_scheduled',
-                event_context={'resource': instance, 'volume_size': new_size}
-            )
+        if flavor is None and disk_size is None:
+            fail('Either disk_size or flavor is required')
+
+        if flavor:
+            serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+            flavor = serializer.validated_data.get('flavor')
+            executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
+
+        if disk_size:
+            volume = instance.data_volume
+            serializer = serializers.VolumeExtendSerializer(volume, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+            new_size = serializer.validated_data.get('disk_size')
+            executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
 
     resize.title = 'Resize virtual machine'
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
+    def change_flavor(self, request, instance, uuid=None):
+        serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        flavor = serializer.validated_data.get('flavor')
+        executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
 
 
 class SecurityGroupViewSet(StateExecutorViewSet):
@@ -1033,6 +1040,16 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def extend(self, request, volume, uuid=None):
+        serializer = serializers.VolumeExtendSerializer(volume, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        new_size = serializer.validated_data.get('disk_size')
+        executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
 
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,

@@ -24,7 +24,7 @@ def migrate_backups_states(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('openstack', '0014_instance_volumes'),
+        ('openstack', '0015_instance_runtime_state'),
     ]
 
     operations = [

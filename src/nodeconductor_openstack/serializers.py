@@ -684,20 +684,47 @@ class InstanceImportSerializer(structure_serializers.BaseResourceImportSerialize
         return instance
 
 
-class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMixin,
-                               serializers.Serializer):
+class VolumeExtendSerializer(serializers.Serializer):
+    disk_size = serializers.IntegerField(min_value=1, label='Disk size')
+
+    def get_fields(self):
+        fields = super(VolumeExtendSerializer, self).get_fields()
+        if self.instance:
+            fields['disk_size'].min_value = self.instance.size + 1
+        return fields
+
+    def validate(self, attrs):
+        volume = self.instance
+        if not volume.backend_id:
+            raise serializers.ValidationError({
+                'non_field_errors': ['Unable to extend volume without backend_id']
+            })
+        if volume.instances.all().exclude(state=models.Instance.States.OFFLINE).exists():
+            raise serializers.ValidationError({
+                'non_field_errors': ['All instances attached to the volume should be in OFFLINE state']
+            })
+        return attrs
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        new_size = validated_data.get('disk_size')
+        instance.tenant.add_quota_usage('storage', new_size - instance.size, validate=True)
+        instance.size = new_size
+        instance.save(update_fields=['size'])
+        return instance
+
+
+class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin,
+                                     serializers.Serializer):
     flavor = serializers.HyperlinkedRelatedField(
         view_name='openstack-flavor-detail',
         lookup_field='uuid',
         queryset=models.Flavor.objects.all(),
-        required=False,
     )
-    disk_size = serializers.IntegerField(min_value=1, required=False, label='Disk size')
 
     def get_fields(self):
-        fields = super(InstanceResizeSerializer, self).get_fields()
+        fields = super(InstanceFlavorChangeSerializer, self).get_fields()
         if self.instance:
-            fields['disk_size'].min_value = self.instance.data_volume_size
             fields['flavor'].query_params = {
                 'settings_uuid': self.instance.service_project_link.service.settings.uuid
             }
@@ -715,40 +742,23 @@ class InstanceResizeSerializer(structure_serializers.PermissionFieldFilteringMix
                     "New flavor is not within the same service settings")
 
             if value.disk < self.instance.flavor_disk:
-                raise serializers.ValidationError("New flavor disk should be greater than the previous value.")
-
-            quota_errors = self.instance.tenant.validate_quota_change({
-                'vcpu': value.cores - self.instance.cores,
-                'ram': value.ram - self.instance.ram,
-            })
-            if quota_errors:
                 raise serializers.ValidationError(
-                    "One or more quotas are over limit: \n" + "\n".join(quota_errors))
+                    "New flavor disk should be greater than the previous value")
         return value
 
-    def validate_disk_size(self, value):
-        if value is not None:
-            if value <= self.instance.data_volume_size:
-                raise serializers.ValidationError(
-                    "Disk size must be strictly greater than the current one")
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        flavor = validated_data.get('flavor')
 
-            quota_errors = self.instance.tenant.validate_quota_change({
-                'storage': value - self.instance.data_volume_size,
-            })
-            if quota_errors:
-                raise serializers.ValidationError(
-                    "One or more quotas are over limit: \n" + "\n".join(quota_errors))
-        return value
+        instance.tenant.add_quota_usage('ram', flavor.ram - instance.ram, validate=True)
+        instance.tenant.add_quota_usage('vcpu', flavor.cores - instance.cores, validate=True)
 
-    def validate(self, attrs):
-        flavor = attrs.get('flavor')
-        disk_size = attrs.get('disk_size')
-
-        if flavor is not None and disk_size is not None:
-            raise serializers.ValidationError("Cannot resize both disk size and flavor simultaneously")
-        if flavor is None and disk_size is None:
-            raise serializers.ValidationError("Either disk_size or flavor is required")
-        return attrs
+        instance.ram = flavor.ram
+        instance.cores = flavor.cores
+        instance.flavor_disk = flavor.disk
+        instance.flavor_name = flavor.name
+        instance.save(update_fields=['ram', 'cores', 'flavor_name', 'flavor_disk'])
+        return instance
 
 
 class TenantSerializer(structure_serializers.BaseResourceSerializer):
