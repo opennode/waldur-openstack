@@ -1212,91 +1212,53 @@ class OpenStackBackend(ServiceBackend):
             except keystone_exceptions.ClientException as e:
                 six.reraise(OpenStackBackendError, e)
 
-    def extend_disk(self, instance):
+    @log_backend_action()
+    def resize_instance(self, instance, flavor_id):
         nova = self.nova_client
-        cinder = self.cinder_client
-
-        logger.debug('About to extend disk for instance %s', instance.uuid)
         try:
-            volume = cinder.volumes.get(instance.data_volume_id)
-
-            server_id = instance.backend_id
-            volume_id = volume.id
-
-            new_core_size = instance.data_volume_size
-            old_core_size = self.gb2mb(volume.size)
-            new_backend_size = self.mb2gb(new_core_size)
-
-            new_core_size_gib = int(round(new_core_size / 1024.0))
-
-            if old_core_size == new_core_size:
-                logger.info('Not extending volume %s: it is already of size %d MiB',
-                            volume_id, new_core_size)
-                return
-            elif old_core_size > new_core_size:
-                logger.warning('Not extending volume %s: desired size %d MiB is less then current size %d MiB',
-                               volume_id, new_core_size, old_core_size)
-                event_logger.openstack_volume.error(
-                    "Virtual machine {resource_name} disk extension has failed "
-                    "due to new size being less than old size.",
-                    event_type='resource_volume_extension_failed',
-                    event_context={'resource': instance}
-                )
-                return
-
-            nova.volumes.delete_server_volume(server_id, volume_id)
-            if not self._wait_for_volume_status(volume_id, cinder, 'available', 'error'):
-                logger.error(
-                    'Failed to extend volume: timed out waiting volume %s to detach from instance %s',
-                    volume_id, instance.uuid,
-                )
-                raise OpenStackBackendError(
-                    'Timed out waiting volume %s to detach from instance %s' % (volume_id, instance.uuid))
-
-            try:
-                self._extend_volume(cinder, volume, new_backend_size)
-                storage_delta = new_core_size - old_core_size
-                instance.tenant.add_quota_usage('storage', storage_delta)
-            except cinder_exceptions.OverLimit as e:
-                logger.warning(
-                    'Failed to extend volume: exceeded quota limit while trying to extend volume %s',
-                    volume.id,
-                )
-                event_logger.openstack_volume.error(
-                    "Virtual machine {resource_name} disk extension has failed due to quota limits.",
-                    event_type='resource_volume_extension_failed',
-                    event_context={'resource': instance},
-                )
-                # Reset instance.data_volume_size back so that model reflects actual state
-                instance.data_volume_size = old_core_size
-                instance.save()
-
-                # Omit logging success
-                six.reraise(OpenStackBackendError, e)
-            finally:
-
-                nova.volumes.create_server_volume(server_id, volume_id, None)
-                if not self._wait_for_volume_status(volume_id, cinder, 'in-use', 'error'):
-                    logger.error(
-                        'Failed to extend volume: timed out waiting volume %s to attach to instance %s',
-                        volume_id, instance.uuid,
-                    )
-                    raise OpenStackBackendError(
-                        'Timed out waiting volume %s to attach to instance %s' % (volume_id, instance.uuid))
-
-        except cinder_exceptions.OverLimit:
-            # Omit logging success
-            pass
-        except (nova_exceptions.ClientException, cinder_exceptions.ClientException) as e:
-            logger.exception('Failed to extend disk of an instance %s', instance.uuid)
+            nova.servers.resize(instance.backend_id, flavor_id, 'MANUAL')
+        except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
-        else:
-            logger.info('Successfully extended disk of an instance %s', instance.uuid)
-            event_logger.openstack_volume.info(
-                "Virtual machine {resource_name} disk has been extended to {volume_size} GB.",
-                event_type='resource_volume_extension_succeeded',
-                event_context={'resource': instance, 'volume_size': new_core_size_gib},
-            )
+
+    @log_backend_action()
+    def confirm_instance_resize(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.confirm_resize(instance.backend_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def pull_instance_runtime_state(self, instance):
+        nova = self.nova_client
+        try:
+            backend_instance = nova.servers.get(instance.backend_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        if backend_instance.status != instance.runtime_state:
+            instance.runtime_state = backend_instance.status
+            instance.save(update_fields=['runtime_state'])
+
+    def attach_instance_volume(self, instance, backend_volume_id):
+        nova = self.nova_client
+        try:
+            nova.volumes.delete_server_volume(instance.backend_id, backend_volume_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    def detach_instance_volume(self, instance, backend_volume_id):
+        nova = self.nova_client
+        try:
+            nova.volumes.create_server_volume(instance.backend_id, backend_volume_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    def extend_volume(self, volume, new_size):
+        cinder = self.cinder_client
+        try:
+            cinder.volumes.extend(volume, new_size)
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
 
     def _push_security_group_rules(self, security_group):
         """ Helper method  """
