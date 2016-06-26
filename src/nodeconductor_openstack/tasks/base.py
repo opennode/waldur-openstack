@@ -1,10 +1,8 @@
-from celery import shared_task, current_app
-from functools import wraps
+from celery import shared_task
 
-from nodeconductor.core.tasks import retry_if_false, Task
+from nodeconductor.core.tasks import Task
 
 from .. import models
-from ..backend import OpenStackClient
 
 
 # TODO: move this signal to itacloud assembly application
