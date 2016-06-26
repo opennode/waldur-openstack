@@ -951,12 +951,13 @@ class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstack-spl-detail',
         read_only=True)
     restorations = BasicDRBackupRestorationSerializer(read_only=True, many=True)
+    metadata = JsonField(read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.DRBackup
         view_name = 'openstack-dr-backup-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'source_instance', 'tenant', 'restorations', 'kept_until', 'runtime_state', 'backup_schedule',
+            'source_instance', 'tenant', 'restorations', 'kept_until', 'runtime_state', 'backup_schedule', 'metadata',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'tenant', 'kept_until', 'runtime_state', 'backup_schedule',
