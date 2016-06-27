@@ -4,7 +4,9 @@ from .. import models
 
 
 class SetBackupRestorationErredTask(tasks.ErrorStateTransitionTask):
-    """ Mark backup restoration instance as erred and delete volumes that were not created. """
+    """ Mark backup restoration instance as erred and
+        delete volume records that have not been created on backend.
+    """
 
     def execute(self, backup_restoration):
         instance = backup_restoration.instance
