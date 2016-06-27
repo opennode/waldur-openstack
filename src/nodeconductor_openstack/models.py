@@ -357,7 +357,7 @@ class Backup(core_models.UuidMixin,
         project_path = 'instance__service_project_link__project'
         project_group_path = 'instance__service_project_link__project__project_groups'
 
-    instance = models.ForeignKey(Instance, related_name='backups')
+    instance = models.ForeignKey(Instance, related_name='backups', on_delete=models.PROTECT)
     tenant = models.ForeignKey('Tenant', related_name='backups')
     backup_schedule = models.ForeignKey(BackupSchedule, blank=True, null=True,
                                         on_delete=models.SET_NULL,
