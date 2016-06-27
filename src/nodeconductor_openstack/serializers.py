@@ -623,7 +623,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         security_groups = [data['security_group'] for data in validated_data.pop('security_groups', [])]
         tenant = validated_data['tenant']
         spl = tenant.service_project_link
-        ssh_key = validated_data.get('ssh_key')
+        ssh_key = validated_data.get('ssh_public_key')
         if ssh_key:
             # We want names to be human readable in backend.
             # OpenStack only allows latin letters, digits, dashes, underscores and spaces
