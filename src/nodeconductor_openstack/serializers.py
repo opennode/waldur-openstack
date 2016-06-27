@@ -570,7 +570,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     def _validate_ips(self, attrs):
         tenant = attrs['tenant']
-        floating_ip = attrs['floating_ip']
+        floating_ip = attrs.get('floating_ip')
         skip_external_ip_assignment = attrs['skip_external_ip_assignment']
 
         # Return early if we do not need to assign external IP at all
