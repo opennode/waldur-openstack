@@ -959,22 +959,29 @@ class OpenStackBackend(ServiceBackend):
             return []
 
     def create_instance(self, instance, backend_flavor_id=None,
-                        skip_external_ip_assignment=False, public_key=None):
+                        skip_external_ip_assignment=False, public_key=None, floating_ip_uuid=None):
         logger.info('About to create instance %s', instance.uuid)
+
+        nova = self.nova_client
+        neutron = self.neutron_client
+        tenant = instance.tenant
+
+        # verify if the internal network to connect to exists
         try:
-            nova = self.nova_client
-            neutron = self.neutron_client
+            neutron.show_network(tenant.internal_network_id)
+        except neutron_exceptions.NeutronClientException as e:
+            logger.exception('Internal network with id of %s was not found',
+                             tenant.internal_network_id)
+            six.reraise(OpenStackBackendError, e)
 
+        floating_ip = None
+        if floating_ip_uuid:
+            floating_ip = tenant.floating_ips.get(uuid=floating_ip_uuid)
+            floating_ip.status = 'BOOKED'
+            floating_ip.save(update_fields=['status'])
+
+        try:
             backend_flavor = nova.flavors.get(backend_flavor_id)
-
-            # verify if the internal network to connect to exists
-            tenant = instance.tenant
-            try:
-                neutron.show_network(tenant.internal_network_id)
-            except neutron_exceptions.NeutronClientException:
-                logger.exception('Internal network with id of %s was not found',
-                                 tenant.internal_network_id)
-                raise OpenStackBackendError('Unable to find network to attach instance to')
 
             if not skip_external_ip_assignment:
                 # TODO: check availability and quota
@@ -1061,6 +1068,9 @@ class OpenStackBackend(ServiceBackend):
                 logger.info(
                     "Successfully inferred internal ip addresses of instance %s", instance.uuid)
 
+            if floating_ip:
+                self.assign_floating_ip_to_instance(instance, floating_ip)
+
             self.push_floating_ip_to_instance(instance, server)
 
             backend_security_groups = server.list_security_group()
@@ -1077,7 +1087,7 @@ class OpenStackBackend(ServiceBackend):
                 else:
                     instance.security_groups.create(security_group=security_group)
 
-        except (nova_exceptions.ClientException, neutron_exceptions.NeutronClientException) as e:
+        except nova_exceptions.ClientException as e:
             logger.exception("Failed to provision instance %s", instance.uuid)
             six.reraise(OpenStackBackendError, e)
         else:

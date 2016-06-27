@@ -182,8 +182,7 @@ class AssignFloatingIpSerializer(serializers.Serializer):
         if self.instance:
             query_params = {
                 'status': 'DOWN',
-                'project': self.instance.service_project_link.project.uuid,
-                'service': self.instance.service_project_link.service.uuid
+                'tenant_uuid': self.instance.tenant.uuid.hex,
             }
 
             field = fields['floating_ip']
@@ -197,19 +196,20 @@ class AssignFloatingIpSerializer(serializers.Serializer):
 
     def validate_floating_ip(self, value):
         if value is not None:
-            if value.status == 'ACTIVE':
+            if value.status != 'DOWN':
                 raise serializers.ValidationError("Floating IP status must be DOWN.")
-            elif value.service_project_link != self.instance.service_project_link:
-                raise serializers.ValidationError("Floating IP must belong to same service project link.")
+            elif value.tenant != self.instance.tenant:
+                raise serializers.ValidationError("Floating IP must belong to same tenant as instance.")
         return value
 
     def validate(self, attrs):
-        if not self.instance.tenant.external_network_id:
-            raise serializers.ValidationError(
-                "External network ID of the service project link is missing.")
-        elif self.instance.tenant.state != core_models.StateMixin.States.OK:
-            raise serializers.ValidationError(
-                "Service project link of instance should be in stable state.")
+        tenant = self.instance.tenant
+
+        if not tenant.external_network_id:
+            raise serializers.ValidationError("Tenant should have external network ID.")
+
+        if tenant.state != core_models.StateMixin.States.OK:
+            raise serializers.ValidationError("Tenant should be in stable state.")
 
         return attrs
 
@@ -491,13 +491,22 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     system_volume_size = serializers.IntegerField(min_value=1024)
     data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024)
 
+    floating_ip = serializers.HyperlinkedRelatedField(
+        label='Floating IP',
+        required=False,
+        view_name='openstack-fip-detail',
+        lookup_field='uuid',
+        queryset=models.FloatingIP.objects.all(),
+        write_only=True
+    )
+
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
         view_name = 'openstack-instance-detail'
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'backups', 'backup_schedules', 'flavor_disk',
-            'tenant', 'tenant_name',
+            'tenant', 'tenant_name', 'floating_ip'
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment', 'tenant'
@@ -533,12 +542,6 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         image = attrs['image']
         tenant = attrs['tenant']
 
-        floating_ip_count_quota = tenant.quotas.get(name='floating_ip_count')
-        if floating_ip_count_quota.is_exceeded(delta=1):
-            raise serializers.ValidationError({
-                'service_project_link': 'Can not allocate floating IP - quota has been filled'}
-            )
-
         if any([flavor.settings != settings, image.settings != settings]):
             raise serializers.ValidationError(
                 "Flavor and image must belong to the same service settings as service project link.")
@@ -561,12 +564,50 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     "Security group {} has wrong service or project. New instance and its "
                     "security groups have to belong to same project and service".format(security_group.name))
 
-        if not attrs['skip_external_ip_assignment']:
-            if tenant.state == core_models.StateMixin.States.OK and not tenant.external_network_id:
-                raise serializers.ValidationError(
-                    "Cannot assign external IP if service project link has no external network")
+        self._validate_ips(attrs)
 
         return attrs
+
+    def _validate_ips(self, attrs):
+        tenant = attrs['tenant']
+        floating_ip = attrs['floating_ip']
+        skip_external_ip_assignment = attrs['skip_external_ip_assignment']
+
+        # Return early if we do not need to assign external IP at all
+        if skip_external_ip_assignment and not floating_ip:
+            return
+
+        if floating_ip is not None and not skip_external_ip_assignment:
+            raise serializers.ValidationError({
+                'floating_ip': 'Either manual or automatic IP assignment may used but not both.'
+            })
+
+        # Check tenant state and network
+        if floating_ip is not None or not skip_external_ip_assignment:
+            if not tenant.external_network_id:
+                raise serializers.ValidationError({
+                    'tenant': 'Can not assign external IP if tenant has no external network.'
+                })
+
+            if tenant.state != core_models.StateMixin.States.OK:
+                raise serializers.ValidationError({
+                    'tenant': 'Can not assign external IP if tenant is not in stable state.'
+                })
+
+        # Check quotas
+        if not skip_external_ip_assignment:
+            floating_ip_count_quota = tenant.quotas.get(name='floating_ip_count')
+            if floating_ip_count_quota.is_exceeded(delta=1):
+                raise serializers.ValidationError({
+                    'tenant': 'Can not allocate floating IP - quota has been filled.'}
+                )
+
+        # Check floating IP status and tenant
+        if floating_ip and floating_ip.status != 'DOWN':
+            raise serializers.ValidationError("Floating IP status must be DOWN.")
+
+        if floating_ip and floating_ip.tenant != tenant:
+            raise serializers.ValidationError("Floating IP must belong to same tenant.")
 
     @transaction.atomic
     def create(self, validated_data):
