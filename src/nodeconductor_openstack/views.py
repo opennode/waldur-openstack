@@ -17,7 +17,6 @@ from nodeconductor.structure import filters as structure_filters
 from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import Types, models, filters, serializers, executors
-from .backup import BackupError
 from .log import event_logger
 
 
@@ -683,7 +682,7 @@ class BackupViewSet(StateExecutorViewSet):
         super(BackupViewSet, self).perform_create(serializer)
 
     def perform_update(self, serializer):
-        # Update do not make any changes at backend, so there is no executor
+        # Update do not make any changes at backend, so there is no executor.
         serializer.save()
 
 

@@ -384,6 +384,25 @@ class Backup(core_models.UuidMixin,
         return 'openstack-backup'
 
 
+class BackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, TimeStampedModel):
+    """ This model corresponds instance restoration from backup. """
+    backup = models.ForeignKey(Backup, related_name='restorations')
+    instance = models.OneToOneField(Instance, related_name='+')
+    flavor = models.ForeignKey(Flavor, related_name='+')
+
+    class Permissions(object):
+        customer_path = 'backup__instance__service_project_link__project__customer'
+        project_path = 'backup__instance__service_project_link__project'
+        project_group_path = 'backup__instance__service_project_link__project__project_groups'
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-backup-restoration'
+
+
 class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
              structure_models.PrivateCloudMixin, structure_models.NewResource):
 
@@ -563,4 +582,4 @@ class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, 
 
     @classmethod
     def get_url_name(cls):
-        return 'openstack-dr-backup'
+        return 'openstack-dr-backup-restoration'
