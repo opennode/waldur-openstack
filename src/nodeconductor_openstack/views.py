@@ -686,6 +686,18 @@ class BackupViewSet(StateExecutorViewSet):
         serializer.save()
 
 
+class BackupRestorationViewSet(core_mixins.CreateExecutorMixin,
+                               mixins.CreateModelMixin,
+                               mixins.RetrieveModelMixin,
+                               mixins.ListModelMixin,
+                               viewsets.GenericViewSet):
+    """ Restoration endpoint support only create/retrieve/list operations """
+    queryset = models.BackupRestoration.objects.all()
+    lookup_field = 'uuid'
+    serializer_class = serializers.BackupRestorationSerializer
+    create_executor = executors.BackupRestorationCreateExecutor
+
+
 class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = serializers.LicenseSerializer
 
