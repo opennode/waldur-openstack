@@ -56,7 +56,7 @@ class OpenStackSession(dict):
 
         try:
             # This will eagerly sign in throwing AuthorizationFailure on bad credentials
-            self.keystone_session.get_token()
+            self.keystone_session.get_auth_headers()
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -898,7 +898,7 @@ class OpenStackBackend(ServiceBackend):
                     volumes.append(self.import_volume(backend_volume_id, save=save))
 
             # security groups should exist in NodeConductor.
-            security_groups_names = [sg['name'] for sg in backend_instance.security_groups]
+            security_groups_names = [sg['name'] for sg in getattr(backend_instance, 'security_groups', [])]
             if tenant.security_groups.filter(name__in=security_groups_names).count() != len(security_groups_names):
                 self.pull_tenant_security_groups(tenant)
             security_groups = []
@@ -927,6 +927,9 @@ class OpenStackBackend(ServiceBackend):
                 external_ips=ips.get('external', ''),
                 backend_id=backend_instance_id,
             )
+
+            if hasattr(backend_instance, 'fault'):
+                instance.error_message = backend_instance.fault['message']
 
             if save:
                 instance.save()
@@ -1102,7 +1105,8 @@ class OpenStackBackend(ServiceBackend):
         if instance.modified < import_time:
             # XXX: It is not right to update instance state here, should be fixed in NC-1207.
             # We should update runtime_state here and state in corresponding task.
-            update_fields = ('ram', 'cores', 'disk', 'internal_ips', 'external_ips', 'state')
+            update_fields = ('ram', 'cores', 'disk', 'internal_ips',
+                             'external_ips', 'state', 'error_message')
             _update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
