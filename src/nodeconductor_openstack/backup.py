@@ -51,8 +51,7 @@ class BackupScheduleBackend(object):
                     instance=self.schedule.instance,
                     backup_schedule=self.schedule,
                     metadata=self.schedule.instance.as_dict(),
-                    description='Scheduled backup.',
-                    name=('Backup of instance "%s"' % self.schedule.instance)[:150],
+                    description='Scheduled backup of instance "%s"' % self.schedule.instance,
                     kept_until=kept_until,
                     tenant=self.schedule.instance.tenant,
                 )
@@ -98,6 +97,14 @@ class BackupScheduleBackend(object):
             self._delete_backups(self.schedule.backups.all(), executors.BackupDeleteExecutor)
         elif self.schedule.backup_type == self.schedule.BackupTypes.DR:
             self._delate_dr_backups(self.schedule.dr_backups.all(), executors.DRBackupDeleteExecutor)
+
+    def _delete_backups(self, backups, delete_executor):
+        States = backups.model.States
+        stable_backups = backups.filter(state=States.OK)
+        extra_backups_count = stable_backups.count() - self.schedule.maximal_number_of_backups
+        if extra_backups_count > 0:
+            for backup in stable_backups.order_by('created')[:extra_backups_count]:
+                delete_executor.execute(backup)
 
     def execute(self):
         """
