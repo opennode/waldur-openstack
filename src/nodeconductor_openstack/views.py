@@ -256,6 +256,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             ssh_key=serializer.validated_data.get('ssh_public_key'),
             flavor=serializer.validated_data['flavor'],
             skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'],
+            floating_ip=serializer.validated_data.get('floating_ip'),
         )
 
     def perform_managed_resource_destroy(self, instance, force=False):

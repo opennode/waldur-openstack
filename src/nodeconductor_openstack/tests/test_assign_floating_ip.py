@@ -55,7 +55,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
             response = self.get_response(instance, floating_ip)
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             self.assertEqual(response.data['non_field_errors'],
-                             ['External network ID of the service project link is missing.'])
+                             ['Tenant should have external network ID.'])
             self.assertFalse(mocked_task.called)
 
     def test_user_cannot_assign_floating_ip_to_instance_with_tenant_in_unstable_state(self):
@@ -78,8 +78,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         with self.get_task() as mocked_task:
             response = self.get_response(instance, floating_ip)
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-            self.assertEqual(response.data['non_field_errors'],
-                             ['Service project link of instance should be in stable state.'])
+            self.assertEqual(response.data['non_field_errors'], ['Tenant should be in stable state.'])
             self.assertFalse(mocked_task.called)
 
     def test_user_cannot_assign_not_existing_ip_to_the_instance(self):
@@ -132,7 +131,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
             response = self.get_response(instance, floating_ip)
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             self.assertEqual(response.data['floating_ip'],
-                             ['Floating IP must belong to same service project link.'])
+                             ['Floating IP must belong to same tenant as instance.'])
             self.assertFalse(mocked_task.called)
 
     def test_user_can_assign_floating_ip_to_instance_with_satisfied_requirements(self):

@@ -493,14 +493,19 @@ class InstanceCreateExecutor(executors.CreateExecutor, executors.BaseChordExecut
 
     @classmethod
     def get_callback_signature(cls, instance, serialized_instance,
-                               ssh_key=None, flavor=None, skip_external_ip_assignment=False):
+                               ssh_key=None, flavor=None, floating_ip=None,
+                               skip_external_ip_assignment=False):
         # Note that flavor is required for instance creation.
         kwargs = {
             'backend_flavor_id': flavor.backend_id,
             'skip_external_ip_assignment': skip_external_ip_assignment,
         }
         if ssh_key is not None:
-            kwargs['public_key'] = ssh_key.public_key,
+            kwargs['public_key'] = ssh_key.public_key
+
+        if floating_ip is not None:
+            kwargs['floating_ip_uuid'] = floating_ip.uuid.hex
+
         return tasks.BackendMethodTask().si(serialized_instance, 'create_instance', **kwargs)
 
     @classmethod
