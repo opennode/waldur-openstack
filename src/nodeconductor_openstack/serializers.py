@@ -494,6 +494,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     floating_ip = serializers.HyperlinkedRelatedField(
         label='Floating IP',
         required=False,
+        allow_null=True,
         view_name='openstack-fip-detail',
         lookup_field='uuid',
         queryset=models.FloatingIP.objects.all(),
