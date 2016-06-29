@@ -39,6 +39,10 @@ class InstanceProvisionTemplateForm(ResourceTemplateForm):
         widget=FilteredSelectMultiple(verbose_name='Instance security groups', is_stacked=False))
     user_data = forms.CharField(label='User data', widget=AdminTextareaWidget(), required=False)
     skip_external_ip_assignment = forms.BooleanField(required=False)
+    schedule = forms.CharField(
+        required=False, help_text='If defined - DR backup schedule will be added to instance after creation')
+    retention_time = forms.IntegerField(required=False)
+    maximal_number_of_backups = forms.IntegerField(required=False)
 
     class Meta(ResourceTemplateForm.Meta):
         fields = ResourceTemplateForm.Meta.fields + ('service', 'tenant', 'project', 'flavor', 'image',
@@ -86,6 +90,9 @@ class InstanceProvisionTemplateForm(ResourceTemplateForm):
         )
         user_data = serializers.CharField(required=False)
         skip_external_ip_assignment = serializers.BooleanField(required=False)
+        schedule = serializers.CharField(required=False)
+        retention_time = serializers.IntegerField(required=False)
+        maximal_number_of_backups = serializers.IntegerField(required=False)
 
     @classmethod
     def get_serializer_class(cls):
@@ -94,3 +101,16 @@ class InstanceProvisionTemplateForm(ResourceTemplateForm):
     @classmethod
     def get_model(cls):
         return models.Instance
+
+    @classmethod
+    def post_create(cls, template, instance):
+        # Execute custom action after instance creation.
+        if template.options.get('schedule'):
+            models.BackupSchedule.objects.create(
+                instance=instance,
+                backup_type=models.BackupSchedule.BackupTypes.DR,
+                schedule=template.options['schedule'],
+                retention_time=template.options.get('retention_time', 0),
+                maximal_number_of_backups=template.options.get('maximal_number_of_backups', 1),
+                is_active=True,
+            )
