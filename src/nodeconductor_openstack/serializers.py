@@ -1,3 +1,4 @@
+import logging
 import pytz
 import re
 import urlparse
@@ -19,6 +20,9 @@ from nodeconductor.structure import serializers as structure_serializers
 
 from . import models
 from .backend import OpenStackBackendError
+
+
+logger = logging.getLogger(__name__)
 
 
 class ServiceSerializer(structure_serializers.BaseServiceSerializer):
@@ -570,50 +574,55 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     "Security group {} has wrong service or project. New instance and its "
                     "security groups have to belong to same project and service".format(security_group.name))
 
-        self._validate_ips(attrs)
+        self._validate_external_ip(attrs)
 
         return attrs
 
-    def _validate_ips(self, attrs):
+    def _validate_external_ip(self, attrs):
         tenant = attrs['tenant']
         floating_ip = attrs.get('floating_ip')
         skip_external_ip_assignment = attrs['skip_external_ip_assignment']
 
-        # Return early if we do not need to assign external IP at all
-        if skip_external_ip_assignment and not floating_ip:
-            return
+        # Case 1. If floating_ip!=None then requested floating IP is assigned to the instance.
+        if floating_ip:
+            self._validate_tenant(tenant)
 
-        if floating_ip is not None and not skip_external_ip_assignment:
-            raise serializers.ValidationError({
-                'floating_ip': 'Either manual or automatic IP assignment may used but not both.'
-            })
-
-        # Check tenant state and network
-        if floating_ip is not None or not skip_external_ip_assignment:
-            if not tenant.external_network_id:
+            if floating_ip.status != 'DOWN':
                 raise serializers.ValidationError({
-                    'tenant': 'Can not assign external IP if tenant has no external network.'
+                    'floating_ip': 'Floating IP status must be DOWN.'
                 })
 
-            if tenant.state != core_models.StateMixin.States.OK:
+            if floating_ip.tenant != tenant:
                 raise serializers.ValidationError({
-                    'tenant': 'Can not assign external IP if tenant is not in stable state.'
+                    'floating_ip': 'Floating IP must belong to the same tenant.'
                 })
 
-        # Check quotas
-        if not skip_external_ip_assignment:
+        # Case 2. If floating_ip=None and skip_external_ip_assignment=False
+        # then new floating IP is allocated and assigned to the instance.
+        elif not skip_external_ip_assignment:
+            self._validate_tenant(tenant)
+
             floating_ip_count_quota = tenant.quotas.get(name='floating_ip_count')
             if floating_ip_count_quota.is_exceeded(delta=1):
                 raise serializers.ValidationError({
-                    'tenant': 'Can not allocate floating IP - quota has been filled.'}
-                )
+                    'tenant': 'Can not allocate floating IP - quota has been filled.'
+                })
 
-        # Check floating IP status and tenant
-        if floating_ip and floating_ip.status != 'DOWN':
-            raise serializers.ValidationError("Floating IP status must be DOWN.")
+        # Case 3. If floating_ip=None and skip_external_ip_assignment=True
+        # floating IP is not attempted, only internal IP is created.
+        else:
+            logger.info('Floating IP is not attempted.')
 
-        if floating_ip and floating_ip.tenant != tenant:
-            raise serializers.ValidationError("Floating IP must belong to same tenant.")
+    def _validate_tenant(self, tenant):
+        if not tenant.external_network_id:
+            raise serializers.ValidationError({
+                'tenant': 'Can not assign external IP if tenant has no external network.'
+            })
+
+        if tenant.state != core_models.StateMixin.States.OK:
+            raise serializers.ValidationError({
+                'tenant': 'Can not assign external IP if tenant is not in stable state.'
+            })
 
     @transaction.atomic
     def create(self, validated_data):

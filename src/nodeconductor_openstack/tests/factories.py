@@ -100,9 +100,10 @@ class TenantMixin(object):
         if cls._meta.django_get_or_create:
             return cls._get_or_create(model_class, *args, **kwargs)
 
-        tenant, _ = models.Tenant.objects.get_or_create(
-            service_project_link=kwargs['service_project_link'])
-        kwargs['tenant'] = tenant
+        if 'tenant' not in kwargs:
+            tenant, _ = models.Tenant.objects.get_or_create(
+                service_project_link=kwargs['service_project_link'])
+            kwargs['tenant'] = tenant
 
         return manager.create(*args, **kwargs)
 
