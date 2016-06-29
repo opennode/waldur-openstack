@@ -56,7 +56,7 @@ class OpenStackSession(dict):
 
         try:
             # This will eagerly sign in throwing AuthorizationFailure on bad credentials
-            self.keystone_session.get_token()
+            self.keystone_session.get_auth_headers()
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -898,7 +898,7 @@ class OpenStackBackend(ServiceBackend):
                     volumes.append(self.import_volume(backend_volume_id, save=save))
 
             # security groups should exist in NodeConductor.
-            security_groups_names = [sg['name'] for sg in backend_instance.security_groups]
+            security_groups_names = [sg['name'] for sg in getattr(backend_instance, 'security_groups', [])]
             if tenant.security_groups.filter(name__in=security_groups_names).count() != len(security_groups_names):
                 self.pull_tenant_security_groups(tenant)
             security_groups = []
@@ -927,6 +927,9 @@ class OpenStackBackend(ServiceBackend):
                 external_ips=ips.get('external', ''),
                 backend_id=backend_instance_id,
             )
+
+            if hasattr(backend_instance, 'fault'):
+                instance.error_message = backend_instance.fault['message']
 
             if save:
                 instance.save()
@@ -959,31 +962,29 @@ class OpenStackBackend(ServiceBackend):
             return []
 
     def create_instance(self, instance, backend_flavor_id=None,
-                        skip_external_ip_assignment=False, public_key=None):
+                        skip_external_ip_assignment=False, public_key=None, floating_ip_uuid=None):
         logger.info('About to create instance %s', instance.uuid)
-        try:
-            nova = self.nova_client
-            neutron = self.neutron_client
 
-            backend_flavor = nova.flavors.get(backend_flavor_id)
+        nova = self.nova_client
+        tenant = instance.tenant
 
-            # verify if the internal network to connect to exists
-            tenant = instance.tenant
+        self._check_tenant_network(tenant)
+
+        floating_ip = None
+        if floating_ip_uuid:
             try:
-                neutron.show_network(tenant.internal_network_id)
-            except neutron_exceptions.NeutronClientException:
-                logger.exception('Internal network with id of %s was not found',
-                                 tenant.internal_network_id)
-                raise OpenStackBackendError('Unable to find network to attach instance to')
+                floating_ip = tenant.floating_ips.get(uuid=floating_ip_uuid)
+            except ObjectDoesNotExist:
+                raise OpenStackBackendError('Floating IP with id %s does not exist.', floating_ip_uuid)
+        elif not skip_external_ip_assignment:
+            floating_ip = self._get_or_create_floating_ip(tenant)
 
-            if not skip_external_ip_assignment:
-                # TODO: check availability and quota
-                if not tenant.floating_ips.filter(status='DOWN').exists():
-                    self.allocate_floating_ip_address(tenant)
-                floating_ip = tenant.floating_ips.filter(status='DOWN').first()
-                instance.external_ips = floating_ip.address
-                floating_ip.status = 'BOOKED'
-                floating_ip.save(update_fields=['status'])
+        if floating_ip:
+            floating_ip.status = 'BOOKED'
+            floating_ip.save(update_fields=['status'])
+
+        try:
+            backend_flavor = nova.flavors.get(backend_flavor_id)
 
             # instance key name and fingerprint are optional
             if instance.key_name:
@@ -1061,7 +1062,10 @@ class OpenStackBackend(ServiceBackend):
                 logger.info(
                     "Successfully inferred internal ip addresses of instance %s", instance.uuid)
 
-            self.push_floating_ip_to_instance(instance, server)
+            if floating_ip:
+                self.assign_floating_ip_to_instance(instance, floating_ip)
+            else:
+                logger.info("Skipping floating IP assignment for instance %s", instance.uuid)
 
             backend_security_groups = server.list_security_group()
             for bsg in backend_security_groups:
@@ -1077,7 +1081,7 @@ class OpenStackBackend(ServiceBackend):
                 else:
                     instance.security_groups.create(security_group=security_group)
 
-        except (nova_exceptions.ClientException, neutron_exceptions.NeutronClientException) as e:
+        except nova_exceptions.ClientException as e:
             logger.exception("Failed to provision instance %s", instance.uuid)
             six.reraise(OpenStackBackendError, e)
         else:
@@ -1092,7 +1096,8 @@ class OpenStackBackend(ServiceBackend):
         if instance.modified < import_time:
             # XXX: It is not right to update instance state here, should be fixed in NC-1207.
             # We should update runtime_state here and state in corresponding task.
-            update_fields = ('ram', 'cores', 'disk', 'internal_ips', 'external_ips', 'state')
+            update_fields = ('ram', 'cores', 'disk', 'internal_ips',
+                             'external_ips', 'state', 'error_message')
             _update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
@@ -1514,6 +1519,28 @@ class OpenStackBackend(ServiceBackend):
             tenant.internal_network_id = internal_network_id
             tenant.save(update_fields=['internal_network_id'])
 
+    def _check_tenant_network(self, tenant):
+        neutron = self.neutron_client
+        # verify if the internal network to connect to exists
+        try:
+            neutron.show_network(tenant.internal_network_id)
+        except neutron_exceptions.NeutronClientException as e:
+            logger.exception('Internal network with id of %s was not found',
+                             tenant.internal_network_id)
+            six.reraise(OpenStackBackendError, e)
+
+    def _get_or_create_floating_ip(self, tenant):
+        # TODO: check availability and quota
+        if not tenant.floating_ips.filter(
+            status='DOWN',
+            backend_network_id=tenant.external_network_id
+        ).exists():
+            self.allocate_floating_ip_address(tenant)
+        return tenant.floating_ips.filter(
+            status='DOWN',
+            backend_network_id=tenant.external_network_id
+        ).first()
+
     @log_backend_action('allocate floating IP for tenant')
     def allocate_floating_ip_address(self, tenant):
         neutron = self.neutron_admin_client
@@ -1536,52 +1563,34 @@ class OpenStackBackend(ServiceBackend):
             )
 
     def assign_floating_ip_to_instance(self, instance, floating_ip):
+        logger.debug('About to assign floating IP %s to the instance with id %s',
+                     floating_ip.address, instance.uuid)
+
         nova = self.nova_admin_client
-        nova.servers.add_floating_ip(server=instance.backend_id, address=floating_ip.address)
-
-        floating_ip.status = 'ACTIVE'
-        floating_ip.save()
-
-        instance.external_ips = floating_ip.address
-        instance.save()
-
-        logger.info('Floating IP %s was successfully assigned to the instance with id %s.',
-                    floating_ip.address, instance.uuid)
-
-    def push_floating_ip_to_instance(self, instance, server):
-        if not instance.external_ips or not instance.internal_ips:
-            return
-
-        logger.debug('About to add external ip %s to instance %s',
-                     instance.external_ips, instance.uuid)
-
-        tenant = instance.tenant
-
         try:
-            floating_ip = tenant.floating_ips.get(
-                status__in=('BOOKED', 'DOWN'),
-                address=instance.external_ips,
-                backend_network_id=tenant.external_network_id
+            nova.servers.add_floating_ip(
+                server=instance.backend_id,
+                address=floating_ip.address,
+                fixed_address=instance.internal_ips
             )
-            server.add_floating_ip(address=instance.external_ips, fixed_address=instance.internal_ips)
-        except (
-            nova_exceptions.ClientException,
-            ObjectDoesNotExist,
-            MultipleObjectsReturned,
-            KeyError,
-            IndexError,
-        ):
-            logger.exception('Failed to add external ip %s to instance %s',
-                             instance.external_ips, instance.uuid)
-            instance.set_erred()
-            instance.error_message = 'Failed to add external ip %s to instance %s' % (instance.external_ips,
-                                                                                      instance.uuid)
-            instance.save()
+        except nova_exceptions.ClientException as e:
+            logger.exception('Failed to assign floating IP %s to the instance with id %s',
+                             floating_ip.address, instance.uuid)
+
+            logger.info('Releasing booked floating IP %s', floating_ip.address)
+            floating_ip.status = 'DOWN'
+            floating_ip.save(update_fields=['status'])
+
+            six.reraise(OpenStackBackendError, e)
         else:
             floating_ip.status = 'ACTIVE'
-            floating_ip.save()
-            logger.info('Successfully added external ip %s to instance %s',
-                        instance.external_ips, instance.uuid)
+            floating_ip.save(update_fields=['status'])
+
+            instance.external_ips = floating_ip.address
+            instance.save(update_fields=['external_ips'])
+
+            logger.info('Floating IP %s was successfully assigned to the instance with id %s.',
+                        floating_ip.address, instance.uuid)
 
     def connect_tenant_to_external_network(self, tenant, external_network_id):
         neutron = self.neutron_admin_client

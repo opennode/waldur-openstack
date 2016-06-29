@@ -166,6 +166,7 @@ class IpMapping(core_models.UuidMixin):
     project = models.ForeignKey(structure_models.Project, related_name='+')
 
 
+@python_2_unicode_compatible
 class FloatingIP(core_models.UuidMixin):
 
     class Permissions(object):
@@ -186,6 +187,9 @@ class FloatingIP(core_models.UuidMixin):
 
     def get_backend(self):
         return self.tenant.get_backend()
+
+    def __str__(self):
+        return '%s:%s (%s)' % (self.address, self.status, self.service_project_link)
 
 
 class Instance(structure_models.VirtualMachineMixin,

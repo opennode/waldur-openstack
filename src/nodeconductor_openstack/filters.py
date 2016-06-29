@@ -150,11 +150,19 @@ class BackupScheduleFilter(django_filters.FilterSet):
     description = django_filters.CharFilter(
         lookup_type='icontains',
     )
+    instance = core_filters.URLFilter(
+        view_name='openstack-instance-detail',
+        name='instance__uuid',
+    )
+    instance_uuid = django_filters.CharFilter(
+        name='instance__uuid',
+    )
+    backup_type = django_filters.ChoiceFilter(choices=models.BackupSchedule.BackupTypes.CHOICES)
 
     class Meta(object):
         model = models.BackupSchedule
         fields = (
-            'description',
+            'description', 'instance', 'instance_uuid', 'backup_type',
         )
 
 
