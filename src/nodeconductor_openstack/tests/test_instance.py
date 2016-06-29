@@ -3,11 +3,12 @@ from rest_framework import status, test
 from nodeconductor.structure.models import CustomerRole
 from nodeconductor.structure.tests import factories as structure_factories
 
+from .. import models
 from ..apps import OpenStackConfig
 from . import factories
 
 
-class InstanceFloatingIpProvisionTest(test.APITransactionTestCase):
+class BaseFloatingIpInstanceProvisionTest(test.APITransactionTestCase):
     def setUp(self):
         self.customer = structure_factories.CustomerFactory()
 
@@ -28,59 +29,6 @@ class InstanceFloatingIpProvisionTest(test.APITransactionTestCase):
         self.client.force_authenticate(user=self.customer_owner)
         self.url = factories.InstanceFactory.get_list_url()
 
-    def test_user_can_provision_instance_with_internal_ip_only(self):
-        self.tenant.external_network_id = ''
-        self.tenant.save()
-
-        response = self.client.post(self.url, self.get_valid_data(
-            skip_external_ip_assignment=True
-        ))
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-
-    def test_user_can_provision_instance_with_automatic_external_ip(self):
-        response = self.client.post(self.url, self.get_valid_data(
-            skip_external_ip_assignment=False
-        ))
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-
-    def test_user_can_provision_instance_with_manual_external_ip(self):
-        floating_ip = factories.FloatingIPFactory(
-            service_project_link=self.link, tenant=self.tenant, status='DOWN')
-        response = self.client.post(self.url, self.get_valid_data(
-            floating_ip=factories.FloatingIPFactory.get_url(floating_ip),
-        ))
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-
-    def test_user_can_not_provision_instance_if_external_ip_is_not_available(self):
-        floating_ip = factories.FloatingIPFactory(
-            service_project_link=self.link, tenant=self.tenant, status='ACTIVE')
-        response = self.client.post(self.url, self.get_valid_data(
-            floating_ip=factories.FloatingIPFactory.get_url(floating_ip),
-        ))
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-        self.assertEqual(response.data['floating_ip'], ['Floating IP status must be DOWN.'])
-
-    def test_user_can_not_provision_instance_if_external_ip_belongs_to_another_tenant(self):
-        another_tenant = factories.TenantFactory(service_project_link=self.link)
-        floating_ip = factories.FloatingIPFactory(
-            service_project_link=self.link, tenant=another_tenant, status='DOWN')
-        response = self.client.post(self.url, self.get_valid_data(
-            floating_ip=factories.FloatingIPFactory.get_url(floating_ip),
-        ))
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-        self.assertEqual(response.data['floating_ip'], ['Floating IP must belong to the same tenant.'])
-
-    def test_user_can_not_provision_instance_using_automatic_external_ip_if_tenant_quota_exceeded(self):
-        quota = self.tenant.quotas.get(name='floating_ip_count')
-        quota.limit = quota.usage
-        quota.save()
-
-        response = self.client.post(self.url, self.get_valid_data(
-            skip_external_ip_assignment=False
-        ))
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-        self.assertEqual(response.data['tenant'], ['Can not allocate floating IP - quota has been filled.'])
-
     def get_valid_data(self, **extra):
         default = {
             'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(self.link),
@@ -92,3 +40,76 @@ class InstanceFloatingIpProvisionTest(test.APITransactionTestCase):
         }
         default.update(extra)
         return default
+
+
+class FixedIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTest):
+    def test_user_can_provision_instance_with_internal_ip_only(self):
+        response = self.client.post(self.url, self.get_valid_data(
+            skip_external_ip_assignment=True
+        ))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+
+class ManualFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTest):
+    def test_user_can_provision_instance_with_manual_external_ip(self):
+        self.floating_ip = factories.FloatingIPFactory(
+            service_project_link=self.link, tenant=self.tenant, status='DOWN')
+        response = self.get_response()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_user_can_not_provision_instance_if_external_ip_is_not_available(self):
+        self.floating_ip = factories.FloatingIPFactory(
+            service_project_link=self.link, tenant=self.tenant, status='ACTIVE')
+        response = self.get_response()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['floating_ip'], ['Floating IP status must be DOWN.'])
+
+    def test_user_can_not_provision_instance_if_external_ip_belongs_to_another_tenant(self):
+        another_tenant = factories.TenantFactory(service_project_link=self.link)
+        self.floating_ip = factories.FloatingIPFactory(
+            service_project_link=self.link, tenant=another_tenant, status='DOWN')
+        response = self.get_response()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['floating_ip'], ['Floating IP must belong to the same tenant.'])
+
+    def get_response(self):
+        return self.client.post(self.url, self.get_valid_data(
+            floating_ip=factories.FloatingIPFactory.get_url(self.floating_ip),
+        ))
+
+
+class AutomaticFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTest):
+
+    def test_user_can_provision_instance_with_automatic_external_ip(self):
+        response = self.get_response()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_user_can_not_provision_instance_using_if_tenant_quota_exceeded(self):
+        quota = self.tenant.quotas.get(name='floating_ip_count')
+        quota.limit = quota.usage
+        quota.save()
+
+        response = self.get_response()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['tenant'], ['Can not allocate floating IP - quota has been filled.'])
+
+    def test_user_can_not_provision_instance_using_if_tenant_is_not_in_stable_state(self):
+        self.tenant.state = models.Tenant.States.ERRED
+        self.tenant.save()
+
+        response = self.get_response()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['tenant'], ['Can not assign external IP if tenant is not in stable state.'])
+
+    def test_user_can_not_provision_instance_using_if_tenant_does_not_have_external_network(self):
+        self.tenant.external_network_id = ''
+        self.tenant.save()
+
+        response = self.get_response()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['tenant'], ['Can not assign external IP if tenant has no external network.'])
+
+    def get_response(self):
+        return self.client.post(self.url, self.get_valid_data(
+            skip_external_ip_assignment=False
+        ))
