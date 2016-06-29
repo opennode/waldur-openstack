@@ -11,6 +11,7 @@ Guide
 
    installation
    description
+   backups-migration
 
 Endpoints
 ---------

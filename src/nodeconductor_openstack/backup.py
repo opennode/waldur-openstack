@@ -96,7 +96,7 @@ class BackupScheduleBackend(object):
         if self.schedule.backup_type == self.schedule.BackupTypes.REGULAR:
             self._delete_backups(self.schedule.backups.all(), executors.BackupDeleteExecutor)
         elif self.schedule.backup_type == self.schedule.BackupTypes.DR:
-            self._delate_backups(self.schedule.dr_backups.all(), executors.DRBackupDeleteExecutor)
+            self._delete_backups(self.schedule.dr_backups.all(), executors.DRBackupDeleteExecutor)
 
     def _delete_backups(self, backups, delete_executor):
         States = backups.model.States
