@@ -13,6 +13,7 @@ def _instance_data(user, instance=None):
     image = factories.ImageFactory(settings=instance.service_project_link.service.settings)
     flavor = factories.FlavorFactory(settings=instance.service_project_link.service.settings)
     ssh_public_key = structure_factories.SshPublicKeyFactory(user=user)
+    tenant = factories.TenantFactory(service_project_link=instance.service_project_link)
     return {
         'name': 'test_host',
         'description': 'test description',
@@ -20,8 +21,9 @@ def _instance_data(user, instance=None):
         'image': factories.ImageFactory.get_url(image),
         'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(instance.service_project_link),
         'ssh_public_key': structure_factories.SshPublicKeyFactory.get_url(ssh_public_key),
-        'system_volume_size': image.min_disk,
+        'system_volume_size': max(image.min_disk, 1024),
         'skip_external_ip_assignment': True,
+        'tenant': factories.TenantFactory.get_url(tenant)
     }
 
 

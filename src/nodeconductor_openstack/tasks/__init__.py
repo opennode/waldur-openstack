@@ -7,6 +7,8 @@ from __future__ import absolute_import
 from .backup import *
 from .base import *
 from .celerybeat import *
+from .dr_backup import *
+from .dr_backup_restoration import *
 from .flavor import *
 from .floating_ip import *
 from .instance import *

@@ -1,14 +1,14 @@
 from __future__ import unicode_literals
 
 from django.db import models
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MaxValueValidator
 from django.core.exceptions import ValidationError
-from django.template.defaultfilters import slugify
-from django.utils.encoding import python_2_unicode_compatible
+from django.utils.encoding import python_2_unicode_compatible, force_text
 from django_fsm import transition, FSMIntegerField
 from jsonfield import JSONField
 from iptools.ipv4 import validate_cidr
 from model_utils import FieldTracker
+from model_utils.models import TimeStampedModel
 from urlparse import urlparse
 
 from nodeconductor.core import models as core_models
@@ -38,15 +38,6 @@ class OpenStackService(structure_models.Service):
 
 class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
-    class Quotas(QuotaModelMixin.Quotas):
-        vcpu = QuotaField(default_limit=20, is_backend=True)
-        ram = QuotaField(default_limit=51200, is_backend=True)
-        storage = QuotaField(default_limit=1024000, is_backend=True)
-        instances = QuotaField(default_limit=30, is_backend=True)
-        security_group_count = QuotaField(default_limit=100, is_backend=True)
-        security_group_rule_count = QuotaField(default_limit=100, is_backend=True)
-        floating_ip_count = QuotaField(default_limit=50, is_backend=True)
-
     service = models.ForeignKey(OpenStackService)
 
     class Meta(structure_models.ServiceProjectLink.Meta):
@@ -57,48 +48,11 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
     def get_url_name(cls):
         return 'openstack-spl'
 
-    def get_backend(self):
-        return super(OpenStackServiceProjectLink, self).get_backend(tenant_id=self.tenant_id)
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
-    def tenant(self):
-        if not hasattr(self, '_tenant'):
-            self._tenant = self.tenants.first()
-        return self._tenant
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
-    def internal_network_id(self):
-        return self.tenant.internal_network_id if self.tenant else None
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
-    def external_network_id(self):
-        return self.tenant.external_network_id if self.tenant else None
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
-    def availability_zone(self):
-        return self.tenant.availability_zone if self.tenant else None
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    @property
-    def tenant_id(self):
-        return self.tenant.backend_id if self.tenant else None
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    def get_tenant_name(self):
-        proj = self.project
-        return '%(project_name)s-%(project_uuid)s' % {
-            'project_name': ''.join([c for c in proj.name if ord(c) < 128])[:15],
-            'project_uuid': proj.uuid.hex[:4]
-        }
-
-    # XXX: temporary method, should be removed after instance will have tenant as field
-    def create_tenant(self):
-        name = self.get_tenant_name()
-        return Tenant.objects.create(name=name, service_project_link=self, user_username=slugify(name)[:30] + '-user')
+    # XXX: Hack for statistics: return quotas of tenants as quotas of SPLs.
+    @classmethod
+    def get_sum_of_quotas_as_dict(cls, spls, quota_names=None, fields=['usage', 'limit']):
+        tenants = Tenant.objects.filter(service_project_link__in=spls)
+        return Tenant.get_sum_of_quotas_as_dict(tenants, quota_names=quota_names, fields=fields)
 
 
 class Flavor(LoggableMixin, structure_models.ServiceProperty):
@@ -125,6 +79,7 @@ class SecurityGroup(core_models.UuidMixin,
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='security_groups')
+    tenant = models.ForeignKey('Tenant', related_name='security_groups')
 
     backend_id = models.CharField(max_length=128, blank=True)
 
@@ -132,7 +87,7 @@ class SecurityGroup(core_models.UuidMixin,
         return '%s (%s)' % (self.name, self.service_project_link)
 
     def get_backend(self):
-        return self.service_project_link.get_backend()
+        return self.tenant.get_backend()
 
     @classmethod
     def get_url_name(cls):
@@ -201,6 +156,19 @@ class SecurityGroupRule(models.Model):
                (self.security_group, self.protocol, self.cidr, self.from_port, self.to_port)
 
 
+class IpMapping(core_models.UuidMixin):
+
+    class Permissions(object):
+        project_path = 'project'
+        customer_path = 'project__customer'
+        project_group_path = 'project__project_groups'
+
+    public_ip = models.GenericIPAddressField(protocol='IPv4')
+    private_ip = models.GenericIPAddressField(protocol='IPv4')
+    project = models.ForeignKey(structure_models.Project, related_name='+')
+
+
+@python_2_unicode_compatible
 class FloatingIP(core_models.UuidMixin):
 
     class Permissions(object):
@@ -210,6 +178,7 @@ class FloatingIP(core_models.UuidMixin):
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='floating_ips')
+    tenant = models.ForeignKey('Tenant', related_name='floating_ips')
 
     address = models.GenericIPAddressField(protocol='IPv4')
     status = models.CharField(max_length=30)
@@ -218,27 +187,72 @@ class FloatingIP(core_models.UuidMixin):
 
     tracker = FieldTracker()
 
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    def __str__(self):
+        return '%s:%s (%s)' % (self.address, self.status, self.service_project_link)
+
 
 class Instance(structure_models.VirtualMachineMixin,
                structure_models.PaidResource,
+               core_models.RuntimeStateMixin,
                structure_models.Resource):
-
-    DEFAULT_DATA_VOLUME_SIZE = 20 * 1024
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='instances', on_delete=models.PROTECT)
 
-    # OpenStack backend specific fields
-    system_volume_id = models.CharField(max_length=255, blank=True)
-    system_volume_size = models.PositiveIntegerField(default=0, help_text='Root disk size in MiB')
-    data_volume_id = models.CharField(max_length=255, blank=True)
-    data_volume_size = models.PositiveIntegerField(
-        default=DEFAULT_DATA_VOLUME_SIZE, help_text='Data disk size in MiB', validators=[MinValueValidator(1 * 1024)])
+    volumes = models.ManyToManyField('Volume', related_name='instances')
 
     flavor_name = models.CharField(max_length=255, blank=True)
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
 
     tracker = FieldTracker()
+    tenant = models.ForeignKey('Tenant', related_name='instances')
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    # XXX: For compatibility with new-style state.
+    @property
+    def human_readable_state(self):
+        return force_text(dict(self.States.CHOICES)[self.state])
+
+    @property
+    def data_volume(self):
+        if not getattr(self, '_data_volume', False):
+            self._data_volume = self.volumes.filter(bootable=False).first()
+        return self._data_volume
+
+    # XXX: This property exists only for compatibility.
+    @property
+    def data_volume_id(self):
+        if self.data_volume:
+            return self.data_volume.backend_id
+
+    # XXX: This property exists only for compatibility.
+    @property
+    def data_volume_size(self):
+        if self.data_volume:
+            return self.data_volume.size
+
+    @property
+    def system_volume(self):
+        if not getattr(self, '_system_volume', False):
+            self._system_volume = self.volumes.filter(bootable=True).first()
+        return self._system_volume
+
+    # XXX: This property exists only for compatibility.
+    @property
+    def system_volume_id(self):
+        if self.system_volume:
+            return self.system_volume.backend_id
+
+    # XXX: This property exists only for compatibility.
+    @property
+    def system_volume_size(self):
+        if self.system_volume:
+            return self.system_volume.size
 
     @classmethod
     def get_url_name(cls):
@@ -252,7 +266,7 @@ class Instance(structure_models.VirtualMachineMixin,
 
     def detect_coordinates(self):
         settings = self.service_project_link.service.settings
-        data = settings.options.get('coordinates')
+        data = settings.get_option('coordinates')
         if data:
             return Coordinates(latitude=data['latitude'],
                                longitude=data['longitude'])
@@ -260,6 +274,39 @@ class Instance(structure_models.VirtualMachineMixin,
             hostname = urlparse(settings.backend_url).hostname
             if hostname:
                 return get_coordinates_by_ip(hostname)
+
+    def increase_backend_quotas_usage(self, validate=True):
+        add_quota = self.tenant.add_quota_usage
+        add_quota('instances', 1)
+        add_quota('ram', self.ram)
+        add_quota('vcpu', self.cores)
+
+    def decrease_backend_quotas_usage(self):
+        add_quota = self.tenant.add_quota_usage
+        add_quota('instances', -1)
+        add_quota('ram', -self.ram)
+        add_quota('vcpu', -self.cores)
+
+    def as_dict(self):
+        """ Represent instance as dict with all necessary attributes """
+        return {
+            'name': self.name,
+            'description': self.description,
+            'service_project_link': self.service_project_link.pk,
+            'tenant': self.tenant.pk,
+            'system_volume_id': self.system_volume_id,
+            'system_volume_size': self.system_volume_size,
+            'data_volume_id': self.data_volume_id,
+            'data_volume_size': self.data_volume_size,
+            'min_ram': self.min_ram,
+            'min_disk': self.min_disk,
+            'key_name': self.key_name,
+            'key_fingerprint': self.key_fingerprint,
+            'user_data': self.user_data,
+            'flavor_name': self.flavor_name,
+            'image_name': self.image_name,
+            'tags': [tag.name for tag in self.tags.all()],
+        }
 
 
 class InstanceSecurityGroup(models.Model):
@@ -274,7 +321,9 @@ class InstanceSecurityGroup(models.Model):
 
 class BackupSchedule(core_models.UuidMixin,
                      core_models.DescribableMixin,
+                     core_models.RuntimeStateMixin,
                      core_models.ScheduleMixin,
+                     core_models.ErrorMessageMixin,
                      LoggableMixin):
 
     class Permissions(object):
@@ -282,10 +331,19 @@ class BackupSchedule(core_models.UuidMixin,
         project_path = 'instance__service_project_link__project'
         project_group_path = 'instance__service_project_link__project__project_groups'
 
+    class BackupTypes(object):
+        REGULAR = 'Regular'
+        DR = 'DR'
+        CHOICES = ((REGULAR, REGULAR), (DR, DR))
+
+    backup_type = models.CharField(max_length=30, choices=BackupTypes.CHOICES, default=BackupTypes.REGULAR)
     instance = models.ForeignKey(Instance, related_name='backup_schedules')
     retention_time = models.PositiveIntegerField(
-        help_text='Retention time in days')  # if 0 - backup will be kept forever
+        help_text='Retention time in days, if 0 - backup will be kept forever')
     maximal_number_of_backups = models.PositiveSmallIntegerField()
+
+    def __str__(self):
+        return 'BackupSchedule of %s. Active: %s' % (self.instance, self.is_active)
 
     @classmethod
     def get_url_name(cls):
@@ -340,6 +398,9 @@ class Backup(core_models.UuidMixin,
 
     objects = BackupManager()
 
+    def __str__(self):
+        return 'Backup of %s (%s)' % (self.instance, self.state)
+
     def get_backend(self):
         return BackupBackend(self)
 
@@ -376,7 +437,21 @@ class Backup(core_models.UuidMixin,
         pass
 
 
-class Tenant(core_models.RuntimeStateMixin, structure_models.PrivateCloudMixin, structure_models.NewResource):
+class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
+             structure_models.PrivateCloudMixin, structure_models.NewResource):
+
+    class Quotas(QuotaModelMixin.Quotas):
+        vcpu = QuotaField(default_limit=20, is_backend=True)
+        ram = QuotaField(default_limit=51200, is_backend=True)
+        storage = QuotaField(default_limit=1024000, is_backend=True)
+        backup_storage = QuotaField(default_limit=1024000, is_backend=True)
+        instances = QuotaField(default_limit=30, is_backend=True)
+        security_group_count = QuotaField(default_limit=100, is_backend=True)
+        security_group_rule_count = QuotaField(default_limit=100, is_backend=True)
+        floating_ip_count = QuotaField(default_limit=50, is_backend=True)
+        volumes = QuotaField(default_limit=50, is_backend=True)
+        snapshots = QuotaField(default_limit=50, is_backend=True)
+
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='tenants', on_delete=models.PROTECT)
 
@@ -405,6 +480,66 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
     image = models.ForeignKey(Image, null=True)
     image_metadata = JSONField(blank=True)
     type = models.CharField(max_length=100, blank=True)
+    source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', null=True, on_delete=models.SET_NULL)
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(Tenant.Quotas.volumes, 1, validate=validate)
+        self.tenant.add_quota_usage(Tenant.Quotas.storage, self.size, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(Tenant.Quotas.volumes, -1)
+        self.tenant.add_quota_usage(Tenant.Quotas.storage, -self.size)
+
+
+@python_2_unicode_compatible
+class VolumeBackupRecord(core_models.UuidMixin, models.Model):
+    """ Record that corresponds backup in swift.
+        Several backups from OpenStack can be related to one record.
+    """
+    service = models.CharField(max_length=200)
+    details = JSONField(blank=True)
+
+    def __str__(self):
+        name = '%s %s' % (self.details.get('display_name'), self.details.get('volume_id'))
+        if not name.strip():
+            return '(no data)'
+        return name
+
+
+class VolumeBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
+    service_project_link = models.ForeignKey(
+        OpenStackServiceProjectLink, related_name='volume_backups', on_delete=models.PROTECT)
+    tenant = models.ForeignKey(Tenant, related_name='volume_backups')
+    source_volume = models.ForeignKey(Volume, related_name='backups', null=True, on_delete=models.SET_NULL)
+    size = models.PositiveIntegerField(help_text='Size of source volume in MiB')
+    metadata = JSONField(blank=True, help_text='Information about volume that will be used on restoration')
+    record = models.ForeignKey(VolumeBackupRecord, related_name='volume_backups', null=True, on_delete=models.SET_NULL)
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(Tenant.Quotas.backup_storage, self.size, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(Tenant.Quotas.backup_storage, -self.size)
+
+
+# For now this model has no endpoint, so there is not need to add permissions definition.
+class VolumeBackupRestoration(core_models.UuidMixin, TimeStampedModel):
+    """ This model corresponds volume restoration from backup.
+
+        Stores restoration details:
+         - mirrored backup, that is created from source backup.
+         - volume - restored volume.
+    """
+    tenant = models.ForeignKey(Tenant, related_name='volume_backup_restorations')
+    volume_backup = models.ForeignKey(VolumeBackup, related_name='restorations')
+    mirorred_volume_backup = models.ForeignKey(VolumeBackup, related_name='+', null=True, on_delete=models.SET_NULL)
+    volume = models.OneToOneField(Volume, related_name='+')
 
     def get_backend(self):
         return self.tenant.get_backend()
@@ -412,10 +547,73 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
 
 class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
-        OpenStackServiceProjectLink, related_name='shapshots', on_delete=models.PROTECT)
-    volume = models.ForeignKey(Volume, related_name='shapshots')
+        OpenStackServiceProjectLink, related_name='snapshots', on_delete=models.PROTECT)
+    tenant = models.ForeignKey(Tenant, related_name='snapshots')
+    # TODO: protect source_volume after NC-1410 implementation
+    source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.SET_NULL)
     size = models.PositiveIntegerField(help_text='Size in MiB')
     metadata = JSONField(blank=True)
 
     def get_backend(self):
-        return self.volume.get_backend()
+        return self.tenant.get_backend()
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(Tenant.Quotas.snapshots, 1, validate=validate)
+        self.tenant.add_quota_usage(Tenant.Quotas.storage, self.size, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(Tenant.Quotas.snapshots, -1)
+        self.tenant.add_quota_usage(Tenant.Quotas.storage, -self.size)
+
+
+# XXX: This model is itacloud specific, it should be moved to assembly
+class DRBackup(core_models.RuntimeStateMixin, structure_models.NewResource):
+    backup_schedule = models.ForeignKey(
+        BackupSchedule, blank=True, null=True, on_delete=models.SET_NULL, related_name='dr_backups')
+    service_project_link = models.ForeignKey(
+        OpenStackServiceProjectLink, related_name='dr_backups', on_delete=models.PROTECT)
+    tenant = models.ForeignKey(Tenant, related_name='dr_backups')
+    source_instance = models.ForeignKey(Instance, related_name='dr_backups', null=True, on_delete=models.SET_NULL)
+    metadata = JSONField(
+        blank=True,
+        help_text='Information about instance that will be used on restoration',
+    )
+    temporary_volumes = models.ManyToManyField(Volume, related_name='+')
+    temporary_snapshots = models.ManyToManyField(Snapshot, related_name='+')
+    volume_backups = models.ManyToManyField(VolumeBackup, related_name='dr_backups')
+    kept_until = models.DateTimeField(
+        null=True, blank=True, help_text='Guaranteed time of backup retention. If null - keep forever.')
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-dr-backup'
+
+
+# XXX: This model is itacloud specific, it should be moved to assembly
+class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, TimeStampedModel):
+    """ This model corresponds instance restoration from DR backup.
+
+        Stores restoration details:
+         - volume_backup_restorations - restoration details of each instance volume.
+         - instance - restored instance.
+    """
+    dr_backup = models.ForeignKey(DRBackup, related_name='restorations')
+    instance = models.OneToOneField(Instance, related_name='+')
+    tenant = models.ForeignKey(Tenant, related_name='+', help_text='Tenant for instance restoration')
+    flavor = models.ForeignKey(Flavor, related_name='+')
+    volume_backup_restorations = models.ManyToManyField(VolumeBackupRestoration, related_name='+')
+
+    class Permissions(object):
+        customer_path = 'dr_backup__service_project_link__project__customer'
+        project_path = 'dr_backup__service_project_link__project'
+        project_group_path = 'dr_backup__service_project_link__project__project_groups'
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-dr-backup'

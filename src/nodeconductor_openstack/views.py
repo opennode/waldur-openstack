@@ -2,13 +2,15 @@ from django.http import Http404
 from django.utils import six
 from rest_framework import viewsets, decorators, exceptions, response, permissions, mixins, status
 from rest_framework import filters as rf_filters
+from rest_framework.exceptions import ValidationError
 from rest_framework.reverse import reverse
 from taggit.models import TaggedItem
 
+from nodeconductor.core import mixins as core_mixins
+from nodeconductor.core import utils as core_utils
 from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
-from nodeconductor.core.utils import request_api
 from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import views as structure_views
 from nodeconductor.structure import filters as structure_filters
@@ -95,15 +97,6 @@ class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkV
     serializer_class = serializers.ServiceProjectLinkSerializer
     filter_class = filters.OpenStackServiceProjectLinkFilter
 
-    serializers = {
-        'set_quotas': serializers.TenantQuotaSerializer,
-        'external_network': serializers.ExternalNetworkSerializer,
-    }
-
-    def get_serializer_class(self):
-        serializer = self.serializers.get(self.action)
-        return serializer or super(OpenStackServiceProjectLinkViewSet, self).get_serializer_class()
-
     def list(self, request, *args, **kwargs):
         """
         In order to be able to provision OpenStack resources, it must first be linked to a project. To do that,
@@ -128,148 +121,6 @@ class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkV
         To remove a link, issue DELETE to URL of the corresponding connection as stuff user or customer owner.
         """
         return super(OpenStackServiceProjectLinkViewSet, self).list(request, *args, **kwargs)
-
-    # XXX: This method and backend quotas should be moved to tenant.
-    @decorators.detail_route(methods=['post'])
-    def set_quotas(self, request, **kwargs):
-        """
-        A project quota can be set for a particular link between service and project. Only staff users can do that.
-        In order to set quota submit **POST** request to */api/openstack-service-project-link/<pk>/set_quotas/*.
-        The quota values are propagated to the backend.
-
-        The following quotas are supported. All values are expected to be integers:
-
-        - instances - maximal number of created instances.
-        - ram - maximal size of ram for allocation. In MiB_.
-        - storage - maximal size of storage for allocation. In MiB_.
-        - vcpu - maximal number of virtual cores for allocation.
-        - security_group_count - maximal number of created security groups.
-        - security_group_rule_count - maximal number of created security groups rules.
-
-        It is possible to update quotas by one or by submitting all the fields in one request.
-        NodeConductor will attempt to update the provided quotas. Please note, that if provided quotas are
-        conflicting with the backend (e.g. requested number of instances is below of the already existing ones),
-        some quotas might not be applied.
-
-        .. _MiB: http://en.wikipedia.org/wiki/Mebibyte
-        .. _settings: http://nodeconductor.readthedocs.org/en/stable/guide/intro.html#id1
-
-        Example of a valid request (token is user specific):
-
-        .. code-block:: http
-
-            POST /api/openstack-service-project-link/1/set_quotas/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-            {
-                "instances": 30,
-                "ram": 100000,
-                "storage": 1000000,
-                "vcpu": 30,
-                "security_group_count": 100,
-                "security_group_rule_count": 100
-            }
-
-        Response code of a successful request is **202 ACCEPTED**. In case link is in a non-stable status, the response
-        would be **409 CONFLICT**. In this case REST client is advised to repeat the request after some time.
-        On successful completion the task will synchronize quotas with the backend.
-        """
-        if not request.user.is_staff:
-            raise exceptions.PermissionDenied()
-
-        spl = self.get_object()
-        tenant = spl.tenant
-        if not tenant or tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException("Tenant should be in state OK.")
-
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        quotas = dict(serializer.validated_data)
-        for quota_name, limit in quotas.items():
-            spl.set_quota_limit(quota_name, limit)
-        executors.TenantPushQuotasExecutor.execute(tenant, quotas=quotas)
-
-        return response.Response(
-            {'detail': 'Quota update has been scheduled'}, status=status.HTTP_202_ACCEPTED)
-
-    # XXX: This method should be moved to tenant endpoint.
-    #      Also it should be replaced by two methods - create external network and delete external network.
-    @decorators.detail_route(methods=['post', 'delete'])
-    def external_network(self, request, pk=None):
-        """
-        In order to create external network a person with admin role or staff should issue a **POST**
-        request to */api/openstack-service-project-link/<pk>/external_network/*.
-        The body of the request should consist of following parameters:
-
-        - vlan_id (required if vxlan_id is not provided) - VLAN ID of the external network.
-        - vxlan_id (required if vlan_id is not provided) - VXLAN ID of the external network.
-        - network_ip (required) - network IP address for floating IP range.
-        - network_prefix (required) - prefix of the network address for the floating IP range.
-        - ips_count (optional) - number of floating IPs to create automatically.
-
-        Example of a valid request (token is user specific):
-
-        .. code-block:: http
-
-            POST /api/openstack-service-project-link/1/external_network/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-            {
-                "vlan_id": "a325e56a-4689-4d10-abdb-f35918125af7",
-                "network_ip": "10.7.122.0",
-                "network_prefix": "26",
-                "ips_count": "6"
-            }
-
-        In order to delete external network, a person with admin role or staff should issue a **DELETE** request
-        to */api/openstack-service-project-link/<pk>/external_network/* without any parameters in the request body.
-        """
-        spl = self.get_object()
-        tenant = spl.tenant
-
-        if not tenant or tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException("Tenant should be in state OK.")
-
-        if request.method == 'DELETE':
-            return self._delete_external_network(request, tenant)
-        else:
-            return self._create_external_network(request, tenant)
-
-    def _create_external_network(self, request, tenant):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        executors.TenantCreateExternalNetworkExecutor.execute(tenant, external_network_data=serializer.data)
-        return response.Response(
-            {'detail': 'External network creation has been scheduled.'},
-            status=status.HTTP_202_ACCEPTED)
-
-    def _delete_external_network(self, request, tenant):
-        if tenant.external_network_id:
-            executors.TenantDeleteExternalNetworkExecutor.execute(tenant)
-            return response.Response(
-                {'detail': 'External network deletion has been scheduled.'},
-                status=status.HTTP_202_ACCEPTED)
-        else:
-            return response.Response(
-                {'detail': 'External network does not exist.'},
-                status=status.HTTP_400_BAD_REQUEST)
-
-    def destroy(self, request, *args, **kwargs):
-        """ If OpenStack SPL has connected tenant - destroy operation will trigger tenant deletion. """
-        spl = self.get_object()
-        if spl.tenant is not None:
-            executors.SPLTenantDeleteExecutor.execute(spl.tenant, force=True)
-            return response.Response(
-                {'detail': 'Deletion was scheduled'}, status=status.HTTP_202_ACCEPTED)
-        else:
-            return super(OpenStackServiceProjectLinkViewSet, self).destroy(request, *args, **kwargs)
 
 
 class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
@@ -312,24 +163,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     The UI can poll for updates to provide feedback after submitting one of the longer running operations.
 
-    In a DB, state is stored encoded with a symbol. States are:
-
-    - PROVISIONING_SCHEDULED = 1
-    - PROVISIONING = 2
-    - ONLINE = 3
-    - OFFLINE = 4
-    - STARTING_SCHEDULED = 5
-    - STARTING = 6
-    - STOPPING_SCHEDULED = 7
-    - STOPPING = 8
-    - ERRED = 9
-    - DELETION_SCHEDULED = 10
-    - DELETING = 11
-    - RESIZING_SCHEDULED = 13
-    - RESIZING = 14
-    - RESTARTING_SCHEDULED = 15
-    - RESTARTING = 16
-
     Any modification of an instance in unstable or PROVISIONING_SCHEDULED state is prohibited
     and will fail with 409 response code. Assuming stable states are ONLINE and OFFLINE.
 
@@ -343,7 +176,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
-        'resize': serializers.InstanceResizeSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -353,7 +185,11 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
         - instances that belong to a project where a user has a role.
         - instances that belong to a customer that a user owns.
+        """
+        return super(InstanceViewSet, self).list(request, *args, **kwargs)
 
+    def create(self, request, *args, **kwargs):
+        """
         A new instance can be created by users with project administrator role or with staff privilege (is_staff=True).
 
         Example of a valid request:
@@ -372,7 +208,8 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 "image": "http://example.com/api/openstack-images/1ee380602b6283c446ad9420b3230bf0/",
                 "flavor": "http://example.com/api/openstack-flavors/1ee385bc043249498cfeb8c7e3e079f0/",
                 "ssh_public_key": "http://example.com/api/keys/6fbd6b24246f4fb38715c29bafa2e5e7/",
-                "service_project_link": "http://example.com/api/openstack-service-project-link/674/".
+                "service_project_link": "http://example.com/api/openstack-service-project-link/674/",
+                "tenant": "http://example.com/api/openstack-tenants/33bf0f83d4b948119038d6e16f05c129/",
                 "data_volume_size": 1024,
                 "system_volume_size": 20480,
                 "security_groups": [
@@ -381,7 +218,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 ]
             }
         """
-        return super(InstanceViewSet, self).list(request, *args, **kwargs)
+        return super(InstanceViewSet, self).create(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
         """
@@ -413,14 +250,17 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         send_task('openstack', 'sync_instance_security_groups')(self.get_object().uuid.hex)
 
     def perform_provision(self, serializer):
-        resource = serializer.save()
-        backend = resource.get_backend()
-        backend.provision(
-            resource,
-            flavor=serializer.validated_data['flavor'],
-            image=serializer.validated_data['image'],
+        instance = serializer.save()
+        executors.InstanceCreateExecutor.execute(
+            instance,
             ssh_key=serializer.validated_data.get('ssh_public_key'),
-            skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'])
+            flavor=serializer.validated_data['flavor'],
+            skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'],
+            floating_ip=serializer.validated_data.get('floating_ip'),
+        )
+
+    def perform_managed_resource_destroy(self, instance, force=False):
+        executors.InstanceDeleteExecutor.execute(instance, force=force)
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)
@@ -430,15 +270,14 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
     def allocate_floating_ip(self, request, uuid=None):
         """
         In order to allocate floating IP, make **POST** request to
-        */api/openstack-service-project-link/<pk>/allocate_floating_ip/*.
+        */api/openstack-tenants/<pk>/allocate_floating_ip/*.
         Note that service project link should be in stable state and have external network.
         """
-        # TODO: Move method after migration from service project link to tenant resource.
         instance = self.get_object()
-        kwargs = {'uuid': instance.service_project_link.tenant.uuid.hex}
+        kwargs = {'uuid': instance.tenant.uuid.hex}
         url = reverse('openstack-tenant-detail', kwargs=kwargs, request=request) + 'allocate_floating_ip/'
-        response = request_api(request, url, 'POST')
-        return response.Response(response.json(), response.status_code)
+        resp = core_utils.request_api(request, url, 'POST')
+        return response.Response(resp.json(), resp.status_code)
 
     allocate_floating_ip.title = 'Allocate floating IP'
 
@@ -481,7 +320,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         Note, that instance must be OFFLINE.
         Example of a valid request:
 
-
         .. code-block:: http
 
             POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/resize/ HTTP/1.1
@@ -511,32 +349,46 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
                 "disk_size": 1024
             }
         """
-        serializer = self.get_serializer(instance, data=request.data)
-        serializer.is_valid(raise_exception=True)
+        flavor = request.data.get('flavor')
+        disk_size = request.data.get('disk_size')
 
-        flavor = serializer.validated_data.get('flavor')
-        new_size = serializer.validated_data.get('disk_size')
+        def fail(message):
+            raise ValidationError({'non_field_errors': [message]})
 
-        instance.schedule_resizing()
-        instance.save()
+        if flavor is not None and disk_size is not None:
+            fail('Cannot resize both disk size and flavor simultaneously')
 
-        # Serializer makes sure that exactly one of the branches will match
-        if flavor is not None:
-            send_task('openstack', 'change_flavor')(instance.uuid.hex, flavor_uuid=flavor.uuid.hex)
-            event_logger.openstack_flavor.info(
-                'Virtual machine {resource_name} has been scheduled to change flavor.',
-                event_type='resource_flavor_change_scheduled',
-                event_context={'resource': instance, 'flavor': flavor}
-            )
-        else:
-            send_task('openstack', 'extend_disk')(instance.uuid.hex, disk_size=new_size)
-            event_logger.openstack_volume.info(
-                'Virtual machine {resource_name} has been scheduled to extend disk.',
-                event_type='resource_volume_extension_scheduled',
-                event_context={'resource': instance, 'volume_size': new_size}
-            )
+        if flavor is None and disk_size is None:
+            fail('Either disk_size or flavor is required')
+
+        if flavor:
+            serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+            flavor = serializer.validated_data.get('flavor')
+            executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
+
+        if disk_size:
+            volume = instance.data_volume
+            serializer = serializers.VolumeExtendSerializer(volume, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+            new_size = serializer.validated_data.get('disk_size')
+            executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
 
     resize.title = 'Resize virtual machine'
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
+    def change_flavor(self, request, instance, uuid=None):
+        serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        flavor = serializer.validated_data.get('flavor')
+        executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
 
 
 class SecurityGroupViewSet(StateExecutorViewSet):
@@ -552,9 +404,13 @@ class SecurityGroupViewSet(StateExecutorViewSet):
 
     def list(self, request, *args, **kwargs):
         """
-        To get a list of Security Groups and security group rules,
-        run **GET** against *api/openstack-security-groups/* as authenticated user.
+        To get a list of security groups and security group rules,
+        run **GET** against */api/openstack-security-groups/* as authenticated user.
+        """
+        return super(SecurityGroupViewSet, self).list(request, *args, **kwargs)
 
+    def create(self, request, *args, **kwargs):
+        """
         To create a new security group, issue a **POST** with security group details to */api/openstack-security-groups/*.
         This will create new security group and start its synchronization with OpenStack.
 
@@ -586,14 +442,14 @@ class SecurityGroupViewSet(StateExecutorViewSet):
                     }
                 ],
                 "service_project_link": {
-                    "project": "http://example.com/api/project/6c9b01c251c24174a6691a1f894fae31/",
-                    "service": "http://example.com/api/openstack/1ee385bc043249498cfeb8c7e3e079f0/"
-                }
+                    "url": "http://example.com/api/openstack-service-project-link/6c9b01c251c24174a6691a1f894fae31/",
+                },
+                "tenant": "http://example.com/api/openstack-tenants/33bf0f83d4b948119038d6e16f05c129/"
             }
         """
-        return super(SecurityGroupViewSet, self).list(request, *args, **kwargs)
+        return super(SecurityGroupViewSet, self).create(request, *args, **kwargs)
 
-    def retrieve(self, request, *args, **kwargs):
+    def update(self, request, *args, **kwargs):
         """
         Security group name, description and rules can be updated. To execute update request make **PATCH**
         request with details to */api/openstack-security-groups/<security-group-uuid>/*.
@@ -623,12 +479,25 @@ class SecurityGroupViewSet(StateExecutorViewSet):
                     }
                 ],
             }
-
-        To schedule security group deletion - issue **DELETE** request against
-        */api/openstack-security-groups/<security-group-uuid>/*. Endpoint will return 202 if deletion
-        was scheduled successfully.
         """
-        return super(SecurityGroupViewSet, self).retrieve(request, *args, **kwargs)
+        return super(SecurityGroupViewSet, self).update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        To schedule security group deletion - issue **DELETE** request against
+        */api/openstack-security-groups/<security-group-uuid>/*.
+        Endpoint will return 202 if deletion was scheduled successfully.
+        """
+        return super(SecurityGroupViewSet, self).destroy(request, *args, **kwargs)
+
+
+class IpMappingViewSet(viewsets.ModelViewSet):
+    queryset = models.IpMapping.objects.all()
+    serializer_class = serializers.IpMappingSerializer
+    lookup_field = 'uuid'
+    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
+    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
+    filter_class = filters.IpMappingFilter
 
 
 class FloatingIPViewSet(viewsets.ReadOnlyModelViewSet):
@@ -725,7 +594,9 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
         if schedule.is_active:
             return response.Response(
                 {'status': 'BackupSchedule is already activated'}, status=status.HTTP_409_CONFLICT)
+        schedule.runtime_state = 'Activated manually'
         schedule.is_active = True
+        schedule.error_message = ''
         schedule.save()
 
         event_logger.openstack_backup.info(
@@ -745,6 +616,7 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
         if not schedule.is_active:
             return response.Response(
                 {'status': 'BackupSchedule is already deactivated'}, status=status.HTTP_409_CONFLICT)
+        schedule.runtime_state = 'Deactivated manually.'
         schedule.is_active = False
         schedule.save()
 
@@ -1000,11 +872,88 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     delete_executor = executors.TenantDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
+    serializers = {
+        'set_quotas': serializers.TenantQuotaSerializer,
+        'external_network': serializers.ExternalNetworkSerializer,
+    }
+
+    def get_serializer_class(self):
+        serializer = self.serializers.get(self.action)
+        return serializer or super(TenantViewSet, self).get_serializer_class()
+
+    @decorators.detail_route(methods=['post'])
+    def set_quotas(self, request, uuid=None):
+        """
+        A quota can be set for a particular tenant. Only staff users can do that.
+        In order to set quota submit **POST** request to */api/openstack-tenants/<uuid>/set_quotas/*.
+        The quota values are propagated to the backend.
+
+        The following quotas are supported. All values are expected to be integers:
+
+        - instances - maximal number of created instances.
+        - ram - maximal size of ram for allocation. In MiB_.
+        - storage - maximal size of storage for allocation. In MiB_.
+        - vcpu - maximal number of virtual cores for allocation.
+        - security_group_count - maximal number of created security groups.
+        - security_group_rule_count - maximal number of created security groups rules.
+        - volumes - maximal number of created volumes.
+        - snapshots - maximal number of created snapshots.
+
+        It is possible to update quotas by one or by submitting all the fields in one request.
+        NodeConductor will attempt to update the provided quotas. Please note, that if provided quotas are
+        conflicting with the backend (e.g. requested number of instances is below of the already existing ones),
+        some quotas might not be applied.
+
+        .. _MiB: http://en.wikipedia.org/wiki/Mebibyte
+        .. _settings: http://nodeconductor.readthedocs.org/en/stable/guide/intro.html#id1
+
+        Example of a valid request (token is user specific):
+
+        .. code-block:: http
+
+            POST /api/openstack-tenants/c84d653b9ec92c6cbac41c706593e66f567a7fa4/set_quotas/ HTTP/1.1
+            Content-Type: application/json
+            Accept: application/json
+            Host: example.com
+
+            {
+                "instances": 30,
+                "ram": 100000,
+                "storage": 1000000,
+                "vcpu": 30,
+                "security_group_count": 100,
+                "security_group_rule_count": 100,
+                "volumes": 10,
+                "snapshots": 20
+            }
+
+        Response code of a successful request is **202 ACCEPTED**. In case tenant is in a non-stable status, the response
+        would be **409 CONFLICT**. In this case REST client is advised to repeat the request after some time.
+        On successful completion the task will synchronize quotas with the backend.
+        """
+        if not request.user.is_staff:
+            raise exceptions.PermissionDenied()
+
+        tenant = self.get_object()
+        if tenant.state != models.Tenant.States.OK:
+            raise IncorrectStateException("Tenant should be in state OK.")
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        quotas = dict(serializer.validated_data)
+        for quota_name, limit in quotas.items():
+            tenant.set_quota_limit(quota_name, limit)
+        executors.TenantPushQuotasExecutor.execute(tenant, quotas=quotas)
+
+        return response.Response(
+            {'detail': 'Quota update has been scheduled'}, status=status.HTTP_202_ACCEPTED)
+
     @decorators.detail_route(methods=['post'])
     def allocate_floating_ip(self, request, uuid=None):
         tenant = self.get_object()
 
-        if not tenant or tenant.state != models.Tenant.States.OK:
+        if tenant.state != models.Tenant.States.OK:
             raise IncorrectStateException("Tenant should be in state OK.")
 
         if not tenant.external_network_id:
@@ -1020,6 +969,68 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     allocate_floating_ip.title = 'Allocate floating IP'
 
+    # TODO: replace by two methods - create external network and delete external network.
+    @decorators.detail_route(methods=['post', 'delete'])
+    def external_network(self, request, uuid=None):
+        """
+        In order to create external network a user with admin role or staff should issue a **POST**
+        request to */api/openstack-tenants/<uuid>/external_network/*.
+        The body of the request should consist of following parameters:
+
+        - vlan_id (required if vxlan_id is not provided) - VLAN ID of the external network.
+        - vxlan_id (required if vlan_id is not provided) - VXLAN ID of the external network.
+        - network_ip (required) - network IP address for floating IP range.
+        - network_prefix (required) - prefix of the network address for the floating IP range.
+        - ips_count (optional) - number of floating IPs to create automatically.
+
+        Example of a valid request (token is user specific):
+
+        .. code-block:: http
+
+            POST /api/openstack-tenants/c84d653b9ec92c6cbac41c706593e66f567a7fa4/external_network/ HTTP/1.1
+            Content-Type: application/json
+            Accept: application/json
+            Host: example.com
+
+            {
+                "vlan_id": "a325e56a-4689-4d10-abdb-f35918125af7",
+                "network_ip": "10.7.122.0",
+                "network_prefix": "26",
+                "ips_count": "6"
+            }
+
+        In order to delete external network, a user with admin role or staff should issue a **DELETE** request
+        to */api/openstack-tenants/<uuid>/external_network/* without any parameters in the request body.
+        """
+        tenant = self.get_object()
+
+        if tenant.state != models.Tenant.States.OK:
+            raise IncorrectStateException("Tenant should be in state OK.")
+
+        if request.method == 'DELETE':
+            return self._delete_external_network(request, tenant)
+        else:
+            return self._create_external_network(request, tenant)
+
+    def _create_external_network(self, request, tenant):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        executors.TenantCreateExternalNetworkExecutor.execute(tenant, external_network_data=serializer.data)
+        return response.Response(
+            {'detail': 'External network creation has been scheduled.'},
+            status=status.HTTP_202_ACCEPTED)
+
+    def _delete_external_network(self, request, tenant):
+        if tenant.external_network_id:
+            executors.TenantDeleteExternalNetworkExecutor.execute(tenant)
+            return response.Response(
+                {'detail': 'External network deletion has been scheduled.'},
+                status=status.HTTP_202_ACCEPTED)
+        else:
+            return response.Response(
+                {'detail': 'External network does not exist.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
@@ -1031,6 +1042,16 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     delete_executor = executors.VolumeDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def extend(self, request, volume, uuid=None):
+        serializer = serializers.VolumeExtendSerializer(volume, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        new_size = serializer.validated_data.get('disk_size')
+        executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
+
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewMixin,
@@ -1041,3 +1062,29 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
+
+
+class DRBackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         structure_views.ResourceViewMixin,
+                                         StateExecutorViewSet)):
+    queryset = models.DRBackup.objects.all()
+    serializer_class = serializers.DRBackupSerializer
+    create_executor = executors.DRBackupCreateExecutor
+    delete_executor = executors.DRBackupDeleteExecutor
+    filter_class = filters.DRBackupFilter
+
+    def perform_update(self, serializer):
+        # Update do not make any changes at backend, so there is no executor
+        serializer.save()
+
+
+class DRBackupRestorationViewSet(core_mixins.CreateExecutorMixin,
+                                 mixins.CreateModelMixin,
+                                 mixins.RetrieveModelMixin,
+                                 mixins.ListModelMixin,
+                                 viewsets.GenericViewSet):
+    """ Restoration endpoint support only create/retrieve/list operations """
+    queryset = models.DRBackupRestoration.objects.all()
+    lookup_field = 'uuid'
+    serializer_class = serializers.DRBackupRestorationSerializer
+    create_executor = executors.DRBackupRestorationCreateExecutor

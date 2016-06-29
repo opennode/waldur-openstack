@@ -10,9 +10,7 @@ from .. import models
 from . import factories
 
 
-@ddt
-class SecurityGroupCreateTest(test.APITransactionTestCase):
-
+class BaseSecurityGroupTest(test.APITransactionTestCase):
     def setUp(self):
         self.staff = structure_factories.UserFactory(is_staff=True)
         self.owner = structure_factories.UserFactory()
@@ -25,13 +23,17 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
         self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
             service=self.service, project=self.project)
+        self.tenant = factories.TenantFactory(service_project_link=self.service_project_link)
 
+
+@ddt
+class SecurityGroupCreateTest(BaseSecurityGroupTest):
+    def setUp(self):
+        super(SecurityGroupCreateTest, self).setUp()
         self.valid_data = {
             'name': 'test_security_group',
             'description': 'test security_group description',
-            'service_project_link': {
-                'url': factories.OpenStackServiceProjectLinkFactory.get_url(self.service_project_link),
-            },
+            'tenant': factories.TenantFactory.get_url(self.tenant),
             'rules': [
                 {
                     'protocol': 'tcp',
@@ -52,7 +54,7 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.assertTrue(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
     def test_security_group_can_not_be_created_if_quota_is_over_limit(self):
-        self.service_project_link.set_quota_limit('security_group_count', 0)
+        self.tenant.set_quota_limit('security_group_count', 0)
 
         self.client.force_authenticate(self.admin)
         response = self.client.post(self.url, self.valid_data)
@@ -61,7 +63,7 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
     def test_security_group_can_not_be_created_if_rules_quota_is_over_limit(self):
-        self.service_project_link.set_quota_limit('security_group_rule_count', 0)
+        self.tenant.set_quota_limit('security_group_rule_count', 0)
 
         self.client.force_authenticate(self.admin)
         response = self.client.post(self.url, self.valid_data)
@@ -80,8 +82,8 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
 
             mocked_execute.assert_called_once_with(security_group, async=True)
 
-    def test_security_group_raises_validation_error_on_wrong_membership_in_request(self):
-        del self.valid_data['service_project_link']['url']
+    def test_security_group_raises_validation_error_on_wrong_tenant_in_request(self):
+        del self.valid_data['tenant']
 
         self.client.force_authenticate(self.admin)
         response = self.client.post(self.url, data=self.valid_data)
@@ -99,23 +101,14 @@ class SecurityGroupCreateTest(test.APITransactionTestCase):
         self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
 
-class SecurityGroupUpdateTest(test.APITransactionTestCase):
+class SecurityGroupUpdateTest(BaseSecurityGroupTest):
 
     def setUp(self):
-        self.staff = structure_factories.UserFactory(is_staff=True)
-        self.owner = structure_factories.UserFactory()
-        self.admin = structure_factories.UserFactory()
-
-        self.customer = structure_factories.CustomerFactory()
-        self.customer.add_user(self.owner, structure_models.CustomerRole.OWNER)
-        self.service = factories.OpenStackServiceFactory(customer=self.customer)
-        self.project = structure_factories.ProjectFactory(customer=self.customer)
-        self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
-        self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
-            service=self.service, project=self.project)
-
+        super(SecurityGroupUpdateTest, self).setUp()
         self.security_group = factories.SecurityGroupFactory(
-            service_project_link=self.service_project_link, state=SynchronizationStates.IN_SYNC)
+            service_project_link=self.service_project_link,
+            tenant=self.tenant,
+            state=SynchronizationStates.IN_SYNC)
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
     def test_project_administrator_can_update_security_group_rules(self):
@@ -147,18 +140,18 @@ class SecurityGroupUpdateTest(test.APITransactionTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
-    def test_security_group_service_project_link_can_not_be_updated(self):
-        new_spl = factories.OpenStackServiceProjectLinkFactory(project=self.project)
-        new_spl_url = factories.OpenStackServiceProjectLinkFactory.get_url(new_spl)
+    def test_security_group_tenant_can_not_be_updated(self):
+        new_tenant = factories.TenantFactory(service_project_link=self.service_project_link)
+        new_tenant_url = factories.TenantFactory.get_url(new_tenant)
 
         self.client.force_authenticate(self.admin)
-        self.client.patch(self.url, data={'service_project_link': {'url': new_spl_url}})
+        self.client.patch(self.url, data={'tenant': {'url': new_tenant_url}})
 
         reread_security_group = models.SecurityGroup.objects.get(pk=self.security_group.pk)
-        self.assertEqual(self.service_project_link, reread_security_group.service_project_link)
+        self.assertNotEqual(new_tenant, reread_security_group.tenant)
 
     def test_security_group_rules_can_not_be_updated_if_rules_quota_is_over_limit(self):
-        self.service_project_link.set_quota_limit('security_group_rule_count', 0)
+        self.tenant.set_quota_limit('security_group_rule_count', 0)
 
         rules = [
             {
@@ -214,23 +207,14 @@ class SecurityGroupUpdateTest(test.APITransactionTestCase):
         self.assertTrue(self.security_group.rules.filter(**new_rule_data).exists())
 
 
-class SecurityGroupDeleteTest(test.APITransactionTestCase):
+class SecurityGroupDeleteTest(BaseSecurityGroupTest):
 
     def setUp(self):
-        self.staff = structure_factories.UserFactory(is_staff=True)
-        self.owner = structure_factories.UserFactory()
-        self.admin = structure_factories.UserFactory()
-
-        self.customer = structure_factories.CustomerFactory()
-        self.customer.add_user(self.owner, structure_models.CustomerRole.OWNER)
-        self.service = factories.OpenStackServiceFactory(customer=self.customer)
-        self.project = structure_factories.ProjectFactory(customer=self.customer)
-        self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
-        self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
-            service=self.service, project=self.project)
-
+        super(SecurityGroupDeleteTest, self).setUp()
         self.security_group = factories.SecurityGroupFactory(
-            service_project_link=self.service_project_link, state=SynchronizationStates.IN_SYNC)
+            service_project_link=self.service_project_link,
+            tenant=self.tenant,
+            state=SynchronizationStates.IN_SYNC)
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
     def test_project_administrator_can_delete_security_group(self):
@@ -252,21 +236,14 @@ class SecurityGroupDeleteTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
 
-class SecurityGroupRetreiveTest(test.APITransactionTestCase):
+class SecurityGroupRetreiveTest(BaseSecurityGroupTest):
 
     def setUp(self):
-        self.admin = structure_factories.UserFactory()
-        self.user = structure_factories.UserFactory()
-        self.staff = structure_factories.UserFactory(is_staff=True)
-
-        self.customer = structure_factories.CustomerFactory()
-        self.customer.add_user(self.user, structure_models.CustomerRole.OWNER)
-        self.service = factories.OpenStackServiceFactory(customer=self.customer)
-        self.project = structure_factories.ProjectFactory()
-        self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
-        self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
-            service=self.service, project=self.project)
-        self.security_group = factories.SecurityGroupFactory(service_project_link=self.service_project_link)
+        super(SecurityGroupRetreiveTest, self).setUp()
+        self.security_group = factories.SecurityGroupFactory(
+            service_project_link=self.service_project_link,
+            tenant=self.tenant
+        )
 
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
@@ -277,6 +254,6 @@ class SecurityGroupRetreiveTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_user_cannot_access_security_groups_of_instances_not_connected_to_him(self):
-        self.client.force_authenticate(user=self.user)
+        self.client.force_authenticate(user=structure_factories.UserFactory())
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

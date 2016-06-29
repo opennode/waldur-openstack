@@ -1,5 +1,3 @@
-import unittest
-
 from rest_framework import test, status
 
 from nodeconductor.structure.models import ProjectRole, ProjectGroupRole
@@ -53,10 +51,10 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         instance = self.admined_instance
         instance.cores = 5
         instance.save()
-        link = instance.service_project_link
-        link.set_quota_usage('vcpu', instance.cores)
-        link.set_quota_limit('vcpu', instance.cores)
-        link.set_quota_limit('storage', 0)
+        tenant = factories.TenantFactory(service_project_link=instance.service_project_link)
+        tenant.set_quota_usage('vcpu', instance.cores)
+        tenant.set_quota_limit('vcpu', instance.cores)
+        tenant.set_quota_limit('storage', 0)
 
         new_flavor = factories.FlavorFactory(
             settings=self.admined_instance.service_project_link.service.settings,
@@ -84,11 +82,11 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         instance = self.admined_instance
         instance.cores = 5
         instance.save()
-        link = instance.service_project_link
-        link.set_quota_usage('vcpu', instance.cores)
-        link.set_quota_limit('ram', instance.ram)
-        link.set_quota_limit('vcpu', instance.cores)
-        link.set_quota_limit('storage', 0)
+        tenant = factories.TenantFactory(service_project_link=instance.service_project_link)
+        tenant.set_quota_usage('vcpu', instance.cores)
+        tenant.set_quota_limit('ram', instance.ram)
+        tenant.set_quota_limit('vcpu', instance.cores)
+        tenant.set_quota_limit('storage', 0)
 
         new_flavor = factories.FlavorFactory(
             settings=self.admined_instance.service_project_link.service.settings,
@@ -107,12 +105,13 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
     def test_user_cannot_change_flavor_of_stopped_instance_he_is_administrator_of_if_quota_would_be_exceeded(self):
         self.client.force_authenticate(user=self.user)
         link = self.admined_instance.service_project_link
-        link.set_quota_limit('ram', 1024)
+        tenant = self.admined_instance.tenant
+        tenant.set_quota_limit('ram', 1024)
 
         # check for ram
         big_ram_flavor = factories.FlavorFactory(
             settings=link.service.settings,
-            ram=link.quotas.get(name='ram').limit + self.admined_instance.ram + 1,
+            ram=tenant.quotas.get(name='ram').limit + self.admined_instance.ram + 1,
         )
         data = {'flavor': factories.FlavorFactory.get_url(big_ram_flavor)}
         response = self.client.post(factories.InstanceFactory.get_url(self.admined_instance, action='resize'), data)
@@ -121,7 +120,7 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         # check for vcpu
         many_core_flavor = factories.FlavorFactory(
             settings=link.service.settings,
-            cores=link.quotas.get(name='vcpu').limit + self.admined_instance.cores + 1,
+            cores=tenant.quotas.get(name='vcpu').limit + self.admined_instance.cores + 1,
         )
         data = {'flavor': factories.FlavorFactory.get_url(many_core_flavor)}
         response = self.client.post(factories.InstanceFactory.get_url(self.admined_instance, action='resize'), data)
@@ -150,9 +149,9 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
     def test_user_cannot_set_disk_size_greater_than_resource_quota(self):
         self.client.force_authenticate(user=self.user)
         instance = self.admined_instance
-        link = instance.service_project_link
+        tenant = factories.TenantFactory(service_project_link=instance.service_project_link)
         data = {
-            'disk_size': link.quotas.get(name='storage').limit + 1 + instance.data_volume_size
+            'disk_size': tenant.quotas.get(name='storage').limit + 1 + instance.data_volume_size
         }
 
         response = self.client.post(factories.InstanceFactory.get_url(instance, action='resize'), data)
@@ -298,7 +297,6 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         self.assertDictContainsSubset(
             {'non_field_errors': ['Either disk_size or flavor is required']}, response.data)
 
-    @unittest.skip('Data volume size is not increased before resize task has been scheduled')
     def test_user_can_resize_disk_of_flavor_of_instance_he_is_administrator_of(self):
         self.client.force_authenticate(user=self.user)
 
@@ -310,7 +308,7 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         data = {'disk_size': new_size}
         response = self.client.post(factories.InstanceFactory.get_url(instance, action='resize'), data)
 
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
 
         reread_instance = Instance.objects.get(pk=instance.pk)
         self.assertEqual(reread_instance.data_volume_size, new_size)

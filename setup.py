@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import sys
 from setuptools import setup, find_packages
 
 
@@ -9,7 +8,7 @@ dev_requires = [
 
 install_requires = [
     'iptools>=0.6.1',
-    'nodeconductor>=0.97.0',
+    'nodeconductor>=0.101.0',
     'python-ceilometerclient==2.3.0',
     'python-cinderclient==1.6.0',
     'python-glanceclient==2.0.0',
@@ -21,7 +20,7 @@ install_requires = [
 
 setup(
     name='nodeconductor-openstack',
-    version='0.3.0',
+    version='0.4.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://nodeconductor.com',

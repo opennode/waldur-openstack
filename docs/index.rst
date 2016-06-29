@@ -1,5 +1,5 @@
 Welcome to NodeConductor OpenStack plugin's documentation!
-================================================================
+==========================================================
 
 NodeConductor plugin for managing OpenStack resources.
 

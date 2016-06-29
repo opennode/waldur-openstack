@@ -7,7 +7,7 @@ from nodeconductor.core.tasks import transition
 from nodeconductor.structure.log import event_logger
 
 from ..backup import BackupError
-from ..models import BackupSchedule, Backup
+from ..models import BackupSchedule, Backup, DRBackup
 
 
 logger = logging.getLogger(__name__)
@@ -22,9 +22,12 @@ def schedule_backups():
 
 @shared_task(name='nodeconductor.openstack.delete_expired_backups')
 def delete_expired_backups():
+    from .. import executors  # import here to avoid circular imports
     for backup in Backup.objects.filter(kept_until__lt=timezone.now(), state=Backup.States.READY):
         backend = backup.get_backend()
         backend.start_deletion()
+    for dr_backup in DRBackup.objects.filter(kept_until__lt=timezone.now(), state=DRBackup.States.OK):
+        executors.DRBackupDeleteExecutor.execute(dr_backup)
 
 
 @shared_task(name='nodeconductor.openstack.backup_start_create')
@@ -65,10 +68,12 @@ def backup_create(backup_uuid):
         backend = backup.get_backend()
         backup.metadata = backend.create()
         backup.save()
-    except BackupError:
+    except BackupError as e:
         logger.exception('Failed to perform backup for instance: %s', backup.instance)
         schedule = backup.backup_schedule
         if schedule:
+            schedule.error_message = 'Failed to execute backup for %s. Error: %s' % (backup.instance, e)
+            schedule.runtime_state = 'Failed to create backup'
             schedule.is_active = False
             schedule.save()
 

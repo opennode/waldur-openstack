@@ -7,7 +7,7 @@ from django.core.urlresolvers import reverse
 from rest_framework.exceptions import ValidationError
 
 from nodeconductor.structure import models as structure_models
-from . import models, serializers
+from nodeconductor_openstack import models, serializers
 
 
 class Command(BaseCommand):
@@ -112,8 +112,13 @@ class Command(BaseCommand):
             self.stdout.write('Instance %s was imported successfully' % instance.name)
 
             self.stdout.write('Creating host in Zabbix ...')
-            host = zabbix_models.Host.objects.create(scope=instance, visible_name=instance.name, name=instance.backend_id,
-                                                     service_project_link=zabbix_spl, host_group_name='NodeConductor')
+            host = zabbix_models.Host.objects.create(
+                scope=instance,
+                visible_name=zabbix_models.Host.get_visible_name_from_scope(instance),
+                name=instance.backend_id,
+                service_project_link=zabbix_spl,
+                host_group_name='NodeConductor'
+            )
             host.templates.add(zabbix_template)
             zabbix_executors.HostCreateExecutor.execute(host, async=False)
             self.stdout.write('... Done')

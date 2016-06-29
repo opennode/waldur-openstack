@@ -208,7 +208,7 @@ class ServicePermissionTest(test.APITransactionTestCase):
     def test_user_cannot_add_service_to_the_customer_he_has_no_role_in(self):
         self.client.force_authenticate(user=self.users['no_role'])
 
-        new_service = factories.OpenStackServiceFactory.build(customer=self.customers['owned'])
+        new_service = factories.OpenStackServiceFactory(customer=self.customers['owned'])
         response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), self._get_valid_payload(new_service))
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 

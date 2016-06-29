@@ -1,3 +1,5 @@
+import uuid
+
 import factory
 
 from random import randint
@@ -32,8 +34,6 @@ class OpenStackServiceProjectLinkFactory(factory.DjangoModelFactory):
 
     service = factory.SubFactory(OpenStackServiceFactory)
     project = factory.SubFactory(structure_factories.ProjectFactory)
-
-    external_network_id = factory.Sequence(lambda n: 'external_network_id%s' % n)
 
     @classmethod
     def get_url(cls, spl=None, action=None):
@@ -91,7 +91,44 @@ class ImageFactory(factory.DjangoModelFactory):
         return 'http://testserver' + reverse('openstack-image-list')
 
 
-class InstanceFactory(factory.DjangoModelFactory):
+class TenantMixin(object):
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        """Create an instance of the model, and save it to the database."""
+        manager = cls._get_manager(model_class)
+
+        if cls._meta.django_get_or_create:
+            return cls._get_or_create(model_class, *args, **kwargs)
+
+        tenant, _ = models.Tenant.objects.get_or_create(
+            service_project_link=kwargs['service_project_link'])
+        kwargs['tenant'] = tenant
+
+        return manager.create(*args, **kwargs)
+
+
+class VolumeFactory(TenantMixin, factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.Volume
+
+    name = factory.Sequence(lambda n: 'volume%s' % n)
+    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+    size = 10 * 1024
+    backend_id = uuid.uuid4
+
+    @classmethod
+    def get_url(cls, instance=None, action=None):
+        if instance is None:
+            instance = InstanceFactory()
+        url = 'http://testserver' + reverse('openstack-volume-detail', kwargs={'uuid': instance.uuid})
+        return url if action is None else url + action + '/'
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstack-volume-list')
+
+
+class InstanceFactory(TenantMixin, factory.DjangoModelFactory):
     class Meta(object):
         model = models.Instance
 
@@ -109,8 +146,29 @@ class InstanceFactory(factory.DjangoModelFactory):
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstack-instance-list')
 
+    @factory.post_generation
+    def volumes(self, create, extracted, **kwargs):
+        if not create:
+            return
 
-class SecurityGroupFactory(factory.DjangoModelFactory):
+        self.volumes.create(
+            tenant=self.tenant,
+            service_project_link=self.service_project_link,
+            bootable=True,
+            size=10 * 1024,
+            name='{0}-system'.format(self.name),
+        )
+        self.volumes.create(
+            tenant=self.tenant,
+            service_project_link=self.service_project_link,
+            size=20 * 1024,
+            name='{0}-system'.format(self.name),
+            backend_id='volume-1',
+            state=models.Volume.States.OK
+        )
+
+
+class SecurityGroupFactory(TenantMixin, factory.DjangoModelFactory):
     class Meta(object):
         model = models.SecurityGroup
 
@@ -147,7 +205,7 @@ class InstanceSecurityGroupFactory(factory.DjangoModelFactory):
     security_group = factory.SubFactory(SecurityGroupFactory)
 
 
-class FloatingIPFactory(factory.DjangoModelFactory):
+class FloatingIPFactory(TenantMixin, factory.DjangoModelFactory):
     class Meta(object):
         model = models.FloatingIP
 
@@ -212,6 +270,7 @@ class BackupFactory(factory.DjangoModelFactory):
         self.metadata.update(
             {
                 'service_project_link': self.instance.service_project_link.pk,
+                'tenant': self.instance.tenant.pk,
                 'name': 'original.vm.name',
                 'system_snapshot_id': self.instance.system_volume_id,
                 'system_snapshot_size': self.instance.system_volume_size,
@@ -234,3 +293,24 @@ class BackupFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(self):
         return 'http://testserver' + reverse('openstack-backup-list')
+
+
+class TenantFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.Tenant
+
+    name = factory.Sequence(lambda n: 'tenant%s' % n)
+    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+    state = models.Tenant.States.OK
+    external_network_id = factory.Sequence(lambda n: 'external_network_id%s' % n)
+
+    @classmethod
+    def get_url(cls, tenant=None, action=None):
+        if tenant is None:
+            tenant = TenantFactory()
+        url = 'http://testserver' + reverse('openstack-tenant-detail', kwargs={'uuid': tenant.uuid.hex})
+        return url if action is None else url + action + '/'
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstack-tenant-list')

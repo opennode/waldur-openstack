@@ -2,7 +2,7 @@ from nodeconductor.logging.loggers import EventLogger, event_logger
 
 
 class BackupEventLogger(EventLogger):
-    resource = 'structure.Resource'
+    resource = 'openstack.Instance'
 
     class Meta:
         event_types = ('resource_backup_creation_scheduled',
@@ -22,7 +22,7 @@ class BackupEventLogger(EventLogger):
 
 
 class InstanceFlavorChangeEventLogger(EventLogger):
-    resource = 'structure.Resource'
+    resource = 'openstack.Instance'
     flavor = 'openstack.Flavor'
 
     class Meta:
@@ -32,7 +32,7 @@ class InstanceFlavorChangeEventLogger(EventLogger):
 
 
 class InstanceVolumeChangeEventLogger(EventLogger):
-    resource = 'structure.Resource'
+    resource = 'openstack.Instance'
     volume_size = int
 
     class Meta:
@@ -42,6 +42,21 @@ class InstanceVolumeChangeEventLogger(EventLogger):
                        'resource_volume_extension_failed')
 
 
+# TODO: move this handler to itacloud assembly
+class TenantQuotaLogger(EventLogger):
+    quota = 'quotas.Quota'
+    service = 'structure.Service'
+    project = 'structure.Project'
+    project_group = 'structure.ProjectGroup'
+    tenant = 'openstack.Tenant'
+    threshold = float
+
+    class Meta:
+        nullable_fields = ['project_group']
+        event_types = ('quota_threshold_reached',)
+
+
 event_logger.register('openstack_backup', BackupEventLogger)
 event_logger.register('openstack_flavor', InstanceFlavorChangeEventLogger)
 event_logger.register('openstack_volume', InstanceVolumeChangeEventLogger)
+event_logger.register('openstack_tenant_quota', TenantQuotaLogger)
