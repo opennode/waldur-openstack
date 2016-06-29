@@ -412,6 +412,11 @@ class BackupSerializer(core_serializers.AugmentedSerializerMixin, serializers.Hy
             'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
         }
 
+    def validate_instance(self, instance):
+        if instance.state not in (models.Instance.States.OFFLINE, models.Instance.States.ONLINE):
+            raise serializers.ValidationError('Cannot create backup if instance is not in stable state.')
+        return instance
+
     @transaction.atomic
     def create(self, validated_data):
         instance = validated_data['instance']
@@ -1094,7 +1099,7 @@ def create_dr_backup_related_resources(dr_backup):
 
 class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, BasicDRBackupRestorationSerializer):
     name = serializers.CharField(
-        required=False, help_text='New instance name. Leave blank to use source instance name.')
+        required=False, write_only=True, help_text='New instance name. Leave blank to use source instance name.')
 
     class Meta(BasicDRBackupRestorationSerializer.Meta):
         fields = BasicDRBackupRestorationSerializer.Meta.fields + ('tenant', 'dr_backup', 'flavor', 'name')

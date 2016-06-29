@@ -35,30 +35,19 @@ class BackupUsageTest(test.APITransactionTestCase):
         self.assertIn('instance', response.content)
 
     def test_user_cannot_backup_unstable_instance(self):
-        backupable = factories.InstanceFactory(state=models.Instance.States.RESIZING)
+        instance = factories.InstanceFactory(state=models.Instance.States.RESIZING)
         backup_data = {
-            'instance': factories.InstanceFactory.get_url(backupable),
+            'instance': factories.InstanceFactory.get_url(instance),
         }
         url = factories.BackupFactory.get_list_url()
         response = self.client.post(url, data=backup_data)
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(response.data['detail'], 'Instance should be in stable state.')
-
-    def test_backup_restore(self):
-        backup = factories.BackupFactory()
-        url = factories.BackupFactory.get_url(backup, action='restore')
-        settings = backup.instance.service_project_link.service.settings
-        user_input = {
-            'flavor': factories.FlavorFactory.get_url(factories.FlavorFactory(settings=settings)),
-        }
-        response = self.client.post(url, data=user_input)
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_backup_delete(self):
-        backup = factories.BackupFactory()
-        url = factories.BackupFactory.get_url(backup, action='delete')
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        backup = factories.BackupFactory(state=models.Backup.States.OK)
+        url = factories.BackupFactory.get_url(backup)
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
 
 class BackupListPermissionsTest(helpers.ListPermissionsTest):
@@ -71,8 +60,6 @@ class BackupListPermissionsTest(helpers.ListPermissionsTest):
         instance = factories.InstanceFactory()
         backup1 = factories.BackupFactory(instance=instance)
         backup2 = factories.BackupFactory(instance=instance)
-        # deleted backup should not be visible even for user with permissions
-        factories.BackupFactory(instance=instance, state=models.Backup.States.DELETED)
 
         user_with_view_permission = structure_factories.UserFactory.create(is_staff=True, is_superuser=True)
         user_without_view_permission = structure_factories.UserFactory.create()
@@ -103,7 +90,7 @@ class BackupPermissionsTest(helpers.PermissionsTest):
         self.project_group.projects.add(self.project)
         self.service = factories.OpenStackServiceFactory(customer=self.customer)
         self.spl = factories.OpenStackServiceProjectLinkFactory(service=self.service, project=self.project)
-        self.instance = factories.InstanceFactory(service_project_link=self.spl)
+        self.instance = factories.InstanceFactory(service_project_link=self.spl, state=models.Instance.States.ONLINE)
         self.backup = factories.BackupFactory(instance=self.instance)
         # users
         self.staff = structure_factories.UserFactory(username='staff', is_staff=True)
@@ -125,18 +112,13 @@ class BackupPermissionsTest(helpers.PermissionsTest):
         if method == 'GET':
             return [self.regular_user]
         else:
-            return [self.project_group_manager]
+            return [self.regular_user, self.project_group_manager]
 
     def get_urls_configs(self):
         yield {'url': factories.BackupFactory.get_url(self.backup), 'method': 'GET'}
-        yield {'url': factories.BackupFactory.get_url(self.backup, action='restore'), 'method': 'POST',
-               'data': {
-                    'flavor': factories.FlavorFactory.get_url(factories.FlavorFactory(settings=self.service.settings)),
-                    'image': factories.ImageFactory.get_url(factories.ImageFactory(settings=self.service.settings)),
-               }}
         yield {'url': factories.BackupFactory.get_list_url(), 'method': 'POST',
                'data': {'instance': factories.InstanceFactory.get_url(self.instance)}}
-        yield {'url': factories.BackupFactory.get_url(self.backup, action='delete'), 'method': 'POST'}
+        yield {'url': factories.BackupFactory.get_url(self.backup), 'method': 'DELETE'}
 
 
 class BackupSourceFilterTest(test.APITransactionTestCase):

@@ -119,7 +119,7 @@ def schedule_backups():
 @shared_task(name='nodeconductor.openstack.delete_expired_backups')
 def delete_expired_backups():
     from .. import executors  # import here to avoid circular imports
-    for backup in models.Backup.objects.filter(kept_until__lt=timezone.now(), state=models.Backup.States.READY):
+    for backup in models.Backup.objects.filter(kept_until__lt=timezone.now(), state=models.Backup.States.OK):
         executors.BackupDeleteExecutor.execute(backup)
     for dr_backup in models.DRBackup.objects.filter(kept_until__lt=timezone.now(), state=models.DRBackup.States.OK):
         executors.DRBackupDeleteExecutor.execute(dr_backup)
