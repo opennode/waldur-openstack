@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 
-from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import six, dateparse, timezone
 from requests import ConnectionError
@@ -32,7 +32,6 @@ from novaclient import exceptions as nova_exceptions
 from nodeconductor.core.models import StateMixin
 from nodeconductor.core.tasks import send_task
 from nodeconductor.structure import ServiceBackend, ServiceBackendError, log_backend_action
-from nodeconductor.structure.log import event_logger
 
 from . import models
 
