@@ -609,9 +609,9 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                 })
 
         # Case 3. If floating_ip=None and skip_external_ip_assignment=True
-        # floating IP is not attempted, only internal IP is created.
+        # floating IP allocation is not attempted, only internal IP is created.
         else:
-            logger.info('Floating IP is not attempted.')
+            logger.debug('Floating IP allocation is not attempted.')
 
     def _validate_tenant(self, tenant):
         if not tenant.external_network_id:
