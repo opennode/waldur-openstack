@@ -1151,10 +1151,10 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
         help_text='New instance name. Leave blank to use source instance name.')
 
     class Meta(BasicDRBackupRestorationSerializer.Meta):
-        fields = BasicDRBackupRestorationSerializer.Meta.fields + ('tenant', 'dr_backup', 'flavor', 'name')
-        protected_fields = ('tenant', 'dr_backup', 'flavor', 'name')
+        fields = BasicDRBackupRestorationSerializer.Meta.fields + ('tenant', 'backup', 'flavor', 'name')
+        protected_fields = ('tenant', 'backup', 'flavor', 'name')
         extra_kwargs = dict(
-            dr_backup={'lookup_field': 'uuid', 'view_name': 'openstack-dr-backup-detail'},
+            backup={'lookup_field': 'uuid', 'view_name': 'openstack-dr-backup-detail'},
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             flavor={'lookup_field': 'uuid', 'view_name': 'openstack-flavor-detail'},
             **BasicDRBackupRestorationSerializer.Meta.extra_kwargs

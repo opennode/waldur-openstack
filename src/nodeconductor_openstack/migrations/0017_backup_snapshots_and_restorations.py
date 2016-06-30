@@ -82,4 +82,9 @@ class Migration(migrations.Migration):
             name='instance',
             field=models.OneToOneField(related_name='+', to='openstack.Instance'),
         ),
+        migrations.RenameField(
+            model_name='drbackuprestoration',
+            old_name='dr_backup',
+            new_name='backup',
+        ),
     ]

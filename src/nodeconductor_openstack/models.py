@@ -570,7 +570,7 @@ class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, 
          - volume_backup_restorations - restoration details of each instance volume.
          - instance - restored instance.
     """
-    dr_backup = models.ForeignKey(DRBackup, related_name='restorations')
+    backup = models.ForeignKey(DRBackup, related_name='restorations')
     instance = models.OneToOneField(Instance, related_name='+')
     tenant = models.ForeignKey(Tenant, related_name='+', help_text='Tenant for instance restoration')
     flavor = models.ForeignKey(Flavor, related_name='+')
