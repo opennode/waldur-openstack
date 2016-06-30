@@ -36,8 +36,7 @@ class ServiceSerializer(structure_serializers.BaseServiceSerializer):
         'tenant_name': 'Administrative tenant',
         'availability_zone': 'Default availability zone for provisioned Instances',
         'external_network_id': 'ID of OpenStack external network that will be connected to new service tenants',
-        'coordinates': 'Coordianates of the datacenter (e.g. {"latitude": 40.712784, "longitude": -74.005941})',
-        'autocreate_tenants': 'Automatically create tenant for new SPL',
+        'coordinates': 'Coordinates of the datacenter (e.g. {"latitude": 40.712784, "longitude": -74.005941})',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):

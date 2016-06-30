@@ -198,7 +198,6 @@ class OpenStackBackend(ServiceBackend):
 
     DEFAULTS = {
         'tenant_name': 'admin',
-        'autocreate_tenants': False
     }
 
     def __init__(self, settings, tenant_id=None):
