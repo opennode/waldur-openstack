@@ -11,6 +11,7 @@ from model_utils.models import TimeStampedModel
 from urlparse import urlparse
 
 from nodeconductor.core import models as core_models
+from nodeconductor.cost_tracking.models import PayableMixin
 from nodeconductor.logging.loggers import LoggableMixin
 from nodeconductor.quotas.fields import QuotaField
 from nodeconductor.quotas.models import QuotaModelMixin
@@ -193,7 +194,7 @@ class FloatingIP(core_models.UuidMixin):
 
 
 class Instance(structure_models.VirtualMachineMixin,
-               structure_models.PaidResource,
+               PayableMixin,
                core_models.RuntimeStateMixin,
                structure_models.Resource):
 
