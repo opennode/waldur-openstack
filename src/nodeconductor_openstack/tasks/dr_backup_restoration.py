@@ -67,3 +67,4 @@ class SetDRBackupRestorationErredTask(tasks.ErrorStateTransitionTask):
                 pass
             else:
                 resource.set_erred()
+                resource.save(update_fields=['state'])

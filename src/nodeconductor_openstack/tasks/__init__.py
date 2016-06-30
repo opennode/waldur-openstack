@@ -5,6 +5,7 @@ from __future__ import absolute_import
 # and adding all tasks to the registry.
 
 from .backup import *
+from .backup_restoration import *
 from .base import *
 from .celerybeat import *
 from .dr_backup import *

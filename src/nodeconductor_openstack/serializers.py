@@ -372,85 +372,147 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
         }
 
 
-class BackupSerializer(serializers.HyperlinkedModelSerializer):
+class BasicRestorationSerializer(serializers.HyperlinkedModelSerializer):
+    """ Basic model for DR backup and regular backup restorations. """
+    instance_name = serializers.ReadOnlyField(source='instance.name')
+    instance_uuid = serializers.ReadOnlyField(source='instance.uuid')
+    instance_state = serializers.ReadOnlyField(source='instance.human_readable_state')
+
+    class Meta(object):
+        model = NotImplemented
+        view_name = NotImplemented
+        fields = ('url', 'uuid', 'instance', 'instance_uuid', 'instance_name', 'instance_state')
+        read_only_fields = ('instance',)
+        extra_kwargs = dict(
+            url={'lookup_field': 'uuid'},
+            instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+        )
+
+
+class BasicBackupRestorationSerializer(BasicRestorationSerializer):
+    class Meta(BasicRestorationSerializer.Meta):
+        model = models.BackupRestoration
+        view_name = 'openstack-backup-restoration-detail'
+
+
+class BackupSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
     state = serializers.ReadOnlyField(source='get_state_display')
     metadata = JsonField(read_only=True)
     instance_name = serializers.ReadOnlyField(source='instance.name')
-    instance = serializers.HyperlinkedRelatedField(
-        lookup_field='uuid',
-        view_name='openstack-instance-detail',
-        queryset=models.Instance.objects.all(),
-    )
+    restorations = BasicBackupRestorationSerializer(many=True, read_only=True)
 
     class Meta(object):
         model = models.Backup
         view_name = 'openstack-backup-detail'
         fields = ('url', 'uuid', 'description', 'created_at', 'kept_until', 'instance', 'state', 'backup_schedule',
-                  'metadata', 'instance_name')
-        read_only_fields = ('created_at', 'kept_until', 'backup_schedule')
+                  'metadata', 'instance_name', 'tenant', 'restorations')
+        read_only_fields = ('created_at', 'kept_until', 'backup_schedule', 'tenant',)
+        protected_fields = ('instance',)
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
         }
 
+    def validate_instance(self, instance):
+        if instance.state not in (models.Instance.States.OFFLINE, models.Instance.States.ONLINE):
+            raise serializers.ValidationError('Cannot create backup if instance is not in stable state.')
+        return instance
 
-class BackupRestorationSerializer(serializers.ModelSerializer):
-    service_project_link = serializers.PrimaryKeyRelatedField(
-        queryset=models.OpenStackServiceProjectLink.objects.all())
+    @transaction.atomic
+    def create(self, validated_data):
+        instance = validated_data['instance']
+        tenant = instance.tenant
+        validated_data['tenant'] = tenant
+        validated_data['metadata'] = instance.as_dict()
+        backup = super(BackupSerializer, self).create(validated_data)
+        create_backup_snapshots(backup)
+        return backup
 
-    tenant = serializers.PrimaryKeyRelatedField(
-        queryset=models.Tenant.objects.all())
 
-    flavor = serializers.HyperlinkedRelatedField(
-        view_name='openstack-flavor-detail',
-        lookup_field='uuid',
-        queryset=models.Flavor.objects.all().select_related('settings'),
-        write_only=True)
-
-    system_volume_id = serializers.CharField(required=False)
-    system_volume_size = serializers.IntegerField(required=False, min_value=0)
-    data_volume_id = serializers.CharField(required=False)
-    data_volume_size = serializers.IntegerField(required=False, min_value=0)
-
-    class Meta(object):
-        model = models.Instance
-        fields = (
-            'name', 'description',
-            'service_project_link', 'tenant',
-            'flavor', 'min_ram', 'min_disk',
-            'key_name', 'key_fingerprint',
-            'system_volume_id', 'system_volume_size',
-            'data_volume_id', 'data_volume_size',
-            'flavor_name', 'image_name',
-            'user_data',
+def create_backup_snapshots(backup):
+    for volume in backup.instance.volumes.all():
+        snapshot = models.Snapshot.objects.create(
+            name='Snapshot for volume %s' % volume.name,
+            service_project_link=backup.tenant.service_project_link,
+            tenant=backup.tenant,
+            size=volume.size,
+            source_volume=volume,
+            description='Part of backup %s' % backup.uuid.hex,
+            metadata={
+                'source_volume_name': volume.name,
+                'source_volume_description': volume.description,
+                'source_volume_image_metadata': volume.image_metadata,
+            },
         )
-        extra_kwargs = {
-            'url': {'lookup_field': 'uuid'},
-        }
+        snapshot.increase_backend_quotas_usage()
+        backup.snapshots.add(snapshot)
+
+
+class BackupRestorationSerializer(BasicBackupRestorationSerializer):
+    name = serializers.CharField(
+        required=False, help_text='New instance name. Leave blank to use source instance name.')
+
+    class Meta(BasicBackupRestorationSerializer.Meta):
+        fields = BasicBackupRestorationSerializer.Meta.fields + ('backup', 'flavor', 'name')
+        protected_fields = ('tenant', 'dr_backup', 'flavor', 'name')
+        extra_kwargs = dict(
+            backup={'lookup_field': 'uuid', 'view_name': 'openstack-backup-detail'},
+            tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            flavor={'lookup_field': 'uuid', 'view_name': 'openstack-flavor-detail'},
+            **BasicBackupRestorationSerializer.Meta.extra_kwargs
+        )
 
     def validate(self, attrs):
         flavor = attrs['flavor']
-        spl = attrs['service_project_link']
-        tenant = attrs['tenant']
-
-        if flavor.settings != spl.service.settings:
+        backup = attrs['backup']
+        if flavor.settings != backup.instance.service_project_link.service.settings:
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
-
-        system_volume_size = attrs['system_volume_size']
-        data_volume_size = attrs.get('data_volume_size', 20 * 1024)
-        quota_usage = {
-            'storage': system_volume_size + data_volume_size,
-            'vcpu': flavor.cores,
-            'ram': flavor.ram,
-        }
-
-        quota_errors = tenant.validate_quota_change(quota_usage)
-        if quota_errors:
-            raise serializers.ValidationError(
-                'One or more quotas are over limit: \n' + '\n'.join(quota_errors))
-
         return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        flavor = validated_data['flavor']
+        backup = validated_data['backup']
+        source_instance = backup.instance
+        # instance that will be restored
+        metadata = backup.metadata or {}
+        instance = models.Instance.objects.create(
+            name=validated_data.pop('name', None) or metadata.get('name', source_instance.name),
+            description=metadata.get('description', ''),
+            service_project_link=source_instance.service_project_link,
+            tenant=source_instance.tenant,
+            flavor_disk=flavor.disk,
+            flavor_name=flavor.name,
+            cores=flavor.cores,
+            ram=flavor.ram,
+            min_ram=metadata.get('min_ram', 0),
+            min_disk=metadata.get('min_disk', 0),
+            image_name=metadata.get('image_name', ''),
+            user_data=metadata.get('user_data', ''),
+            disk=sum([snapshot.size for snapshot in backup.snapshots.all()]),
+        )
+        instance.tags.add(*backup.metadata['tags'])
+        instance.increase_backend_quotas_usage()
+        validated_data['instance'] = instance
+        backup_restoration = super(BackupRestorationSerializer, self).create(validated_data)
+        # restoration for each instance volume from snapshot.
+        for snapshot in backup.snapshots.all():
+            volume = models.Volume(
+                source_snapshot=snapshot,
+                tenant=snapshot.tenant,
+                service_project_link=snapshot.service_project_link,
+                name='{0}-volume'.format(instance.name[:143]),
+                description='Restored from backup %s' % backup.uuid.hex,
+                size=snapshot.size,
+            )
+            if 'source_volume_image_metadata' in snapshot.metadata:
+                volume.image_metadata = snapshot.metadata['source_volume_image_metadata']
+            volume.save()
+            volume.increase_backend_quotas_usage()
+            instance.volumes.add(volume)
+        return backup_restoration
 
 
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
@@ -980,20 +1042,10 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         return super(SnapshotSerializer, self).create(validated_data)
 
 
-class BasicDRBackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
-    instance_name = serializers.ReadOnlyField(source='instance.name')
-    instance_uuid = serializers.ReadOnlyField(source='instance.uuid')
-    instance_state = serializers.ReadOnlyField(source='instance.human_readable_state')
-
-    class Meta(object):
+class BasicDRBackupRestorationSerializer(BasicRestorationSerializer):
+    class Meta(BasicRestorationSerializer.Meta):
         model = models.DRBackupRestoration
         view_name = 'openstack-dr-backup-restoration-detail'
-        fields = ('url', 'uuid', 'instance', 'instance_uuid', 'instance_name', 'instance_state')
-        read_only_fields = ('instance',)
-        extra_kwargs = dict(
-            url={'lookup_field': 'uuid'},
-            instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
-        )
 
 
 class DRBackupSerializer(structure_serializers.BaseResourceSerializer):
@@ -1103,13 +1155,14 @@ def create_dr_backup_related_resources(dr_backup):
 
 class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, BasicDRBackupRestorationSerializer):
     name = serializers.CharField(
-        required=False, allow_null=True, help_text='New instance name. Leave blank to use source instance name.')
+        required=False, allow_null=True, write_only=True,
+        help_text='New instance name. Leave blank to use source instance name.')
 
     class Meta(BasicDRBackupRestorationSerializer.Meta):
-        fields = BasicDRBackupRestorationSerializer.Meta.fields + ('tenant', 'dr_backup', 'flavor', 'name')
-        protected_fields = ('tenant', 'dr_backup', 'flavor', 'name')
+        fields = BasicDRBackupRestorationSerializer.Meta.fields + ('tenant', 'backup', 'flavor', 'name')
+        protected_fields = ('tenant', 'backup', 'flavor', 'name')
         extra_kwargs = dict(
-            dr_backup={'lookup_field': 'uuid', 'view_name': 'openstack-dr-backup-detail'},
+            backup={'lookup_field': 'uuid', 'view_name': 'openstack-dr-backup-detail'},
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             flavor={'lookup_field': 'uuid', 'view_name': 'openstack-flavor-detail'},
             **BasicDRBackupRestorationSerializer.Meta.extra_kwargs
