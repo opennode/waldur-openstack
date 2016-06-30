@@ -46,32 +46,26 @@ class BackupScheduleTest(TestCase):
         self.assertFalse(backup.kept_until is None)
         self.assertGreater(backup.kept_until, now - timedelta(days=schedule.retention_time))
 
-    def test_execute(self):
+    @patch('nodeconductor_openstack.executors.BackupCreateExecutor.execute')
+    @patch('nodeconductor_openstack.executors.BackupDeleteExecutor.execute')
+    def test_execute(self, mocked_delete, mocked_create):
         # we have schedule
         schedule = factories.BackupScheduleFactory(maximal_number_of_backups=1, instance=self.instance)
         # with 2 ready backups
-        old_backup1 = factories.BackupFactory(backup_schedule=schedule)
-        old_backup2 = factories.BackupFactory(backup_schedule=schedule)
-        # and 1 deleted
-        deleted_backup = factories.BackupFactory(backup_schedule=schedule, state=models.Backup.States.DELETED)
+        old_backup1 = factories.BackupFactory(backup_schedule=schedule, state=models.Backup.States.OK)
+        old_backup2 = factories.BackupFactory(backup_schedule=schedule, state=models.Backup.States.OK)
 
-        with patch('celery.app.base.Celery.send_task') as mocked_task:
-            backend = schedule.get_backend()
-            backend.execute()
+        backend = schedule.get_backend()
+        backend.execute()
+        # after execution old backups have to be deleted
+        mocked_delete.assert_has_calls([
+            call(old_backup1),
+            call(old_backup2),
+        ], any_order=True)
+        # new backups has to be created
+        new_backup = schedule.backups.get(backup_schedule=schedule, state=models.Backup.States.CREATION_SCHEDULED)
+        mocked_create.assert_has_calls([call(new_backup)])
 
-            new_backup = models.Backup.objects.filter(
-                backup_schedule=schedule, state=models.Backup.States.BACKING_UP).order_by('created_at').last()
-
-            # after execution old backups have to be deleted
-            # new backup have to be created
-            mocked_task.assert_has_calls([
-                call('nodeconductor.openstack.backup_start_create', (new_backup.uuid.hex,), {}, countdown=2),
-                call('nodeconductor.openstack.backup_start_delete', (old_backup1.uuid.hex,), {}, countdown=2),
-                call('nodeconductor.openstack.backup_start_delete', (old_backup2.uuid.hex,), {}, countdown=2),
-            ], any_order=True)
-
-        # deleted backup have to stay deleted
-        self.assertEqual(deleted_backup.state, models.Backup.States.DELETED)
         # and schedule time have to be changed
         self.assertGreater(schedule.next_trigger_at, timezone.now())
 

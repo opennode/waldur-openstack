@@ -247,7 +247,7 @@ class BackupScheduleFactory(factory.DjangoModelFactory):
         return 'http://testserver' + reverse('openstack-schedule-list')
 
 
-class BackupFactory(factory.DjangoModelFactory):
+class BackupFactory(TenantMixin, factory.DjangoModelFactory):
     class Meta(object):
         model = models.Backup
 
@@ -283,6 +283,20 @@ class BackupFactory(factory.DjangoModelFactory):
         )
         if extracted:
             self.metadata.update(extracted)
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        """Create an instance of the model, and save it to the database."""
+        manager = cls._get_manager(model_class)
+
+        if cls._meta.django_get_or_create:
+            return cls._get_or_create(model_class, *args, **kwargs)
+
+        tenant, _ = models.Tenant.objects.get_or_create(
+            service_project_link=kwargs['instance'].service_project_link)
+        kwargs['tenant'] = tenant
+
+        return manager.create(*args, **kwargs)
 
     @classmethod
     def get_url(self, backup, action=None):

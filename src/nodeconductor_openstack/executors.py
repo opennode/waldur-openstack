@@ -7,7 +7,8 @@ from .log import event_logger
 from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBackupTask,
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask,
-                    LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed)
+                    LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed,
+                    SetBackupErredTask, ForceDeleteBackupTask, SetBackupRestorationErredTask)
 
 
 class SecurityGroupCreateExecutor(executors.CreateExecutor):
@@ -288,7 +289,6 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
             return tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
 
 
-# TODO: Add runtime state messages.
 class DRBackupCreateExecutor(executors.BaseChordExecutor):
     """ Create backup for each instance volume separately using temporary volumes and snapshots """
 
@@ -663,3 +663,107 @@ class VolumeExtendExecutor(executors.ActionExecutor):
     def get_failure_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
         return LogVolumeExtendFailed().s(serialized_volume, new_size=new_size)
+
+
+class BackupCreateExecutor(executors.CreateExecutor, executors.BaseChordExecutor):
+
+    @classmethod
+    def get_task_signature(cls, backup, serialized_backup, **kwargs):
+        creations_tasks = [tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_creating')]
+        for snapshot in backup.snapshots.all():
+            serialized_snapshot = utils.serialize_instance(snapshot)
+            creations_tasks.append(chain(
+                tasks.BackendMethodTask().si(
+                    serialized_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'),
+                PollRuntimeStateTask().si(
+                    serialized_snapshot,
+                    backend_pull_method='pull_snapshot_runtime_state',
+                    success_state='available',
+                    erred_state='error',
+                ).set(countdown=10),
+                tasks.StateTransitionTask().si(serialized_snapshot, state_transition='set_ok'),
+            ))
+        return group(creations_tasks)
+
+    @classmethod
+    def get_failure_signature(cls, backup, serialized_backup, **kwargs):
+        return SetBackupErredTask().s(serialized_backup)
+
+
+class BackupDeleteExecutor(executors.DeleteExecutor, executors.BaseChordExecutor):
+
+    @classmethod
+    def pre_apply(cls, backup, **kwargs):
+        for snapshot in backup.snapshots.all():
+            snapshot.schedule_deleting()
+            snapshot.save(update_fields=['state'])
+        executors.DeleteExecutor.pre_apply(backup)
+
+    @classmethod
+    def get_task_signature(cls, backup, serialized_backup, force=False, **kwargs):
+        deletion_tasks = [tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_deleting')]
+        # remove volume backups
+        for snapshot in backup.snapshots.all():
+            serialized = utils.serialize_instance(snapshot)
+            deletion_tasks.append(chain(
+                tasks.BackendMethodTask().si(serialized, 'delete_snapshot', state_transition='begin_deleting'),
+                PollBackendCheckTask().si(serialized, 'is_snapshot_deleted'),
+                tasks.DeletionTask().si(serialized),
+            ))
+
+        return group(deletion_tasks)
+
+    @classmethod
+    def get_failure_signature(cls, backup, serialized_backup, force=False, **kwargs):
+        if not force:
+            return SetBackupErredTask().s(serialized_backup)
+        else:
+            return ForceDeleteBackupTask().s(serialized_backup)
+
+
+class BackupRestorationCreateExecutor(executors.CreateExecutor, executors.BaseChordExecutor):
+    """ Restore volumes from backup snapshots, create instance based on restored volumes """
+
+    @classmethod
+    def get_task_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
+        """ Restore each volume from snapshot """
+        instance = backup_restoration.instance
+        serialized_instance = utils.serialize_instance(instance)
+        volumes_tasks = [tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')]
+        for volume in instance.volumes.all():
+            serialized_volume = utils.serialize_instance(volume)
+            volumes_tasks.append(chain(
+                # start volume creation
+                tasks.BackendMethodTask().si(serialized_volume, 'create_volume', state_transition='begin_creating'),
+                # wait until volume become available
+                PollRuntimeStateTask().si(
+                    serialized_volume,
+                    backend_pull_method='pull_volume_runtime_state',
+                    success_state='available',
+                    erred_state='error',
+                ).set(countdown=30),
+                # pull volume to sure that it is bootable
+                tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
+                # mark volume as OK
+                tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'),
+            ))
+        return group(volumes_tasks)
+
+    @classmethod
+    def get_callback_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
+        flavor = backup_restoration.flavor
+        kwargs = {
+            'backend_flavor_id': flavor.backend_id,
+            'skip_external_ip_assignment': False,
+        }
+        serialized_instance = utils.serialize_instance(backup_restoration.instance)
+        return tasks.BackendMethodTask().si(serialized_instance, 'create_instance', **kwargs)
+
+    @classmethod
+    def get_success_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
+        serialized_instance = utils.serialize_instance(backup_restoration.instance)
+        return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
+
+    @classmethod
+    def get_failure_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
+        return SetBackupRestorationErredTask().s(serialized_backup_restoration)

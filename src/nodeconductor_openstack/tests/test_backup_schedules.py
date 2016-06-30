@@ -208,7 +208,7 @@ class BackupSchedulePermissionsTest(helpers.PermissionsTest):
         if method == 'GET':
             return [self.regular_user]
         else:
-            return [self.project_group_manager]
+            return [self.regular_user, self.project_group_manager]
 
     def get_urls_configs(self):
         yield {'url': backup_schedule_url(self.schedule), 'method': 'GET'}
@@ -222,7 +222,7 @@ class BackupSchedulePermissionsTest(helpers.PermissionsTest):
             'schedule': '*/5 * * * *',
             'maximal_number_of_backups': 3,
         }
-        yield {'url': factories.BackupFactory.get_list_url(), 'method': 'POST', 'data': backup_schedule_data}
+        yield {'url': factories.BackupScheduleFactory.get_list_url(), 'method': 'POST', 'data': backup_schedule_data}
 
     # XXX: Current permissions tests helper does not work well with deletion, so we need to test deletion explicitly
     def test_staff_can_delete_schedule(self):
