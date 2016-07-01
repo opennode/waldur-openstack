@@ -127,7 +127,8 @@ def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
     """ Delete user ssh keys from tenants that he does not have access now. """
     tenants = Tenant.objects.filter(**{sender.__name__.lower(): structure})
     ssh_keys = core_models.SshPublicKey.objects.filter(user=user)
-    for key in ssh_keys:
-        for tenant in tenants:
+    for tenant in tenants:
+        serialized_tenant = core_utils.serialize_instance(tenant)
+        for key in ssh_keys:
             core_tasks.BackendMethodTask().delay(
-                core_utils.serialize_instance(tenant), 'remove_ssh_key_from_tenant', key.name, key.fingerprint)
+                serialized_tenant, 'remove_ssh_key_from_tenant', key.name, key.fingerprint)
