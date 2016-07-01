@@ -126,6 +126,8 @@ def check_quota_threshold_breach(sender, instance, **kwargs):
 def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
     """ Delete user ssh keys from tenants that he does not have access now. """
     tenants = Tenant.objects.filter(**{sender.__name__.lower(): structure})
+    tenants = tenants.exclude(service_project_link__project__customer__roles__permission_group__user=user)
+    tenants = tenants.exclude(service_project_link__project__roles__permission_group__user=user)
     ssh_keys = core_models.SshPublicKey.objects.filter(user=user)
     for tenant in tenants:
         serialized_tenant = core_utils.serialize_instance(tenant)
