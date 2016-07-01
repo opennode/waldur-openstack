@@ -581,8 +581,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     def get_fields(self):
         fields = super(InstanceSerializer, self).get_fields()
-        if 'system_volume_size' in fields:
-            fields['system_volume_size'].required = True
+        field = fields.get('floating_ip')
+        if field:
+            field.query_params = {'status': 'DOWN'}
+            field.value_field = 'url'
+            field.display_name_field = 'address'
         return fields
 
     @staticmethod
