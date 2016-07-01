@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 
-from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import six, dateparse, timezone
 from requests import ConnectionError
