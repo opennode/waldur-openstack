@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 @shared_task(name='nodeconductor.openstack.pull_tenants')
 def pull_tenants():
-    for tenant in models.Tenant.objects.filter(state=models.Tenant.States.ERRED):
+    # Cannot pull tenants without backend_id
+    for tenant in models.Tenant.objects.filter(state=models.Tenant.States.ERRED).exclude(backend_id=''):
         serialized_tenant = core_utils.serialize_instance(tenant)
         core_tasks.BackendMethodTask().apply_async(
             args=(serialized_tenant, 'pull_tenant'),
