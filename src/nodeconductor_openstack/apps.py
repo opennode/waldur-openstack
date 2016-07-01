@@ -15,6 +15,7 @@ class OpenStackConfig(AppConfig):
     service_name = 'OpenStack'
 
     def ready(self):
+        from nodeconductor.core import models as core_models
         from nodeconductor.cost_tracking import CostTrackingRegister
         from nodeconductor.structure import SupportedServices, signals as structure_signals, models as structure_models
         from nodeconductor.quotas.models import Quota
@@ -79,18 +80,24 @@ class OpenStackConfig(AppConfig):
             fsm_signals.post_transition.connect(
                 handlers.create_host_for_instance,
                 sender=Instance,
-                dispatch_uid='nodeconductor.template.handlers.create_host_for_instance',
+                dispatch_uid='nodeconductor_openstack.handlers.create_host_for_instance',
             )
 
             signals.post_save.connect(
                 handlers.check_quota_threshold_breach,
                 sender=Quota,
-                dispatch_uid='nodeconductor.quotas.handlers.check_quota_threshold_breach',
+                dispatch_uid='nodeconductor_openstack.handlers.check_quota_threshold_breach',
             )
 
         for model in (structure_models.Project, structure_models.Customer):
             structure_signals.structure_role_revoked.connect(
                 handlers.remove_ssh_key_from_tenants,
                 sender=model,
-                dispatch_uid='nodeconductor.quotas.handlers.remove_ssh_key_from_tenants__%s' % model.__name__,
+                dispatch_uid='nodeconductor_openstack.handlers.remove_ssh_key_from_tenants__%s' % model.__name__,
             )
+
+        signals.pre_delete.connect(
+            handlers.remove_ssh_key_from_all_tenants_on_it_deletion,
+            sender=core_models.SshPublicKey,
+            dispatch_uid='nodeconductor_openstack.handlers.remove_ssh_key_from_all_tenants_on_it_deletion',
+        )

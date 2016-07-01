@@ -3,6 +3,7 @@ import logging
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 
 from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
 
@@ -123,6 +124,9 @@ def check_quota_threshold_breach(sender, instance, **kwargs):
                 })
 
 
+# XXX: it is wrong to check permissions in next 2 handlers we need to have
+#      separate method to get all object that are writable for user to make
+#      code DRY. This should be fixed during permissions refactoring.
 def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
     """ Delete user ssh keys from tenants that he does not have access now. """
     tenants = Tenant.objects.filter(**{sender.__name__.lower(): structure})
@@ -134,3 +138,17 @@ def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
         for key in ssh_keys:
             core_tasks.BackendMethodTask().delay(
                 serialized_tenant, 'remove_ssh_key_from_tenant', key.name, key.fingerprint)
+
+
+def remove_ssh_key_from_all_tenants_on_it_deletion(sender, instance, **kwargs):
+    """ Delete key from all tenants that are accessible for user on key deletion. """
+    ssh_key = instance
+    user = ssh_key.user
+    tenants = Tenant.objects.filter(
+        Q(service_project_link__project__customer__roles__permission_group__user=user) |
+        Q(service_project_link__project__roles__permission_group__user=user)
+    )
+    for tenant in tenants:
+        serialized_tenant = core_utils.serialize_instance(tenant)
+        core_tasks.BackendMethodTask().delay(
+            serialized_tenant, 'remove_ssh_key_from_tenant', ssh_key.name, ssh_key.fingerprint)
