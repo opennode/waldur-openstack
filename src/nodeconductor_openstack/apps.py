@@ -16,7 +16,7 @@ class OpenStackConfig(AppConfig):
 
     def ready(self):
         from nodeconductor.cost_tracking import CostTrackingRegister
-        from nodeconductor.structure import SupportedServices
+        from nodeconductor.structure import SupportedServices, signals as structure_signals, models as structure_models
         from nodeconductor.quotas.models import Quota
         from . import handlers
 
@@ -86,4 +86,11 @@ class OpenStackConfig(AppConfig):
                 handlers.check_quota_threshold_breach,
                 sender=Quota,
                 dispatch_uid='nodeconductor.quotas.handlers.check_quota_threshold_breach',
+            )
+
+        for model in (structure_models.Project, structure_models.Customer):
+            structure_signals.structure_role_revoked.connect(
+                handlers.remove_ssh_key_from_tenants,
+                sender=model,
+                dispatch_uid='nodeconductor.quotas.handlers.remove_ssh_key_from_tenants__%s' % model.__name__,
             )

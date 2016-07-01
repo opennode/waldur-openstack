@@ -4,6 +4,8 @@ import logging
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
+from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
+
 from .log import event_logger
 from .models import SecurityGroup, SecurityGroupRule, Instance, Tenant
 from .tasks import register_instance_in_zabbix
@@ -119,3 +121,13 @@ def check_quota_threshold_breach(sender, instance, **kwargs):
                     'project_group': tenant.service_project_link.project.project_groups.first(),
                     'threshold': alert_threshold * quota.limit,
                 })
+
+
+def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
+    """ Delete user ssh keys from tenants that he does not have access now. """
+    tenants = Tenant.objects.filter(**{sender.__name__.lower(): structure})
+    ssh_keys = core_models.SshPublicKey.objects.filter(user=user)
+    for key in ssh_keys:
+        for tenant in tenants:
+            core_tasks.BackendMethodTask().delay(
+                core_utils.serialize_instance(tenant), 'remove_ssh_key_from_tenant', key.name, key.fingerprint)
