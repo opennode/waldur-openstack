@@ -581,8 +581,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     def get_fields(self):
         fields = super(InstanceSerializer, self).get_fields()
-        if 'system_volume_size' in fields:
-            fields['system_volume_size'].required = True
+        field = fields.get('floating_ip')
+        if field:
+            field.query_params = {'status': 'DOWN'}
+            field.value_field = 'url'
+            field.display_name_field = 'address'
         return fields
 
     @staticmethod
@@ -1168,13 +1171,13 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
             **BasicDRBackupRestorationSerializer.Meta.extra_kwargs
         )
 
-    def validate_dr_backup(self, dr_backup):
+    def validate_backup(self, dr_backup):
         if dr_backup.state != models.DRBackup.States.OK:
             raise serializers.ValidationError('Cannot start restoration of DRBackup if it is not in state OK.')
         return dr_backup
 
     def validate(self, attrs):
-        dr_backup = attrs['dr_backup']
+        dr_backup = attrs['backup']
         tenant = attrs['tenant']
         flavor = attrs['flavor']
         if flavor.settings != tenant.service_project_link.service.settings:
@@ -1194,7 +1197,7 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
     def create(self, validated_data):
         tenant = validated_data['tenant']
         flavor = validated_data['flavor']
-        dr_backup = validated_data['dr_backup']
+        dr_backup = validated_data['backup']
         # instance that will be restored
         instance = models.Instance.objects.create(
             name=validated_data.pop('name', None) or dr_backup.metadata['name'],

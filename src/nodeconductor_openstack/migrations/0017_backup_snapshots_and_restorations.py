@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+from uuid import uuid4
+
 import django.utils.timezone
 from django.db import migrations, models
 import model_utils.fields
@@ -13,19 +15,21 @@ def init_backup_snapshots(apps, schema_editor):
     for backup in Backup.objects.all():
         if backup.metadata.get('system_snapshot_id'):
             Snapshot.objects.create(
+                uuid=uuid4().hex,
                 size=backup.metadata.get('system_snapshot_size', 0),
                 backend_id=backup.metadata.get('system_snapshot_id'),
                 tenant=backup.tenant,
-                service_project_link=backup.service_project_link,
+                service_project_link=backup.instance.service_project_link,
                 name='Backup %s snapshot' % backup.uuid.hex,
                 state=3,  # OK state
             )
         if backup.metadata.get('data_snapshot_id'):
             Snapshot.objects.create(
+                uuid=uuid4().hex,
                 size=backup.metadata.get('data_snapshot_size', 0),
                 backend_id=backup.metadata.get('data_snapshot_id'),
                 tenant=backup.tenant,
-                service_project_link=backup.service_project_link,
+                service_project_link=backup.instance.service_project_link,
                 name='Backup %s snapshot' % backup.uuid.hex,
                 state=3,  # OK state
             )
