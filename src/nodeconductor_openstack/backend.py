@@ -283,7 +283,7 @@ class OpenStackBackend(ServiceBackend):
         instance.save()
         send_task('openstack', 'restart')(instance.uuid.hex)
 
-    @log_backend_action
+    @log_backend_action()
     def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
         nova = self.nova_client
 
@@ -1584,7 +1584,7 @@ class OpenStackBackend(ServiceBackend):
                 service_project_link=tenant.service_project_link
             )
 
-    @log_backend_action
+    @log_backend_action()
     def assign_floating_ip_to_instance(self, instance, floating_ip):
         logger.debug('About to assign floating IP %s to the instance with id %s',
                      floating_ip.address, instance.uuid)
@@ -1615,7 +1615,7 @@ class OpenStackBackend(ServiceBackend):
             logger.info('Floating IP %s was successfully assigned to the instance with id %s.',
                         floating_ip.address, instance.uuid)
 
-    @log_backend_action
+    @log_backend_action()
     def connect_tenant_to_external_network(self, tenant, external_network_id):
         neutron = self.neutron_admin_client
         logger.debug('About to create external network for tenant "%s" (PK: %s)', tenant.name, tenant.pk)
