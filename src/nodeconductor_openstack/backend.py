@@ -11,9 +11,9 @@ from django.db import transaction
 from django.utils import six, dateparse, timezone
 from requests import ConnectionError
 
-from keystoneclient.auth.identity import v2
+from keystoneauth1.identity import v2
+from keystoneauth1 import session as keystone_session
 from keystoneclient.service_catalog import ServiceCatalog
-from keystoneclient import session as keystone_session
 
 from ceilometerclient import client as ceilometer_client
 from cinderclient.v1 import client as cinder_client
