@@ -257,7 +257,6 @@ class OpenStackBackend(ServiceBackend):
         else:
             return True
 
-    @log_backend_action('synchronize OpenStack service')
     def sync(self):
         self._pull_flavors()
         self._pull_images()
@@ -283,7 +282,6 @@ class OpenStackBackend(ServiceBackend):
         instance.save()
         send_task('openstack', 'restart')(instance.uuid.hex)
 
-    @log_backend_action()
     def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
         nova = self.nova_client
 
@@ -299,7 +297,6 @@ class OpenStackBackend(ServiceBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    @log_backend_action()
     def remove_ssh_key_from_tenant(self, tenant, key_name, fingerprint):
         nova = self.nova_client
 
@@ -952,7 +949,6 @@ class OpenStackBackend(ServiceBackend):
 
         return instance
 
-    @log_backend_action()
     def get_resources_for_import(self):
         cur_instances = models.Instance.objects.all().values_list('backend_id', flat=True)
         try:
