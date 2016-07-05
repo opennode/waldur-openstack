@@ -175,6 +175,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
+        'change_flavor': serializers.InstanceFlavorChangeSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -382,7 +383,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
     def change_flavor(self, request, instance, uuid=None):
-        serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
+        serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
