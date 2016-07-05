@@ -11,9 +11,9 @@ from django.db import transaction
 from django.utils import six, dateparse, timezone
 from requests import ConnectionError
 
-from keystoneclient.auth.identity import v2
+from keystoneauth1.identity import v2
+from keystoneauth1 import session as keystone_session
 from keystoneclient.service_catalog import ServiceCatalog
-from keystoneclient import session as keystone_session
 
 from ceilometerclient import client as ceilometer_client
 from cinderclient.v1 import client as cinder_client
@@ -257,7 +257,6 @@ class OpenStackBackend(ServiceBackend):
         else:
             return True
 
-    @log_backend_action('synchronize OpenStack service')
     def sync(self):
         self._pull_flavors()
         self._pull_images()
@@ -283,7 +282,6 @@ class OpenStackBackend(ServiceBackend):
         instance.save()
         send_task('openstack', 'restart')(instance.uuid.hex)
 
-    @log_backend_action
     def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
         nova = self.nova_client
 
@@ -299,7 +297,6 @@ class OpenStackBackend(ServiceBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    @log_backend_action()
     def remove_ssh_key_from_tenant(self, tenant, key_name, fingerprint):
         nova = self.nova_client
 
@@ -952,7 +949,6 @@ class OpenStackBackend(ServiceBackend):
 
         return instance
 
-    @log_backend_action()
     def get_resources_for_import(self):
         cur_instances = models.Instance.objects.all().values_list('backend_id', flat=True)
         try:
@@ -1584,7 +1580,7 @@ class OpenStackBackend(ServiceBackend):
                 service_project_link=tenant.service_project_link
             )
 
-    @log_backend_action
+    @log_backend_action()
     def assign_floating_ip_to_instance(self, instance, floating_ip):
         logger.debug('About to assign floating IP %s to the instance with id %s',
                      floating_ip.address, instance.uuid)
@@ -1615,7 +1611,7 @@ class OpenStackBackend(ServiceBackend):
             logger.info('Floating IP %s was successfully assigned to the instance with id %s.',
                         floating_ip.address, instance.uuid)
 
-    @log_backend_action
+    @log_backend_action()
     def connect_tenant_to_external_network(self, tenant, external_network_id):
         neutron = self.neutron_admin_client
         logger.debug('About to create external network for tenant "%s" (PK: %s)', tenant.name, tenant.pk)
