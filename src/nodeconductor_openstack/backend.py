@@ -1261,7 +1261,7 @@ class OpenStackBackend(ServiceBackend):
     def attach_instance_volume(self, instance, backend_volume_id):
         nova = self.nova_client
         try:
-            nova.volumes.delete_server_volume(instance.backend_id, backend_volume_id)
+            nova.volumes.create_server_volume(instance.backend_id, backend_volume_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -1269,7 +1269,7 @@ class OpenStackBackend(ServiceBackend):
     def detach_instance_volume(self, instance, backend_volume_id):
         nova = self.nova_client
         try:
-            nova.volumes.create_server_volume(instance.backend_id, backend_volume_id)
+            nova.volumes.delete_server_volume(instance.backend_id, backend_volume_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
