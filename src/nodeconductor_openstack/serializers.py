@@ -515,6 +515,17 @@ class BackupRestorationSerializer(BasicBackupRestorationSerializer):
         return backup_restoration
 
 
+class NestedVolumeSerializer(serializers.HyperlinkedModelSerializer,
+                             structure_serializers.BasicResourceSerializer):
+    state = serializers.ReadOnlyField(source='get_state_display')
+
+    class Meta:
+        model = models.Volume
+        fields = 'url', 'uuid', 'name', 'state', 'bootable', 'size', 'resource_type'
+        view_name = 'openstack-volume-detail'
+        lookup_field = 'uuid'
+
+
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     service = serializers.HyperlinkedRelatedField(
@@ -565,6 +576,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset=models.FloatingIP.objects.all(),
         write_only=True
     )
+    volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
@@ -572,10 +584,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'backups', 'backup_schedules', 'flavor_disk',
-            'tenant', 'tenant_name', 'floating_ip'
+            'tenant', 'tenant_name', 'floating_ip', 'volumes',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment', 'tenant'
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
+            'tenant', 'floating_ip'
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + ('flavor_disk',)
 
