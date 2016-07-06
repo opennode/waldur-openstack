@@ -257,6 +257,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             flavor=serializer.validated_data['flavor'],
             skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'],
             floating_ip=serializer.validated_data.get('floating_ip'),
+            is_heavy_task=True,
         )
 
     def perform_managed_resource_destroy(self, instance, force=False):
@@ -379,6 +380,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
 
     resize.title = 'Resize virtual machine'
+    resize.deprecated = True
 
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
