@@ -546,7 +546,8 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
         )
 
     @classmethod
-    def get_task_signature(cls, instance, serialized_instance, flavor, **kwargs):
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+        flavor = kwargs.pop('flavor')
         return chain(
             tasks.BackendMethodTask().si(
                 serialized_instance,
@@ -561,7 +562,7 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
                 erred_state='ERRED'
             ),
             tasks.BackendMethodTask().si(
-                instance=serialized_instance,
+                serialized_instance,
                 backend_method='confirm_instance_resize'
             ),
             PollRuntimeStateTask().si(
@@ -573,12 +574,14 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
         )
 
     @classmethod
-    def get_success_signature(cls, instance, serialized_instance, flavor, **kwargs):
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        flavor = kwargs.pop('flavor')
         return LogFlavorChangeSucceeded().si(
             serialized_instance, utils.serialize_instance(flavor), state_transition='set_resized')
 
     @classmethod
-    def get_failure_signature(cls, instance, serialized_instance, flavor, **kwargs):
+    def get_failure_signature(cls, instance, serialized_instance, **kwargs):
+        flavor = kwargs.pop('flavor')
         return LogFlavorChangeFailed().s(serialized_instance, utils.serialize_instance(flavor))
 
 
@@ -626,7 +629,8 @@ class VolumeExtendExecutor(executors.ActionExecutor):
             tasks.BackendMethodTask().si(
                 serialized_volume,
                 backend_method='extend_volume',
-                new_size=new_size
+                new_size=new_size,
+                state_transition='begin_updating'
             ),
             PollRuntimeStateTask().si(
                 serialized_volume,

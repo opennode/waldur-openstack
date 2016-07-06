@@ -989,10 +989,15 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     delete_executor = executors.VolumeDeleteExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
+    def get_serializer_class(self):
+        if self.action == 'extend':
+            return serializers.VolumeExtendSerializer
+        return super(VolumeViewSet, self).get_serializer_class()
+
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def extend(self, request, volume, uuid=None):
-        serializer = serializers.VolumeExtendSerializer(volume, data=request.data)
+        serializer = self.get_serializer(volume, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
