@@ -1277,7 +1277,7 @@ class OpenStackBackend(ServiceBackend):
     def extend_volume(self, volume, new_size):
         cinder = self.cinder_client
         try:
-            cinder.volumes.extend(volume, new_size)
+            cinder.volumes.extend(volume.backend_id, self.mb2gb(new_size))
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -1823,7 +1823,7 @@ class OpenStackBackend(ServiceBackend):
             size=self.gb2mb(backend_volume.size),
             metadata=backend_volume.metadata,
             backend_id=backend_volume_id,
-            type=backend_volume.volume_type,
+            type=backend_volume.volume_type or '',
             bootable=backend_volume.bootable == 'true',
             tenant=tenant,
             runtime_state=backend_volume.status,
