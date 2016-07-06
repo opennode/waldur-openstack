@@ -790,7 +790,7 @@ class VolumeExtendSerializer(serializers.Serializer):
     def get_fields(self):
         fields = super(VolumeExtendSerializer, self).get_fields()
         if self.instance:
-            fields['disk_size'].min_value = self.instance.size + 1
+            fields['disk_size'].min_value = self.instance.size + 1024
         return fields
 
     def validate(self, attrs):
@@ -802,6 +802,10 @@ class VolumeExtendSerializer(serializers.Serializer):
         if volume.instances.all().exclude(state=models.Instance.States.OFFLINE).exists():
             raise serializers.ValidationError({
                 'non_field_errors': ['All instances attached to the volume should be in OFFLINE state']
+            })
+        if volume.bootable:
+            raise serializers.ValidationError({
+                'non_field_errors': ["Can't detach root device volume."]
             })
         return attrs
 
@@ -836,6 +840,10 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
     def validate_flavor(self, value):
         if value is not None:
             spl = self.instance.service_project_link
+
+            if value.name == self.instance.flavor_name:
+                raise serializers.ValidationError(
+                    "New flavor is the same as current.")
 
             if value.settings != spl.service.settings:
                 raise serializers.ValidationError(
