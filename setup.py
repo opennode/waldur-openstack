@@ -8,7 +8,7 @@ dev_requires = [
 
 install_requires = [
     'iptools>=0.6.1',
-    'nodeconductor>0.102.2',
+    'nodeconductor>0.102.4',
     'python-ceilometerclient==2.3.0',
     'python-cinderclient==1.6.0',
     'python-glanceclient==2.0.0',
