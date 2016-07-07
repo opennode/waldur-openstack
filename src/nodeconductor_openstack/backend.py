@@ -1024,7 +1024,11 @@ class OpenStackBackend(ServiceBackend):
             except ObjectDoesNotExist:
                 raise OpenStackBackendError('Floating IP with id %s does not exist.', floating_ip_uuid)
         elif not skip_external_ip_assignment:
-            floating_ip = self._get_or_create_floating_ip(tenant)
+            if tenant.external_network_id:
+                floating_ip = self._get_or_create_floating_ip(tenant)
+            else:
+                logger.warning("Assignment of a floating IP is not possible for instance %s with no external network %s",
+                               instance.uuid)
 
         if floating_ip:
             floating_ip.status = 'BOOKED'
