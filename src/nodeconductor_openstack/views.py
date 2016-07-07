@@ -12,7 +12,7 @@ from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
 from nodeconductor.core.views import StateExecutorViewSet
-from nodeconductor.structure import views as structure_views
+from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import filters as structure_filters
 from nodeconductor.structure.managers import filter_queryset_for_user
 
@@ -20,10 +20,42 @@ from . import Types, models, filters, serializers, executors
 from .log import event_logger
 
 
-class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
+class GenericImportMixin(object):
+    """
+    This mixin selects serializer class by matching resource_type query parameter
+    against model name using import_serializers mapping.
+    """
+    import_serializers = {}
+
+    def _can_import(self):
+        return self.import_serializers != {}
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST' and self.action == 'link':
+            resource_type = self.request.data.get('resource_type') or \
+                            self.request.query_params.get('resource_type')
+
+            items = self.import_serializers.items()
+            if len(items) == 1:
+                model_cls, serializer_cls = items[0]
+                return serializer_cls
+
+            for model_cls, serializer_cls in items:
+                if resource_type == SupportedServices.get_name_for_model(model_cls):
+                    return serializer_cls
+
+        return super(GenericImportMixin, self).get_serializer_class()
+
+
+class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceViewSet):
     queryset = models.OpenStackService.objects.all()
     serializer_class = serializers.ServiceSerializer
-    import_serializer_class = serializers.InstanceImportSerializer
+    import_serializer_class = serializers.TenantImportSerializer
+    import_serializers = {
+        models.Instance: serializers.InstanceImportSerializer,
+        models.Volume: serializers.VolumeImportSerializer,
+        models.Tenant: serializers.TenantImportSerializer,
+    }
 
     def list(self, request, *args, **kwargs):
         """
@@ -89,6 +121,16 @@ class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
         staff user or customer owner.
         """
         return super(OpenStackServiceViewSet, self).retrieve(request, *args, **kwargs)
+
+    def get_import_context(self):
+        context = {'resource_type': self.request.query_params.get('resource_type')}
+        tenant_uuid = self.request.query_params.get('tenant_uuid')
+        if tenant_uuid:
+            queryset = filter_queryset_for_user(models.Tenant.objects.all(), self.request.user)
+            tenant = queryset.filter(service_project_link__service=self.get_object(),
+                                     uuid=tenant_uuid).first()
+            context['tenant'] = tenant
+        return context
 
 
 class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkViewSet):

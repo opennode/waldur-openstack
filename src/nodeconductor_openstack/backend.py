@@ -31,7 +31,7 @@ from novaclient import exceptions as nova_exceptions
 
 from nodeconductor.core.models import StateMixin
 from nodeconductor.core.tasks import send_task
-from nodeconductor.structure import ServiceBackend, ServiceBackendError, log_backend_action
+from nodeconductor.structure import ServiceBackend, ServiceBackendError, log_backend_action, SupportedServices
 
 from . import models
 
@@ -801,18 +801,22 @@ class OpenStackBackend(ServiceBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    def import_tenant(self, tenant_backend_id, save=True):
-        if save:
-            raise NotImplementedError('Tenant import operation with save == True is not implemented.')
+    def import_tenant(self, tenant_backend_id, service_project_link=None, save=True):
         keystone = self.keystone_admin_client
         try:
             backend_tenant = keystone.tenants.get(tenant_backend_id)
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+
         tenant = models.Tenant()
         tenant.name = backend_tenant.name
         tenant.description = backend_tenant.description
         tenant.backend_id = tenant_backend_id
+
+        if save and service_project_link:
+            tenant.service_project_link = service_project_link
+            tenant.state = models.Tenant.States.OK
+            tenant.save()
         return tenant
 
     @log_backend_action()
@@ -943,27 +947,65 @@ class OpenStackBackend(ServiceBackend):
 
         return instance
 
-    def get_resources_for_import(self):
-        cur_instances = models.Instance.objects.all().values_list('backend_id', flat=True)
+    def get_resources_for_import(self, resource_type=None, tenant=None):
+        if tenant:
+            if resource_type == SupportedServices.get_name_for_model(models.Instance):
+                return self.get_instances_for_import(tenant)
+            elif resource_type == SupportedServices.get_name_for_model(models.Volume):
+                return self.get_volumes_for_import(tenant)
+        else:
+            return self.get_tenants_for_import()
+
+    def get_instances_for_import(self, tenant):
+        cur_instances = set(tenant.instances.values_list('backend_id', flat=True))
+        nova = tenant.get_backend().nova_client
         try:
-            instances = self.nova_client.servers.list()
+            instances = nova.servers.list()
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         return [{
             'id': instance.id,
             'name': instance.name or instance.id,
-            'created_at': instance.created,
-            'status': instance.status,
+            'runtime_state': instance.status,
+            'type': SupportedServices.get_name_for_model(models.Instance)
         } for instance in instances
             if instance.id not in cur_instances and
             self._get_instance_state(instance) != models.Instance.States.ERRED]
 
-    def get_managed_resources(self):
+    def get_volumes_for_import(self, tenant):
+        cur_volumes = set(tenant.volumes.values_list('backend_id', flat=True))
+        cinder = tenant.get_backend().cinder_client
         try:
-            ids = [instance.id for instance in self.nova_client.servers.list()]
-            return models.Instance.objects.filter(backend_id__in=ids)
-        except nova_exceptions.ClientException:
-            return []
+            volumes = cinder.volumes.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        return [{
+            'id': volume.id,
+            'name': volume.display_name,
+            'size': self.gb2mb(volume.size),
+            'runtime_state': volume.status,
+            'type': SupportedServices.get_name_for_model(models.Volume)
+        } for volume in volumes if volume.id not in cur_volumes]
+
+    def get_tenants_for_import(self):
+        cur_tenants = set(models.Tenant.objects.filter(
+            service_project_link__service__settings=self.settings
+        ).values_list('backend_id', flat=True))
+        keystone = self.keystone_admin_client
+        try:
+            tenants = keystone.tenants.list()
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return [{
+            'id': tenant.id,
+            'name': tenant.name,
+            'description': tenant.description,
+            'type': SupportedServices.get_name_for_model(models.Tenant)
+        } for tenant in tenants if tenant.id not in cur_tenants]
+
+    def get_managed_resources(self):
+        return []
 
     @log_backend_action()
     def create_instance(self, instance, backend_flavor_id=None,
