@@ -18,10 +18,11 @@ class OpenStackServiceFactory(factory.DjangoModelFactory):
     customer = factory.SubFactory(structure_factories.CustomerFactory)
 
     @classmethod
-    def get_url(cls, service=None):
+    def get_url(cls, service=None, action=None):
         if service is None:
             service = OpenStackServiceFactory()
-        return 'http://testserver' + reverse('openstack-detail', kwargs={'uuid': service.uuid})
+        url = 'http://testserver' + reverse('openstack-detail', kwargs={'uuid': service.uuid})
+        return url if action is None else url + action + '/'
 
     @classmethod
     def get_list_url(cls):
