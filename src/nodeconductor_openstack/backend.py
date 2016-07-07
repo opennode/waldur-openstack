@@ -150,17 +150,11 @@ class OpenStackClient(object):
 
     @property
     def glance(self):
-        catalog = ServiceCatalog.factory(self.session.auth.auth_ref)
-        endpoint = catalog.url_for(service_type='image')
-
-        kwargs = {
-            'token': self.session.get_token(),
-            'insecure': not self.verify_ssl,
-            'timeout': 600,
-            'ssl_compression': True,
-        }
-
-        return glance_client.Client(endpoint, **kwargs)
+        try:
+            return glance_client.Client(session=self.session.keystone_session)
+        except glance_exceptions.ClientException as e:
+            logger.exception('Failed to create glance client: %s', e)
+            six.reraise(OpenStackBackendError, e)
 
     @property
     def ceilometer(self):
