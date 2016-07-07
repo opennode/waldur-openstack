@@ -1498,7 +1498,7 @@ class OpenStackBackend(ServiceBackend):
             return
 
         ext_gw = router.get('external_gateway_info', {})
-        if 'network_id' in ext_gw:
+        if ext_gw and 'network_id' in ext_gw:
             tenant.external_network_id = ext_gw['network_id']
             tenant.save()
             logger.info('Found and set external network with id %s for tenant %s (PK: %s)',
