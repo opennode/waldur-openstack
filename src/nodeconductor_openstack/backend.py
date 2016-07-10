@@ -1027,7 +1027,7 @@ class OpenStackBackend(ServiceBackend):
             if tenant.external_network_id:
                 floating_ip = self._get_or_create_floating_ip(tenant)
             else:
-                logger.warning("Assignment of a floating IP is not possible for instance %s with no external network %s",
+                logger.warning("Assignment of a floating IP is not possible for instance %s with no external network",
                                instance.uuid)
 
         if floating_ip:
