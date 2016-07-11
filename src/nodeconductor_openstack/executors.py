@@ -561,13 +561,14 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
 
     @classmethod
     def get_detach_volume_signature(cls, instance, serialized_instance):
+        volumes = instance.volumes.all().filter(bootable=False)
         detach_volumes = [
             tasks.BackendMethodTask().si(
                 serialized_instance,
                 backend_method='detach_instance_volume',
                 backend_volume_id=volume.backend_id
             )
-            for volume in instance.volumes.all()
+            for volume in volumes
         ]
         check_volumes = [
             PollRuntimeStateTask().si(
@@ -576,7 +577,7 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
                 success_state='available',
                 erred_state='error'
             )
-            for volume in instance.volumes.all()
+            for volume in volumes
         ]
         return detach_volumes + check_volumes
 

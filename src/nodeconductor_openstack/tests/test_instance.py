@@ -230,5 +230,7 @@ class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
         self.assert_quotas_diff(old_quotas, new_quotas, 'vcpu', -self.instance.cores)
         self.assert_quotas_diff(old_quotas, new_quotas, 'ram', -self.instance.ram)
 
-        self.assert_quotas_diff(old_quotas, new_quotas, 'volumes', 0)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'storage', 0)
+        data_volumes = self.instance.volumes.all().filter(bootable=False)
+        data_total = sum(v.size for v in data_volumes)
+        self.assert_quotas_diff(old_quotas, new_quotas, 'volumes', -len(data_volumes))
+        self.assert_quotas_diff(old_quotas, new_quotas, 'storage', -data_total)

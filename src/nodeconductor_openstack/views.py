@@ -275,17 +275,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         - POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/restart/
 
         If instance is in the state that does not allow this transition, error code will be returned.
-
-        Deletion of an instance is done through sending a **DELETE** request to the instance URI.
-        Valid request example (token is user specific):
-
-        .. code-block:: http
-
-            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-        Only stopped instances or instances in ERRED state can be deleted.
         """
         return super(InstanceViewSet, self).retrieve(request, *args, **kwargs)
 
@@ -308,13 +297,40 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     @safe_operation(valid_state=(models.Instance.States.OFFLINE, models.Instance.States.ERRED))
     def destroy(self, request, resource, uuid=None):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid()
+        """
+        Deletion of an instance is done through sending a **DELETE** request to the instance URI.
+        Valid request example (token is user specific):
 
+        .. code-block:: http
+
+            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+        Only stopped instances or instances in ERRED state can be deleted.
+
+        By default when instance is destroyed, all data volumes
+        attached to it are destroyed too. In order to preserve data
+        volumes use query parameter ?delete_volumes=false
+        For example:
+
+        .. code-block:: http
+
+            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/?delete_volumes=false HTTP/1.1
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+        In this case volumes are detached from the instance and then instance is destroyed.
+        """
+        serializer = self.get_serializer(data=request.query_params)
+        serializer.is_valid()
+        delete_volumes = serializer.validated_data['delete_volumes']
+
+        force = resource.state == models.Instance.States.ERRED
         executors.InstanceDeleteExecutor.execute(
             resource,
-            force=resource.state == models.Instance.States.ERRED,
-            delete_volumes=serializer.validated_data['delete_volumes'],
+            force=force,
+            delete_volumes=delete_volumes,
             async=self.async_executor
         )
 
