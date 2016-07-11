@@ -15,6 +15,7 @@ from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import filters as structure_filters
 from nodeconductor.structure.managers import filter_queryset_for_user
+from nodeconductor.structure.views import safe_operation
 
 from . import Types, models, filters, serializers, executors
 from .log import event_logger
@@ -218,6 +219,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
         'change_flavor': serializers.InstanceFlavorChangeSerializer,
+        'destroy': serializers.InstanceDeleteSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -302,8 +304,19 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             is_heavy_task=True,
         )
 
-    def perform_managed_resource_destroy(self, instance, force=False):
-        executors.InstanceDeleteExecutor.execute(instance, force=force)
+    async_executor = True
+
+    @safe_operation(valid_state=(models.Instance.States.OFFLINE, models.Instance.States.ERRED))
+    def destroy(self, request, resource, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid()
+
+        executors.InstanceDeleteExecutor.execute(
+            resource,
+            force=resource.state == models.Instance.States.ERRED,
+            delete_volumes=serializer.validated_data['delete_volumes'],
+            async=self.async_executor
+        )
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)

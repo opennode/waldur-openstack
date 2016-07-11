@@ -953,6 +953,10 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
         return instance
 
 
+class InstanceDeleteSerializer(serializers.Serializer):
+    delete_volumes = serializers.BooleanField(default=True)
+
+
 class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
     service = serializers.HyperlinkedRelatedField(
