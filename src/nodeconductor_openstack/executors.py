@@ -248,6 +248,15 @@ class VolumeDeleteExecutor(executors.DeleteExecutor):
             return tasks.StateTransitionTask().si(serialized_volume, state_transition='begin_deleting')
 
 
+class VolumePullExecutor(executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        return tasks.BackendMethodTask().si(
+            serialized_volume, 'pull_volume',
+            state_transition='begin_updating')
+
+
 class SnapshotCreateExecutor(executors.CreateExecutor):
 
     @classmethod
@@ -287,6 +296,15 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
             )
         else:
             return tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
+
+
+class SnapshotPullExecutor(executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
+        return tasks.BackendMethodTask().si(
+            serialized_snapshot, 'pull_snapshot',
+            state_transition='begin_updating')
 
 
 class DRBackupCreateExecutor(executors.BaseChordExecutor):
@@ -583,6 +601,26 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
         flavor = kwargs.pop('flavor')
         return LogFlavorChangeFailed().s(serialized_instance, utils.serialize_instance(flavor))
+
+
+class InstancePullExecutor(executors.ActionExecutor):
+    @classmethod
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+        return tasks.BackendMethodTask().si(
+            serialized_instance,
+            backend_method='pull_instance',
+            state_transition='begin_updating'
+        )
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        # XXX: On success instance's state is pulled from the backend. Must be changed in NC-1207
+        return None
+
+    @classmethod
+    def get_failure_signature(cls, instance, serialized_instance, **kwargs):
+        # XXX: This method is overridden to support old-style states.
+        return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_erred')
 
 
 class VolumeExtendExecutor(executors.ActionExecutor):

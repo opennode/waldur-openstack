@@ -183,7 +183,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class InstanceViewSet(structure_views.BaseResourceViewSet):
+class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.ResourceRecoveryMixin):
     """
     OpenStack instance permissions
     ------------------------------
@@ -214,6 +214,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
     filter_class = filters.InstanceFilter
+    recovery_executor = executors.InstancePullExecutor
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
@@ -861,6 +862,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     delete_executor = executors.TenantDeleteExecutor
+    recovery_executor = executors.TenantPullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
     serializers = {
@@ -1031,6 +1033,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     create_executor = executors.VolumeCreateExecutor
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
+    recovery_executor = executors.VolumePullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
     def get_serializer_class(self):
@@ -1057,6 +1060,7 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     create_executor = executors.SnapshotCreateExecutor
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
+    recovery_executor = executors.SnapshotPullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
 
