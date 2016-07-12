@@ -873,7 +873,6 @@ class OpenStackBackend(ServiceBackend):
             flavor = nova.flavors.get(backend_instance.flavor['id'])
             attached_volume_ids = [v.volumeId for v in nova.volumes.get_server_volumes(backend_instance_id)]
         except nova_exceptions.ClientException as e:
-            logger.exception("Failed to lookup instance %s information", backend_instance_id)
             six.reraise(OpenStackBackendError, e)
 
         # import and parse IPs.
