@@ -524,7 +524,7 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
         delete_volumes = kwargs.pop('delete_volumes', True)
-        delete_instance = cls.get_delete_instance_signature(instance, serialized_instance, delete_volumes)
+        delete_instance = cls.get_delete_instance_signature(serialized_instance)
 
         # Case 1. Instance does not exist at backend
         if not instance.backend_id:
@@ -534,7 +534,7 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
             )
 
         # Case 2. Instance exists at backend.
-        # Volumes are deleted and deleted by OpenStack itself.
+        # Volumes are deleted by OpenStack because delete_on_termination=True
         elif delete_volumes:
             return chain(delete_instance)
 
@@ -545,17 +545,20 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
             return chain(detach_volumes + delete_instance)
 
     @classmethod
-    def get_delete_instance_signature(cls, instance, serialized_instance, delete_volumes):
+    def get_delete_instance_signature(cls, serialized_instance):
         return [
             tasks.BackendMethodTask().si(
                 serialized_instance,
                 backend_method='delete_instance',
                 state_transition='begin_deleting',
-                delete_volumes=delete_volumes
             ),
             PollBackendCheckTask().si(
                 serialized_instance,
                 backend_check_method='is_instance_deleted'
+            ),
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='pull_instance_volumes'
             )
         ]
 

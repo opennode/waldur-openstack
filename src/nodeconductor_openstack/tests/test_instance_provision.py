@@ -1,13 +1,9 @@
-import mock
-from django.test import override_settings
-from novaclient import exceptions as nova_exceptions
 from rest_framework import status, test
 
 from nodeconductor.structure.models import CustomerRole
 from nodeconductor.structure.tests import factories as structure_factories
-from nodeconductor_openstack.tests.test_import import BaseBackendTestCase
 
-from .. import models, views
+from .. import models
 from ..apps import OpenStackConfig
 from . import factories
 
@@ -117,120 +113,3 @@ class AutomaticFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTe
         return self.client.post(self.url, self.get_valid_data(
             skip_external_ip_assignment=False
         ))
-
-
-views.InstanceViewSet.async_executor = False
-
-
-class BaseInstanceDeletionTest(BaseBackendTestCase):
-    def setUp(self):
-        super(BaseInstanceDeletionTest, self).setUp()
-        self.instance = factories.InstanceFactory(
-            state=models.Instance.States.OFFLINE,
-            backend_id='VALID_ID'
-        )
-        self.url = factories.InstanceFactory.get_url(self.instance)
-
-        for index, volume in enumerate(self.instance.volumes.all()):
-            volume.backend_id = 'volume-%s' % index
-            volume.state = models.Volume.States.OK
-            volume.save(update_fields=['backend_id', 'state'])
-
-        self.mocked_nova().servers.get.side_effect = nova_exceptions.NotFound(code=404)
-
-        mocked_volume = mock.Mock()
-        mocked_volume.status = 'available'
-        self.mocked_cinder().volumes.get.return_value = mocked_volume
-
-    def delete_instance(self, data=None):
-        staff = structure_factories.UserFactory(is_staff=True)
-        self.client.force_authenticate(user=staff)
-
-        with override_settings(CELERY_ALWAYS_EAGER=True, CELERY_EAGER_PROPAGATES_EXCEPTIONS=True):
-            response = self.client.delete(self.url, data)
-            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
-
-    def assert_quotas_diff(self, old_quotas, new_quotas, name, change):
-        self.assertEqual(new_quotas.get(name=name).usage,
-                         old_quotas.get(name=name).usage + change)
-
-
-class InstanceDeletedWithVolumesTest(BaseInstanceDeletionTest):
-    def test_nova_methods_are_called(self):
-        self.delete_instance()
-
-        nova = self.mocked_nova()
-        nova.servers.delete.assert_called_once_with(self.instance.backend_id)
-        nova.servers.get.assert_called_once_with(self.instance.backend_id)
-        self.assertFalse(nova.volumes.delete_server_volume.called)
-
-    def test_database_models_deleted(self):
-        self.delete_instance()
-
-        self.assertFalse(models.Instance.objects.filter(id=self.instance.id).exists())
-        for volume in self.instance.volumes.all():
-            self.assertFalse(models.Volume.objects.filter(id=volume.id).exists())
-
-    def test_quotas_updated(self):
-        old_quotas = self.instance.tenant.quotas
-
-        self.delete_instance()
-
-        self.instance.tenant.refresh_from_db()
-        new_quotas = self.instance.tenant.quotas
-        self.assert_quotas_diff(old_quotas, new_quotas, 'instances', -1)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'vcpu', -self.instance.cores)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'ram', -self.instance.ram)
-
-        self.assert_quotas_diff(old_quotas, new_quotas, 'volumes', -2)
-        total_volume_size = sum(volume.size for volume in self.instance.volumes.all())
-        self.assert_quotas_diff(old_quotas, new_quotas, 'storage', -total_volume_size)
-
-
-class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
-
-    def test_backend_methods_are_called(self):
-        self.delete_instance({
-            'delete_volumes': False
-        })
-
-        nova = self.mocked_nova()
-        cinder = self.mocked_cinder()
-
-        nova.volumes.delete_server_volume.assert_has_calls([
-            mock.call(self.instance.backend_id, volume.backend_id)
-            for volume in self.instance.volumes.all()
-        ])
-
-        cinder.volumes.get.assert_has_calls([
-            mock.call(volume.backend_id)
-            for volume in self.instance.volumes.all()
-        ])
-
-        nova.servers.delete.assert_called_once_with(self.instance.backend_id)
-        nova.servers.get.assert_called_once_with(self.instance.backend_id)
-
-    def test_volume_model_is_not_deleted(self):
-        self.delete_instance({
-            'delete_volumes': False
-        })
-
-        self.assertFalse(models.Instance.objects.filter(id=self.instance.id).exists())
-        for volume in self.instance.volumes.all():
-            self.assertTrue(models.Volume.objects.filter(id=volume.id).get())
-
-    def test_quotas_updated(self):
-        old_quotas = self.instance.tenant.quotas
-
-        self.delete_instance()
-
-        self.instance.tenant.refresh_from_db()
-        new_quotas = self.instance.tenant.quotas
-        self.assert_quotas_diff(old_quotas, new_quotas, 'instances', -1)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'vcpu', -self.instance.cores)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'ram', -self.instance.ram)
-
-        data_volumes = self.instance.volumes.all().filter(bootable=False)
-        data_total = sum(v.size for v in data_volumes)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'volumes', -len(data_volumes))
-        self.assert_quotas_diff(old_quotas, new_quotas, 'storage', -data_total)

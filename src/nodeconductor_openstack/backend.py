@@ -1768,7 +1768,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
-    def delete_instance(self, instance, delete_volumes=True):
+    def delete_instance(self, instance):
         nova = self.nova_client
         try:
             nova.servers.delete(instance.backend_id)
@@ -1779,12 +1779,14 @@ class OpenStackBackend(ServiceBackend):
             logger.info('Successfully released floating ip %s from instance %s',
                         instance.external_ips, instance.uuid)
         instance.decrease_backend_quotas_usage()
-        if delete_volumes:
-            # If volume is attached to instance it is deleted
-            # by OpenStack itself when instance is deleted
-            for volume in instance.volumes.all():
-                volume.decrease_backend_quotas_usage()
-                volume.delete()
+
+    @log_backend_action()
+    def pull_instance_volumes(self, instance):
+        for volume in instance.volumes.all():
+            if self.is_volume_deleted(volume):
+                with transaction.atomic():
+                    volume.decrease_backend_quotas_usage()
+                    volume.delete()
 
     @log_backend_action()
     def update_tenant(self, tenant):

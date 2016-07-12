@@ -312,6 +312,8 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         By default when instance is destroyed, all data volumes
         attached to it are destroyed too. In order to preserve data
         volumes use query parameter ?delete_volumes=false
+        In this case data volumes are detached from the instance and
+        then instance is destroyed. Note that system volume is deleted anyway.
         For example:
 
         .. code-block:: http
@@ -320,7 +322,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
             Host: example.com
 
-        In this case volumes are detached from the instance and then instance is destroyed.
         """
         serializer = self.get_serializer(data=request.query_params)
         serializer.is_valid()
