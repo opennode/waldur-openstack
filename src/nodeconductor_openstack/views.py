@@ -187,7 +187,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
 class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullMixin):
     """
     OpenStack instance permissions
-    ------------------------------
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     - Staff members can list all available VM instances in any service.
     - Customer owners can list all VM instances in all the services that belong to any of the customers they own.
@@ -197,7 +197,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullM
       managers in.
 
     OpenStack instance states
-    -------------------------
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
 
     Each instance has a **state** field that defines its current operational state.
     Instance has a FSM that defines possible state transitions. If a request is made to perform an operation
@@ -207,10 +207,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullM
 
     Any modification of an instance in unstable or PROVISIONING_SCHEDULED state is prohibited
     and will fail with 409 response code. Assuming stable states are ONLINE and OFFLINE.
-
-    A graph of possible state transitions is shown below.
-
-    .. image:: /images/instance-states.png
     """
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
