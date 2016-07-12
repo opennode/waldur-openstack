@@ -1,3 +1,5 @@
+import logging
+
 from celery import chain, group
 
 from nodeconductor.core import tasks, executors, utils
@@ -9,6 +11,9 @@ from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBac
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask,
                     LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed,
                     SetBackupErredTask, ForceDeleteBackupTask, SetBackupRestorationErredTask)
+
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityGroupCreateExecutor(executors.CreateExecutor):
@@ -603,23 +608,25 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
         return LogFlavorChangeFailed().s(serialized_instance, utils.serialize_instance(flavor))
 
 
-class InstancePullExecutor(executors.ActionExecutor):
+class InstancePullExecutor(executors.BaseExecutor):
+    @classmethod
+    def pre_apply(cls, instance, **kwargs):
+        # XXX: Should be changed after migrating from the old-style states (NC-1207).
+        logger.info("About to pull instance with uuid %s from the backend.", instance.uuid.hex)
+
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
-        return tasks.BackendMethodTask().si(
-            serialized_instance,
-            backend_method='pull_instance',
-            state_transition='begin_updating'
-        )
+        # XXX: State transition should be added after migrating from the old-style states (NC-1207).
+        return tasks.BackendMethodTask().si(serialized_instance, backend_method='pull_instance')
 
     @classmethod
     def get_success_signature(cls, instance, serialized_instance, **kwargs):
-        # XXX: On success instance's state is pulled from the backend. Must be changed in NC-1207
-        return None
+        # XXX: On success instance's state is pulled from the backend. Must be changed in NC-1207.
+        logger.info("Successfully pulled data from the backend for instance with uuid %s", instance.uuid.hex)
 
     @classmethod
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
-        # XXX: This method is overridden to support old-style states.
+        # XXX: This method is overridden to support old-style states. Must be changed in NC-1207.
         return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_erred')
 
 

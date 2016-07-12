@@ -184,7 +184,7 @@ def _update_pulled_fields(instance, imported_instance, fields):
         if current_value != pulled_value:
             setattr(instance, field, pulled_value)
             logger.info("%s's with uuid %s %s field updated from value '%s' to value '%s'",
-                        instance.__class__.__name__, instance.uuid, field, current_value, pulled_value)
+                        instance.__class__.__name__, instance.uuid.hex, field, current_value, pulled_value)
             modified = True
     if modified:
         instance.save()

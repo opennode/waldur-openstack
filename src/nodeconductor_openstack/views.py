@@ -183,7 +183,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.ResourceRecoveryMixin):
+class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullMixin):
     """
     OpenStack instance permissions
     ------------------------------
@@ -214,7 +214,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.Resou
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
     filter_class = filters.InstanceFilter
-    recovery_executor = executors.InstancePullExecutor
+    pull_executor = executors.InstancePullExecutor
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
@@ -309,6 +309,13 @@ class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.Resou
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)
         return serializer or super(InstanceViewSet, self).get_serializer_class()
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=(models.Instance.States.ERRED,
+                                                 models.Instance.States.ONLINE,
+                                                 models.Instance.States.OFFLINE))
+    def pull(self, request, instance, uuid=None):
+        self.pull_executor.execute(instance)
 
     @decorators.detail_route(methods=['post'])
     def allocate_floating_ip(self, request, uuid=None):
@@ -856,13 +863,14 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
+                                       structure_views.PullMixin,
                                        StateExecutorViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     delete_executor = executors.TenantDeleteExecutor
-    recovery_executor = executors.TenantPullExecutor
+    pull_executor = executors.TenantPullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
     serializers = {
@@ -1027,13 +1035,14 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
+                                       structure_views.PullMixin,
                                        StateExecutorViewSet)):
     queryset = models.Volume.objects.all()
     serializer_class = serializers.VolumeSerializer
     create_executor = executors.VolumeCreateExecutor
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
-    recovery_executor = executors.VolumePullExecutor
+    pull_executor = executors.VolumePullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
     def get_serializer_class(self):
@@ -1054,13 +1063,14 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewMixin,
+                                         structure_views.PullMixin,
                                          StateExecutorViewSet)):
     queryset = models.Snapshot.objects.all()
     serializer_class = serializers.SnapshotSerializer
     create_executor = executors.SnapshotCreateExecutor
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
-    recovery_executor = executors.SnapshotPullExecutor
+    pull_executor = executors.SnapshotPullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
 
