@@ -180,8 +180,11 @@ def _update_pulled_fields(instance, imported_instance, fields):
     modified = False
     for field in fields:
         pulled_value = getattr(imported_instance, field)
-        if getattr(instance, field) != pulled_value:
+        current_value = getattr(instance, field)
+        if current_value != pulled_value:
             setattr(instance, field, pulled_value)
+            logger.info("%s's with uuid %s %s field updated from value '%s' to value '%s'",
+                        instance.__class__.__name__, instance.uuid.hex, field, current_value, pulled_value)
             modified = True
     if modified:
         instance.save()
@@ -1778,9 +1781,14 @@ class OpenStackBackend(ServiceBackend):
             logger.info('Successfully released floating ip %s from instance %s',
                         instance.external_ips, instance.uuid)
         instance.decrease_backend_quotas_usage()
-        for volume in instance.volumes.all():  # instance deletion removes instance volumes too.
-            volume.decrease_backend_quotas_usage()
-            volume.delete()
+
+    @log_backend_action()
+    def pull_instance_volumes(self, instance):
+        for volume in instance.volumes.all():
+            if self.is_volume_deleted(volume):
+                with transaction.atomic():
+                    volume.decrease_backend_quotas_usage()
+                    volume.delete()
 
     @log_backend_action()
     def update_tenant(self, tenant):
@@ -1908,6 +1916,43 @@ class OpenStackBackend(ServiceBackend):
         snapshot.size = self.gb2mb(backend_snapshot.size)
         snapshot.save()
         return snapshot
+
+    def import_snapshot(self, backend_snapshot_id, save=True):
+        """ Restore NC Snapshot instance based on backend data. """
+        cinder = self.cinder_client
+        try:
+            backend_snapshot = cinder.volume_snapshots.get(backend_snapshot_id)
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
+        spl = tenant.service_project_link
+        snapshot = models.Snapshot(
+            name=backend_snapshot.display_name,
+            description=backend_snapshot.display_description,
+            size=self.gb2mb(backend_snapshot.size),
+            metadata=backend_snapshot.metadata,
+            backend_id=backend_snapshot_id,
+            tenant=tenant,
+            runtime_state=backend_snapshot.status,
+            service_project_link=spl,
+            state=models.Snapshot.States.OK,
+        )
+        if hasattr(backend_snapshot, 'volume_id'):
+            snapshot.source_volume = models.Volume.objects.filter(backend_id=backend_snapshot.volume_id).first()
+
+        if save:
+            snapshot.save()
+        return snapshot
+
+    @log_backend_action()
+    def pull_snapshot(self, snapshot):
+        import_time = timezone.now()
+        imported_snapshot = self.import_snapshot(snapshot.backend_id, save=False)
+
+        snapshot.refresh_from_db()
+        if snapshot.modified < import_time:
+            update_fields = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
+            _update_pulled_fields(snapshot, imported_snapshot, update_fields)
 
     @log_backend_action()
     def pull_snapshot_runtime_state(self, snapshot):

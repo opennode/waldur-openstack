@@ -103,7 +103,8 @@ class TenantMixin(object):
 
         if 'tenant' not in kwargs:
             tenant, _ = models.Tenant.objects.get_or_create(
-                service_project_link=kwargs['service_project_link'])
+                service_project_link=kwargs['service_project_link'],
+                backend_id='VALID_ID')
             kwargs['tenant'] = tenant
 
         return manager.create(*args, **kwargs)

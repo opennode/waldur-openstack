@@ -15,6 +15,7 @@ from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import filters as structure_filters
 from nodeconductor.structure.managers import filter_queryset_for_user
+from nodeconductor.structure.views import safe_operation
 
 from . import Types, models, filters, serializers, executors
 from .log import event_logger
@@ -183,7 +184,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class InstanceViewSet(structure_views.BaseResourceViewSet):
+class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullMixin):
     """
     OpenStack instance permissions
     ------------------------------
@@ -214,10 +215,12 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
     filter_class = filters.InstanceFilter
+    pull_executor = executors.InstancePullExecutor
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
         'change_flavor': serializers.InstanceFlavorChangeSerializer,
+        'destroy': serializers.InstanceDeleteSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -273,17 +276,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         - POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/restart/
 
         If instance is in the state that does not allow this transition, error code will be returned.
-
-        Deletion of an instance is done through sending a **DELETE** request to the instance URI.
-        Valid request example (token is user specific):
-
-        .. code-block:: http
-
-            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-        Only stopped instances or instances in ERRED state can be deleted.
         """
         return super(InstanceViewSet, self).retrieve(request, *args, **kwargs)
 
@@ -302,12 +294,58 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             is_heavy_task=True,
         )
 
-    def perform_managed_resource_destroy(self, instance, force=False):
-        executors.InstanceDeleteExecutor.execute(instance, force=force)
+    async_executor = True
+
+    @safe_operation(valid_state=(models.Instance.States.OFFLINE, models.Instance.States.ERRED))
+    def destroy(self, request, resource, uuid=None):
+        """
+        Deletion of an instance is done through sending a **DELETE** request to the instance URI.
+        Valid request example (token is user specific):
+
+        .. code-block:: http
+
+            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+        Only stopped instances or instances in ERRED state can be deleted.
+
+        By default when instance is destroyed, all data volumes
+        attached to it are destroyed too. In order to preserve data
+        volumes use query parameter ?delete_volumes=false
+        In this case data volumes are detached from the instance and
+        then instance is destroyed. Note that system volume is deleted anyway.
+        For example:
+
+        .. code-block:: http
+
+            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/?delete_volumes=false HTTP/1.1
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+        """
+        serializer = self.get_serializer(data=request.query_params)
+        serializer.is_valid()
+        delete_volumes = serializer.validated_data['delete_volumes']
+
+        force = resource.state == models.Instance.States.ERRED
+        executors.InstanceDeleteExecutor.execute(
+            resource,
+            force=force,
+            delete_volumes=delete_volumes,
+            async=self.async_executor
+        )
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)
         return serializer or super(InstanceViewSet, self).get_serializer_class()
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=(models.Instance.States.ERRED,
+                                                 models.Instance.States.ONLINE,
+                                                 models.Instance.States.OFFLINE))
+    def pull(self, request, instance, uuid=None):
+        self.pull_executor.execute(instance)
 
     @decorators.detail_route(methods=['post'])
     def allocate_floating_ip(self, request, uuid=None):
@@ -855,12 +893,14 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
+                                       structure_views.PullMixin,
                                        StateExecutorViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     delete_executor = executors.TenantDeleteExecutor
+    pull_executor = executors.TenantPullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
     serializers = {
@@ -1025,12 +1065,14 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
+                                       structure_views.PullMixin,
                                        StateExecutorViewSet)):
     queryset = models.Volume.objects.all()
     serializer_class = serializers.VolumeSerializer
     create_executor = executors.VolumeCreateExecutor
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
+    pull_executor = executors.VolumePullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
     def get_serializer_class(self):
@@ -1051,12 +1093,14 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewMixin,
+                                         structure_views.PullMixin,
                                          StateExecutorViewSet)):
     queryset = models.Snapshot.objects.all()
     serializer_class = serializers.SnapshotSerializer
     create_executor = executors.SnapshotCreateExecutor
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
+    pull_executor = executors.SnapshotPullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
 
