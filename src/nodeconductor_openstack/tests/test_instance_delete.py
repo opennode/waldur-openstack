@@ -22,6 +22,7 @@ class BaseInstanceDeletionTest(BaseBackendTestCase):
             state=models.Instance.States.OFFLINE,
             backend_id='VALID_ID'
         )
+        self.instance.increase_backend_quotas_usage()
         self.mocked_nova().servers.get.side_effect = nova_exceptions.NotFound(code=404)
 
     def mock_volumes(self, delete_data_volume=True):
@@ -29,11 +30,13 @@ class BaseInstanceDeletionTest(BaseBackendTestCase):
         self.data_volume.backend_id = 'DATA_VOLUME_ID'
         self.data_volume.state = models.Volume.States.OK
         self.data_volume.save()
+        self.data_volume.increase_backend_quotas_usage()
 
         self.system_volume = self.instance.volumes.get(bootable=True)
         self.system_volume.backend_id = 'SYSTEM_VOLUME_ID'
         self.system_volume.state = models.Volume.States.OK
         self.system_volume.save()
+        self.system_volume.increase_backend_quotas_usage()
 
         def get_volume(backend_id):
             if not delete_data_volume and backend_id == self.data_volume.backend_id:
@@ -56,9 +59,8 @@ class BaseInstanceDeletionTest(BaseBackendTestCase):
             response = self.client.delete(url)
             self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
 
-    def assert_quotas_diff(self, old_quotas, new_quotas, name, change):
-        self.assertEqual(new_quotas.get(name=name).usage,
-                         old_quotas.get(name=name).usage + change)
+    def assert_quota_usage(self, quotas, name, value):
+        self.assertEqual(quotas.get(name=name).usage, value)
 
 
 class InstanceDeletedWithVolumesTest(BaseInstanceDeletionTest):
@@ -83,19 +85,17 @@ class InstanceDeletedWithVolumesTest(BaseInstanceDeletionTest):
             self.assertFalse(models.Volume.objects.filter(id=volume.id).exists())
 
     def test_quotas_updated(self):
-        old_quotas = self.instance.tenant.quotas
         self.delete_instance()
 
         self.instance.tenant.refresh_from_db()
-        new_quotas = self.instance.tenant.quotas
+        quotas = self.instance.tenant.quotas
 
-        self.assert_quotas_diff(old_quotas, new_quotas, 'instances', -1)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'vcpu', -self.instance.cores)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'ram', -self.instance.ram)
+        self.assert_quota_usage(quotas, 'instances', 0)
+        self.assert_quota_usage(quotas, 'vcpu', 0)
+        self.assert_quota_usage(quotas, 'ram', 0)
 
-        total_size = self.data_volume.size + self.system_volume.size
-        self.assert_quotas_diff(old_quotas, new_quotas, 'volumes', -2)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'storage', -total_size)
+        self.assert_quota_usage(quotas, 'volumes', 0)
+        self.assert_quota_usage(quotas, 'storage', 0)
 
 
 class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
@@ -125,17 +125,16 @@ class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
         self.assertFalse(models.Volume.objects.filter(id=self.system_volume.id).exists())
 
     def test_quotas_updated(self):
-        old_quotas = self.instance.tenant.quotas
         self.delete_instance({
             'delete_volumes': False
         })
 
         self.instance.tenant.refresh_from_db()
-        new_quotas = self.instance.tenant.quotas
+        quotas = self.instance.tenant.quotas
 
-        self.assert_quotas_diff(old_quotas, new_quotas, 'instances', -1)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'vcpu', -self.instance.cores)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'ram', -self.instance.ram)
+        self.assert_quota_usage(quotas, 'instances', 0)
+        self.assert_quota_usage(quotas, 'vcpu', 0)
+        self.assert_quota_usage(quotas, 'ram', 0)
 
-        self.assert_quotas_diff(old_quotas, new_quotas, 'volumes', -1)
-        self.assert_quotas_diff(old_quotas, new_quotas, 'storage', -self.data_volume.size)
+        self.assert_quota_usage(quotas, 'volumes', 1)
+        self.assert_quota_usage(quotas, 'storage', self.data_volume.size)
