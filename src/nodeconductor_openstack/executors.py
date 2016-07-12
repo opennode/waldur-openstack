@@ -524,7 +524,7 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
         delete_volumes = kwargs.pop('delete_volumes', True)
-        delete_instance = cls.get_delete_instance_signature(serialized_instance)
+        delete_instance = cls.get_delete_instance_tasks(serialized_instance)
 
         # Case 1. Instance does not exist at backend
         if not instance.backend_id:
@@ -534,18 +534,18 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
             )
 
         # Case 2. Instance exists at backend.
-        # Volumes are deleted by OpenStack because delete_on_termination=True
+        # Data volumes are deleted by OpenStack because delete_on_termination=True
         elif delete_volumes:
             return chain(delete_instance)
 
         # Case 3. Instance exists at backend.
-        # Volumes are detached and not deleted.
+        # Data volumes are detached and not deleted.
         else:
-            detach_volumes = cls.get_detach_volume_signature(instance, serialized_instance)
+            detach_volumes = cls.get_detach_data_volumes_tasks(instance, serialized_instance)
             return chain(detach_volumes + delete_instance)
 
     @classmethod
-    def get_delete_instance_signature(cls, serialized_instance):
+    def get_delete_instance_tasks(cls, serialized_instance):
         return [
             tasks.BackendMethodTask().si(
                 serialized_instance,
@@ -563,15 +563,15 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
         ]
 
     @classmethod
-    def get_detach_volume_signature(cls, instance, serialized_instance):
-        volumes = instance.volumes.all().filter(bootable=False)
+    def get_detach_data_volumes_tasks(cls, instance, serialized_instance):
+        data_volumes = instance.volumes.all().filter(bootable=False)
         detach_volumes = [
             tasks.BackendMethodTask().si(
                 serialized_instance,
                 backend_method='detach_instance_volume',
                 backend_volume_id=volume.backend_id
             )
-            for volume in volumes
+            for volume in data_volumes
         ]
         check_volumes = [
             PollRuntimeStateTask().si(
@@ -580,7 +580,7 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
                 success_state='available',
                 erred_state='error'
             )
-            for volume in volumes
+            for volume in data_volumes
         ]
         return detach_volumes + check_volumes
 

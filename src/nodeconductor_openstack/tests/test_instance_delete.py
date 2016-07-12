@@ -48,10 +48,11 @@ class BaseInstanceDeletionTest(BaseBackendTestCase):
         staff = structure_factories.UserFactory(is_staff=True)
         self.client.force_authenticate(user=staff)
 
+        url = factories.InstanceFactory.get_url(self.instance)
+        if query_params:
+            url += '?' + urllib.urlencode(query_params)
+
         with override_settings(CELERY_ALWAYS_EAGER=True, CELERY_EAGER_PROPAGATES_EXCEPTIONS=True):
-            url = factories.InstanceFactory.get_url(self.instance)
-            if query_params:
-                url += '?' + urllib.urlencode(query_params)
             response = self.client.delete(url)
             self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
 
