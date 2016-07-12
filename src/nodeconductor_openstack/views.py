@@ -15,6 +15,7 @@ from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import filters as structure_filters
 from nodeconductor.structure.managers import filter_queryset_for_user
+from nodeconductor.structure.views import safe_operation
 
 from . import Types, models, filters, serializers, executors
 from .log import event_logger
@@ -219,6 +220,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullM
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
         'change_flavor': serializers.InstanceFlavorChangeSerializer,
+        'destroy': serializers.InstanceDeleteSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -274,17 +276,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullM
         - POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/restart/
 
         If instance is in the state that does not allow this transition, error code will be returned.
-
-        Deletion of an instance is done through sending a **DELETE** request to the instance URI.
-        Valid request example (token is user specific):
-
-        .. code-block:: http
-
-            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-        Only stopped instances or instances in ERRED state can be deleted.
         """
         return super(InstanceViewSet, self).retrieve(request, *args, **kwargs)
 
@@ -303,8 +294,47 @@ class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullM
             is_heavy_task=True,
         )
 
-    def perform_managed_resource_destroy(self, instance, force=False):
-        executors.InstanceDeleteExecutor.execute(instance, force=force)
+    async_executor = True
+
+    @safe_operation(valid_state=(models.Instance.States.OFFLINE, models.Instance.States.ERRED))
+    def destroy(self, request, resource, uuid=None):
+        """
+        Deletion of an instance is done through sending a **DELETE** request to the instance URI.
+        Valid request example (token is user specific):
+
+        .. code-block:: http
+
+            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+        Only stopped instances or instances in ERRED state can be deleted.
+
+        By default when instance is destroyed, all data volumes
+        attached to it are destroyed too. In order to preserve data
+        volumes use query parameter ?delete_volumes=false
+        In this case data volumes are detached from the instance and
+        then instance is destroyed. Note that system volume is deleted anyway.
+        For example:
+
+        .. code-block:: http
+
+            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/?delete_volumes=false HTTP/1.1
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+        """
+        serializer = self.get_serializer(data=request.query_params)
+        serializer.is_valid()
+        delete_volumes = serializer.validated_data['delete_volumes']
+
+        force = resource.state == models.Instance.States.ERRED
+        executors.InstanceDeleteExecutor.execute(
+            resource,
+            force=force,
+            delete_volumes=delete_volumes,
+            async=self.async_executor
+        )
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)

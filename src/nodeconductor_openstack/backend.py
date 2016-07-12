@@ -1782,9 +1782,14 @@ class OpenStackBackend(ServiceBackend):
             logger.info('Successfully released floating ip %s from instance %s',
                         instance.external_ips, instance.uuid)
         instance.decrease_backend_quotas_usage()
-        for volume in instance.volumes.all():  # instance deletion removes instance volumes too.
-            volume.decrease_backend_quotas_usage()
-            volume.delete()
+
+    @log_backend_action()
+    def pull_instance_volumes(self, instance):
+        for volume in instance.volumes.all():
+            if self.is_volume_deleted(volume):
+                with transaction.atomic():
+                    volume.decrease_backend_quotas_usage()
+                    volume.delete()
 
     @log_backend_action()
     def update_tenant(self, tenant):

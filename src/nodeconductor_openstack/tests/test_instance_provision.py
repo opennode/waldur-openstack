@@ -84,7 +84,7 @@ class AutomaticFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTe
         response = self.get_response()
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
-    def test_user_can_not_provision_instance_using_if_tenant_quota_exceeded(self):
+    def test_user_can_not_provision_instance_if_tenant_quota_exceeded(self):
         quota = self.tenant.quotas.get(name='floating_ip_count')
         quota.limit = quota.usage
         quota.save()
@@ -93,7 +93,7 @@ class AutomaticFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTe
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
         self.assertEqual(response.data['tenant'], ['Can not allocate floating IP - quota has been filled.'])
 
-    def test_user_can_not_provision_instance_using_if_tenant_is_not_in_stable_state(self):
+    def test_user_can_not_provision_instance_if_tenant_is_not_in_stable_state(self):
         self.tenant.state = models.Tenant.States.ERRED
         self.tenant.save()
 
@@ -101,7 +101,7 @@ class AutomaticFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTe
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
         self.assertEqual(response.data['tenant'], ['Can not assign external IP if tenant is not in stable state.'])
 
-    def test_user_can_not_provision_instance_using_if_tenant_does_not_have_external_network(self):
+    def test_user_can_not_provision_instance_if_tenant_does_not_have_external_network(self):
         self.tenant.external_network_id = ''
         self.tenant.save()
 

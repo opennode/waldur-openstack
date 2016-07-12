@@ -546,13 +546,66 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
-        if instance.backend_id:
-            return chain(
-                tasks.BackendMethodTask().si(serialized_instance, 'delete_instance', state_transition='begin_deleting'),
-                PollBackendCheckTask().si(serialized_instance, 'is_instance_deleted'),
+        delete_volumes = kwargs.pop('delete_volumes', True)
+        delete_instance = cls.get_delete_instance_tasks(serialized_instance)
+
+        # Case 1. Instance does not exist at backend
+        if not instance.backend_id:
+            return tasks.StateTransitionTask().si(
+                serialized_instance,
+                state_transition='begin_deleting'
             )
+
+        # Case 2. Instance exists at backend.
+        # Data volumes are deleted by OpenStack because delete_on_termination=True
+        elif delete_volumes:
+            return chain(delete_instance)
+
+        # Case 3. Instance exists at backend.
+        # Data volumes are detached and not deleted.
         else:
-            return tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_deleting')
+            detach_volumes = cls.get_detach_data_volumes_tasks(instance, serialized_instance)
+            return chain(detach_volumes + delete_instance)
+
+    @classmethod
+    def get_delete_instance_tasks(cls, serialized_instance):
+        return [
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='delete_instance',
+                state_transition='begin_deleting',
+            ),
+            PollBackendCheckTask().si(
+                serialized_instance,
+                backend_check_method='is_instance_deleted'
+            ),
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='pull_instance_volumes'
+            )
+        ]
+
+    @classmethod
+    def get_detach_data_volumes_tasks(cls, instance, serialized_instance):
+        data_volumes = instance.volumes.all().filter(bootable=False)
+        detach_volumes = [
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='detach_instance_volume',
+                backend_volume_id=volume.backend_id
+            )
+            for volume in data_volumes
+        ]
+        check_volumes = [
+            PollRuntimeStateTask().si(
+                utils.serialize_instance(volume),
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error'
+            )
+            for volume in data_volumes
+        ]
+        return detach_volumes + check_volumes
 
 
 class InstanceFlavorChangeExecutor(BaseExecutor):
