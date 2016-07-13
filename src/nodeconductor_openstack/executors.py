@@ -10,7 +10,7 @@ from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBac
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask,
                     LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed,
-                    SetBackupErredTask, ForceDeleteBackupTask, SetBackupRestorationErredTask)
+                    SetBackupErredTask, ForceDeleteBackupTask, SetBackupRestorationErredTask, SetInstanceErredTask)
 
 
 logger = logging.getLogger(__name__)
@@ -535,6 +535,10 @@ class InstanceCreateExecutor(executors.CreateExecutor, executors.BaseChordExecut
     def get_success_signature(cls, instance, serialized_instance, **kwargs):
         # XXX: This method is overridden to support old-style states.
         return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
+
+    @classmethod
+    def get_failure_signature(cls, instance, serialized_instance, **kwargs):
+        return SetInstanceErredTask().s(serialized_instance)
 
 
 class InstanceDeleteExecutor(executors.DeleteExecutor):
