@@ -1,5 +1,4 @@
 from mock import patch
-import unittest
 
 from rest_framework import test, status
 from nodeconductor.structure.tests import factories as structure_factories
@@ -32,53 +31,6 @@ class TenantActionsTest(test.APISimpleTestCase):
             response = self.client.post(self.quotas_url, data=quotas_data)
             self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
             mocked_task.assert_called_once_with(self.tenant, quotas=quotas_data)
-
-    @unittest.skip('Skip volume and snapshot test')
-    def test_volume_and_snapshot_quotas_are_created_with_max_instances_quota(self):
-        self.client.force_authenticate(self.staff)
-        nc_settings = {'OPENSTACK_QUOTAS_INSTANCE_RATIOS': {'volumes': 3, 'snapshots': 7}}
-        quotas_data = {'instances': 10}
-
-        with patch('celery.app.base.Celery.send_task') as mocked_task:
-            with self.settings(NODECONDUCTOR=nc_settings):
-                response = self.client.post(self.quotas_url, data=quotas_data)
-
-                quotas_data['volumes'] = 30
-                quotas_data['snapshots'] = 70
-
-                self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-                mocked_task.assert_called_once_with(
-                    'nodeconductor.structure.sync_service_project_links',
-                    (self.service_project_link.to_string(),), {'quotas': quotas_data}, countdown=2)
-
-    @unittest.skip('Skip volume and snapshot test')
-    def test_volume_and_snapshot_quotas_are_not_created_without_max_instances_quota(self):
-        self.client.force_authenticate(self.staff)
-        quotas_data = {'security_group_count': 100}
-
-        with patch('celery.app.base.Celery.send_task') as mocked_task:
-            response = self.client.post(self.quotas_url, data=quotas_data)
-            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-            mocked_task.assert_called_once_with(
-                'nodeconductor.structure.sync_service_project_links',
-                (self.service_project_link.to_string(),), {'quotas': quotas_data}, countdown=2)
-
-    @unittest.skip('Skip volume and snapshot test')
-    def test_volume_and_snapshot_values_not_provided_in_settings_use_default_values(self):
-        self.client.force_authenticate(self.staff)
-        quotas_data = {'instances': 10}
-
-        with patch('celery.app.base.Celery.send_task') as mocked_task:
-            with self.settings(NODECONDUCTOR={}):
-                response = self.client.post(self.quotas_url, data=quotas_data)
-
-                quotas_data['volumes'] = 40
-                quotas_data['snapshots'] = 200
-
-                self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-                mocked_task.assert_called_once_with(
-                    'nodeconductor.structure.sync_service_project_links',
-                    (self.service_project_link.to_string(),), {'quotas': quotas_data}, countdown=2)
 
     def test_staff_user_can_create_external_network(self):
         self.client.force_authenticate(user=self.staff)
