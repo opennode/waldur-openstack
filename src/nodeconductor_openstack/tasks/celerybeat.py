@@ -1,6 +1,6 @@
 import logging
 
-from celery import shared_task, chain
+from celery import shared_task
 from django.utils import six, timezone
 
 from nodeconductor.core import tasks as core_tasks, utils as core_utils
@@ -12,101 +12,116 @@ from . import models
 logger = logging.getLogger(__name__)
 
 
+class BackgroundPullTask(core_tasks.Task):
+
+    def run(self, serialized_instance):
+        instance = core_utils.deserialize_instance(serialized_instance)
+        try:
+            self.pull(instance)
+        except ServiceBackendError as e:
+            self.on_pull_fail(instance, e)
+        else:
+            self.on_pull_success(instance)
+
+    def pull(self, instance):
+        """ Pull instance from backend.
+
+            This method should not handle backend exception.
+        """
+        raise NotImplementedError('Pull task should implement pull method.')
+
+    def on_pull_fail(self, instance, error):
+        error_message = six.text_type(error)
+        self.log_error_message(instance, error_message)
+        self.set_instance_erred(instance, error_message)
+
+    def on_pull_success(self, instance):
+        if instance.state == instance.States.ERRED:
+            instance.recover()
+            instance.error_message = ''
+            instance.save(update_fields=['state', 'error_message'])
+
+    def log_error_message(self, instance, error_message):
+        logger_message = 'Failed to pull %s %s (PK: %s). Error: %s' % (
+            instance.__class__.__name__, instance.name, instance.pk, error_message)
+        if instance.state == instance.States.ERRED:  # report error on debug level if instance already was erred.
+            logger.debug(logger_message)
+        else:
+            logger.error(logger_message, exc_info=True)
+
+    def set_instance_erred(self, instance, error_message):
+        """ Mark instance as erred and save error message """
+        instance.set_erred()
+        instance.error_message = error_message
+        instance.save(update_fields=['state', 'error_message'])
+
+
+class VolumeBackgroundPullTask(BackgroundPullTask):
+
+    def pull(self, volume):
+        backend = volume.get_backend()
+        backend.pull_volume(volume)
+
+
+class InstanceBackgroundPullTask(BackgroundPullTask):
+    model = models.Instance
+
+    def pull(self, instance):
+        backend = instance.get_backend()
+        backend.pull_instance(instance)
+
+    def on_pull_success(self, instance):
+        # Override method for instance because its pull operation updates state too.
+        # Should be rewritten in NC-1207. Pull operation should update only
+        # runtime state.
+        if instance.state != self.model.States.ERRED and instance.error_message:
+            # for instance state should be updated during pull
+            instance.error_message = ''
+            instance.save(update_fields=['error_message'])
+
+
+class TenantBackgroundPullTask(BackgroundPullTask):
+
+    def pull(self, tenant):
+        backend = tenant.get_backend()
+        backend.pull_tenant(tenant)
+
+    def on_pull_success(self, tenant):
+        super(TenantBackgroundPullTask, self).on_pull_success(tenant)
+        try:
+            backend = tenant.get_backend()
+            backend.pull_tenant_security_groups(tenant)
+            backend.pull_tenant_floating_ips(tenant)
+            backend.pull_tenant_quotas(tenant)
+        except ServiceBackendError as e:
+            error_message = six.text_type(e)
+            logger.warning('Failed to pull properties of tenant: %s (PK: %s). Error: %s' % (
+                tenant, tenant.pk, error_message))
+
+
 @shared_task(name='nodeconductor.openstack.pull_tenants')
 def pull_tenants():
-    for tenant in models.Tenant.objects.filter(state=models.Tenant.States.ERRED):
+    States = models.Tenant.States
+    for tenant in models.Tenant.objects.filter(state__in=[States.ERRED, States.OK]).exclude(backend_id=''):
         serialized_tenant = core_utils.serialize_instance(tenant)
-        core_tasks.BackendMethodTask().apply_async(
-            args=(serialized_tenant, 'pull_tenant'),
-            link=recover_tenant.si(serialized_tenant),
-            link_error=core_tasks.ErrorMessageTask().s(serialized_tenant),
-        )
-    for tenant in models.Tenant.objects.filter(state=models.Tenant.States.OK):
-        serialized_tenant = core_utils.serialize_instance(tenant)
-        core_tasks.BackendMethodTask().apply_async(
-            args=(serialized_tenant, 'pull_tenant'),
-            link_error=core_tasks.ErrorStateTransitionTask().s(serialized_tenant),
-        )
-
-
-@shared_task
-def recover_tenant(serialized_tenant):
-    chain(
-        core_tasks.RecoverTask().si(serialized_tenant),
-        core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_security_groups'),
-        core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_floating_ips'),
-        core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_quotas'),
-    ).delay()
-
-
-@shared_task(name='nodeconductor.openstack.pull_tenants_properties')
-def pull_tenants_properties():
-    for tenant in models.Tenant.objects.filter(state=models.Tenant.States.OK):
-        serialized_tenant = core_utils.serialize_instance(tenant)
-        core_tasks.BackendMethodTask().delay(serialized_tenant, 'pull_tenant_security_groups')
-        core_tasks.BackendMethodTask().delay(serialized_tenant, 'pull_tenant_floating_ips')
-        core_tasks.BackendMethodTask().delay(serialized_tenant, 'pull_tenant_quotas')
+        TenantBackgroundPullTask().delay(serialized_tenant)
 
 
 @shared_task(name='nodeconductor.openstack.pull_instances')
 def pull_instances():
-    for tenant in models.Tenant.objects.exclude(state=models.Tenant.States.ERRED):
-        # group instance update by tenant to reduce amount of logins and update
-        # all instance with one session.
-        # Ideally session should be cached in backend module.
-        pull_tenant_instances.delay(core_utils.serialize_instance(tenant))
-
-
-@shared_task
-def pull_tenant_instances(serialized_tenant):
-    tenant = core_utils.deserialize_instance(serialized_tenant)
-    backend = tenant.get_backend()
     States = models.Instance.States
-    stable_states = [States.ONLINE, States.OFFLINE, States.ERRED]
-    for instance in tenant.instances.filter(state__in=stable_states).exclude(backend_id=''):
-        try:
-            backend.pull_instance(instance)
-        except ServiceBackendError as e:
-            message = six.text_type(e)
-            logger.error('Failed to pull instance %s (PK: %s). Error: %s' % (instance.name, instance.pk, message))
-            instance.set_erred()
-            instance.error_message = message
-            instance.save(update_fields=['state', 'error_message'])
-        else:
-            if instance.state != States.ERRED and instance.error_message:
-                # for instance state should be updated during pull
-                instance.error_message = ''
-                instance.save(update_fields=['error_message'])
+    for instance in models.Instance.objects.filter(
+            state__in=[States.ERRED, States.ONLINE, States.OFFLINE]).exclude(backend_id=''):
+        serialized_instance = core_utils.serialize_instance(instance)
+        InstanceBackgroundPullTask().delay(serialized_instance)
 
 
 @shared_task(name='nodeconductor.openstack.pull_volumes')
 def pull_volumes():
-    for tenant in models.Tenant.objects.exclude(state=models.Tenant.States.ERRED):
-        # group volumes update by tenant to reduce amount of logins and update
-        # all volumes with one session.
-        # Ideally session should be cached in backend module.
-        pull_tenant_volumes.delay(core_utils.serialize_instance(tenant))
-
-
-@shared_task
-def pull_tenant_volumes(serialized_tenant):
-    tenant = core_utils.deserialize_instance(serialized_tenant)
-    backend = tenant.get_backend()
     States = models.Volume.States
-    for volume in tenant.volumes.filter(state__in=[States.OK, States.ERRED]).exclude(backend_id=''):
-        try:
-            backend.pull_volume(volume)
-        except ServiceBackendError as e:
-            message = six.text_type(e)
-            logger.error('Failed to pull volume %s (PK: %s). Error: %s' % (volume.name, volume.pk, message))
-            volume.set_erred()
-            volume.error_message = message
-            volume.save(update_fields=['state', 'error_message'])
-        else:
-            if volume.state == States.ERRED:
-                volume.recover()
-                volume.error_message = ''
-                volume.save(update_fields=['state', 'error_message'])
+    for volume in models.Volume.objects.filter(state__in=[States.ERRED, States.OK]).exclude(backend_id=''):
+        serialized_volume = core_utils.serialize_instance(volume)
+        VolumeBackgroundPullTask().delay(serialized_volume)
 
 
 @shared_task(name='nodeconductor.openstack.schedule_backups')

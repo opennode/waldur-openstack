@@ -17,6 +17,7 @@ from nodeconductor.core import utils as core_utils
 from nodeconductor.core.fields import JsonField, MappedChoiceField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
+from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import models
 from .backend import OpenStackBackendError
@@ -515,6 +516,17 @@ class BackupRestorationSerializer(BasicBackupRestorationSerializer):
         return backup_restoration
 
 
+class NestedVolumeSerializer(serializers.HyperlinkedModelSerializer,
+                             structure_serializers.BasicResourceSerializer):
+    state = serializers.ReadOnlyField(source='get_state_display')
+
+    class Meta:
+        model = models.Volume
+        fields = 'url', 'uuid', 'name', 'state', 'bootable', 'size', 'resource_type'
+        view_name = 'openstack-volume-detail'
+        lookup_field = 'uuid'
+
+
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     service = serializers.HyperlinkedRelatedField(
@@ -565,6 +577,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset=models.FloatingIP.objects.all(),
         write_only=True
     )
+    volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
@@ -572,17 +585,21 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'backups', 'backup_schedules', 'flavor_disk',
-            'tenant', 'tenant_name', 'floating_ip'
+            'tenant', 'tenant_name', 'floating_ip', 'volumes',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment', 'tenant'
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
+            'tenant', 'floating_ip'
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + ('flavor_disk',)
 
     def get_fields(self):
         fields = super(InstanceSerializer, self).get_fields()
-        if 'system_volume_size' in fields:
-            fields['system_volume_size'].required = True
+        field = fields.get('floating_ip')
+        if field:
+            field.query_params = {'status': 'DOWN'}
+            field.value_field = 'url'
+            field.display_name_field = 'address'
         return fields
 
     @staticmethod
@@ -757,11 +774,37 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         return instance
 
 
-class InstanceImportSerializer(structure_serializers.BaseResourceImportSerializer):
+class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer):
 
     class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
-        model = models.Instance
-        view_name = 'openstack-instance-detail'
+        model = models.Tenant
+        view_name = 'openstack-tenant-detail'
+
+    def create(self, validated_data):
+        try:
+            service_project_link = models.OpenStackServiceProjectLink.objects.get(
+                service=self.context['service'],
+                project=validated_data['project']
+            )
+        except models.OpenStackServiceProjectLink.DoesNotExist:
+            raise serializers.ValidationError(
+                'Service project link for selected project does not exist.'
+            )
+
+        backend = self.context['service'].get_backend()
+        backend_id = validated_data['backend_id']
+
+        try:
+            tenant = backend.import_tenant(backend_id, service_project_link)
+        except OpenStackBackendError as e:
+            raise serializers.ValidationError({
+                'backend_id': "Can't import tenant with ID %s. Reason: %s" % (backend_id, e)
+            })
+        return tenant
+
+
+class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSerializer):
+    class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
         fields = structure_serializers.BaseResourceImportSerializer.Meta.fields + ('tenant',)
 
     tenant = serializers.HyperlinkedRelatedField(
@@ -770,15 +813,59 @@ class InstanceImportSerializer(structure_serializers.BaseResourceImportSerialize
         lookup_field='uuid',
         write_only=True)
 
+    def get_fields(self):
+        fields = super(BaseTenantImportSerializer, self).get_fields()
+        request = self.context['request']
+        fields['tenant'].queryset = filter_queryset_for_user(
+            models.Tenant.objects.all(), request.user
+        )
+        return fields
+
+    def validate(self, attrs):
+        attrs = super(BaseTenantImportSerializer, self).validate(attrs)
+        tenant = attrs['tenant']
+        project = attrs['project']
+
+        if tenant.service_project_link.project != project:
+            raise serializers.ValidationError({
+                'project': 'Tenant should belong to the same project.'
+            })
+        return attrs
+
     def create(self, validated_data):
         tenant = validated_data['tenant']
+        backend_id = validated_data['backend_id']
         backend = tenant.get_backend()
+
         try:
-            instance = backend.import_instance(validated_data['backend_id'])
+            return self.import_resource(backend, backend_id)
         except OpenStackBackendError as e:
-            raise serializers.ValidationError(
-                {'backend_id': "Can't import instance with ID %s. Reason: %s" % (validated_data['backend_id'], e)})
-        return instance
+            raise serializers.ValidationError({
+                'backend_id': "Can't import resource with ID %s. Reason: %s" % (backend_id, e)
+            })
+
+    def import_resource(self, backend, backend_id):
+        raise NotImplementedError()
+
+
+class InstanceImportSerializer(BaseTenantImportSerializer):
+
+    class Meta(BaseTenantImportSerializer.Meta):
+        model = models.Instance
+        view_name = 'openstack-instance-detail'
+
+    def import_resource(self, backend, backend_id):
+        return backend.import_instance(backend_id)
+
+
+class VolumeImportSerializer(BaseTenantImportSerializer):
+
+    class Meta(BaseTenantImportSerializer.Meta):
+        model = models.Volume
+        view_name = 'openstack-volume-detail'
+
+    def import_resource(self, backend, backend_id):
+        return backend.import_volume(backend_id)
 
 
 class VolumeExtendSerializer(serializers.Serializer):
@@ -787,7 +874,7 @@ class VolumeExtendSerializer(serializers.Serializer):
     def get_fields(self):
         fields = super(VolumeExtendSerializer, self).get_fields()
         if self.instance:
-            fields['disk_size'].min_value = self.instance.size + 1
+            fields['disk_size'].min_value = self.instance.size + 1024
         return fields
 
     def validate(self, attrs):
@@ -799,6 +886,10 @@ class VolumeExtendSerializer(serializers.Serializer):
         if volume.instances.all().exclude(state=models.Instance.States.OFFLINE).exists():
             raise serializers.ValidationError({
                 'non_field_errors': ['All instances attached to the volume should be in OFFLINE state']
+            })
+        if volume.bootable:
+            raise serializers.ValidationError({
+                'non_field_errors': ["Can't detach root device volume."]
             })
         return attrs
 
@@ -834,6 +925,10 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
         if value is not None:
             spl = self.instance.service_project_link
 
+            if value.name == self.instance.flavor_name:
+                raise serializers.ValidationError(
+                    "New flavor is the same as current.")
+
             if value.settings != spl.service.settings:
                 raise serializers.ValidationError(
                     "New flavor is not within the same service settings")
@@ -856,6 +951,10 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
         instance.flavor_name = flavor.name
         instance.save(update_fields=['ram', 'cores', 'flavor_name', 'flavor_disk'])
         return instance
+
+
+class InstanceDeleteSerializer(serializers.Serializer):
+    delete_volumes = serializers.BooleanField(default=True)
 
 
 class TenantSerializer(structure_serializers.BaseResourceSerializer):
@@ -1168,13 +1267,13 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
             **BasicDRBackupRestorationSerializer.Meta.extra_kwargs
         )
 
-    def validate_dr_backup(self, dr_backup):
+    def validate_backup(self, dr_backup):
         if dr_backup.state != models.DRBackup.States.OK:
             raise serializers.ValidationError('Cannot start restoration of DRBackup if it is not in state OK.')
         return dr_backup
 
     def validate(self, attrs):
-        dr_backup = attrs['dr_backup']
+        dr_backup = attrs['backup']
         tenant = attrs['tenant']
         flavor = attrs['flavor']
         if flavor.settings != tenant.service_project_link.service.settings:
@@ -1194,7 +1293,7 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
     def create(self, validated_data):
         tenant = validated_data['tenant']
         flavor = validated_data['flavor']
-        dr_backup = validated_data['dr_backup']
+        dr_backup = validated_data['backup']
         # instance that will be restored
         instance = models.Instance.objects.create(
             name=validated_data.pop('name', None) or dr_backup.metadata['name'],

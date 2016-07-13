@@ -1,3 +1,5 @@
+import logging
+
 from celery import chain, group
 
 from nodeconductor.core import tasks, executors, utils
@@ -9,6 +11,9 @@ from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBac
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask,
                     LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed,
                     SetBackupErredTask, ForceDeleteBackupTask, SetBackupRestorationErredTask)
+
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityGroupCreateExecutor(executors.CreateExecutor):
@@ -248,6 +253,15 @@ class VolumeDeleteExecutor(executors.DeleteExecutor):
             return tasks.StateTransitionTask().si(serialized_volume, state_transition='begin_deleting')
 
 
+class VolumePullExecutor(executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        return tasks.BackendMethodTask().si(
+            serialized_volume, 'pull_volume',
+            state_transition='begin_updating')
+
+
 class SnapshotCreateExecutor(executors.CreateExecutor):
 
     @classmethod
@@ -287,6 +301,15 @@ class SnapshotDeleteExecutor(executors.DeleteExecutor):
             )
         else:
             return tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
+
+
+class SnapshotPullExecutor(executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
+        return tasks.BackendMethodTask().si(
+            serialized_snapshot, 'pull_snapshot',
+            state_transition='begin_updating')
 
 
 class DRBackupCreateExecutor(executors.BaseChordExecutor):
@@ -523,13 +546,66 @@ class InstanceDeleteExecutor(executors.DeleteExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
-        if instance.backend_id:
-            return chain(
-                tasks.BackendMethodTask().si(serialized_instance, 'delete_instance', state_transition='begin_deleting'),
-                PollBackendCheckTask().si(serialized_instance, 'is_instance_deleted'),
+        delete_volumes = kwargs.pop('delete_volumes', True)
+        delete_instance = cls.get_delete_instance_tasks(serialized_instance)
+
+        # Case 1. Instance does not exist at backend
+        if not instance.backend_id:
+            return tasks.StateTransitionTask().si(
+                serialized_instance,
+                state_transition='begin_deleting'
             )
+
+        # Case 2. Instance exists at backend.
+        # Data volumes are deleted by OpenStack because delete_on_termination=True
+        elif delete_volumes:
+            return chain(delete_instance)
+
+        # Case 3. Instance exists at backend.
+        # Data volumes are detached and not deleted.
         else:
-            return tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_deleting')
+            detach_volumes = cls.get_detach_data_volumes_tasks(instance, serialized_instance)
+            return chain(detach_volumes + delete_instance)
+
+    @classmethod
+    def get_delete_instance_tasks(cls, serialized_instance):
+        return [
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='delete_instance',
+                state_transition='begin_deleting',
+            ),
+            PollBackendCheckTask().si(
+                serialized_instance,
+                backend_check_method='is_instance_deleted'
+            ),
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='pull_instance_volumes'
+            )
+        ]
+
+    @classmethod
+    def get_detach_data_volumes_tasks(cls, instance, serialized_instance):
+        data_volumes = instance.volumes.all().filter(bootable=False)
+        detach_volumes = [
+            tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='detach_instance_volume',
+                backend_volume_id=volume.backend_id
+            )
+            for volume in data_volumes
+        ]
+        check_volumes = [
+            PollRuntimeStateTask().si(
+                utils.serialize_instance(volume),
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error'
+            )
+            for volume in data_volumes
+        ]
+        return detach_volumes + check_volumes
 
 
 class InstanceFlavorChangeExecutor(BaseExecutor):
@@ -546,7 +622,8 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
         )
 
     @classmethod
-    def get_task_signature(cls, instance, serialized_instance, flavor, **kwargs):
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+        flavor = kwargs.pop('flavor')
         return chain(
             tasks.BackendMethodTask().si(
                 serialized_instance,
@@ -561,7 +638,7 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
                 erred_state='ERRED'
             ),
             tasks.BackendMethodTask().si(
-                instance=serialized_instance,
+                serialized_instance,
                 backend_method='confirm_instance_resize'
             ),
             PollRuntimeStateTask().si(
@@ -573,13 +650,37 @@ class InstanceFlavorChangeExecutor(BaseExecutor):
         )
 
     @classmethod
-    def get_success_signature(cls, instance, serialized_instance, flavor, **kwargs):
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        flavor = kwargs.pop('flavor')
         return LogFlavorChangeSucceeded().si(
             serialized_instance, utils.serialize_instance(flavor), state_transition='set_resized')
 
     @classmethod
-    def get_failure_signature(cls, instance, serialized_instance, flavor, **kwargs):
+    def get_failure_signature(cls, instance, serialized_instance, **kwargs):
+        flavor = kwargs.pop('flavor')
         return LogFlavorChangeFailed().s(serialized_instance, utils.serialize_instance(flavor))
+
+
+class InstancePullExecutor(executors.BaseExecutor):
+    @classmethod
+    def pre_apply(cls, instance, **kwargs):
+        # XXX: Should be changed after migrating from the old-style states (NC-1207).
+        logger.info("About to pull instance with uuid %s from the backend.", instance.uuid.hex)
+
+    @classmethod
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+        # XXX: State transition should be added after migrating from the old-style states (NC-1207).
+        return tasks.BackendMethodTask().si(serialized_instance, backend_method='pull_instance')
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        # XXX: On success instance's state is pulled from the backend. Must be changed in NC-1207.
+        logger.info("Successfully pulled data from the backend for instance with uuid %s", instance.uuid.hex)
+
+    @classmethod
+    def get_failure_signature(cls, instance, serialized_instance, **kwargs):
+        # XXX: This method is overridden to support old-style states. Must be changed in NC-1207.
+        return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_erred')
 
 
 class VolumeExtendExecutor(executors.ActionExecutor):
@@ -626,7 +727,8 @@ class VolumeExtendExecutor(executors.ActionExecutor):
             tasks.BackendMethodTask().si(
                 serialized_volume,
                 backend_method='extend_volume',
-                new_size=new_size
+                new_size=new_size,
+                state_transition='begin_updating'
             ),
             PollRuntimeStateTask().si(
                 serialized_volume,

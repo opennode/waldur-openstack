@@ -12,18 +12,51 @@ from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
 from nodeconductor.core.views import StateExecutorViewSet
-from nodeconductor.structure import views as structure_views
+from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import filters as structure_filters
 from nodeconductor.structure.managers import filter_queryset_for_user
+from nodeconductor.structure.views import safe_operation
 
 from . import Types, models, filters, serializers, executors
 from .log import event_logger
 
 
-class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
+class GenericImportMixin(object):
+    """
+    This mixin selects serializer class by matching resource_type query parameter
+    against model name using import_serializers mapping.
+    """
+    import_serializers = {}
+
+    def _can_import(self):
+        return self.import_serializers != {}
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST' and self.action == 'link':
+            resource_type = self.request.data.get('resource_type') or \
+                            self.request.query_params.get('resource_type')
+
+            items = self.import_serializers.items()
+            if len(items) == 1:
+                model_cls, serializer_cls = items[0]
+                return serializer_cls
+
+            for model_cls, serializer_cls in items:
+                if resource_type == SupportedServices.get_name_for_model(model_cls):
+                    return serializer_cls
+
+        return super(GenericImportMixin, self).get_serializer_class()
+
+
+class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceViewSet):
     queryset = models.OpenStackService.objects.all()
     serializer_class = serializers.ServiceSerializer
-    import_serializer_class = serializers.InstanceImportSerializer
+    import_serializer_class = serializers.TenantImportSerializer
+    import_serializers = {
+        models.Instance: serializers.InstanceImportSerializer,
+        models.Volume: serializers.VolumeImportSerializer,
+        models.Tenant: serializers.TenantImportSerializer,
+    }
 
     def list(self, request, *args, **kwargs):
         """
@@ -90,6 +123,16 @@ class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
         """
         return super(OpenStackServiceViewSet, self).retrieve(request, *args, **kwargs)
 
+    def get_import_context(self):
+        context = {'resource_type': self.request.query_params.get('resource_type')}
+        tenant_uuid = self.request.query_params.get('tenant_uuid')
+        if tenant_uuid:
+            queryset = filter_queryset_for_user(models.Tenant.objects.all(), self.request.user)
+            tenant = queryset.filter(service_project_link__service=self.get_object(),
+                                     uuid=tenant_uuid).first()
+            context['tenant'] = tenant
+        return context
+
 
 class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkViewSet):
     queryset = models.OpenStackServiceProjectLink.objects.all()
@@ -141,10 +184,10 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class InstanceViewSet(structure_views.BaseResourceViewSet):
+class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullMixin):
     """
     OpenStack instance permissions
-    ------------------------------
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     - Staff members can list all available VM instances in any service.
     - Customer owners can list all VM instances in all the services that belong to any of the customers they own.
@@ -154,7 +197,7 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
       managers in.
 
     OpenStack instance states
-    -------------------------
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
 
     Each instance has a **state** field that defines its current operational state.
     Instance has a FSM that defines possible state transitions. If a request is made to perform an operation
@@ -164,17 +207,16 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
 
     Any modification of an instance in unstable or PROVISIONING_SCHEDULED state is prohibited
     and will fail with 409 response code. Assuming stable states are ONLINE and OFFLINE.
-
-    A graph of possible state transitions is shown below.
-
-    .. image:: /images/instance-states.png
     """
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
     filter_class = filters.InstanceFilter
+    pull_executor = executors.InstancePullExecutor
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
+        'change_flavor': serializers.InstanceFlavorChangeSerializer,
+        'destroy': serializers.InstanceDeleteSerializer,
     }
 
     def list(self, request, *args, **kwargs):
@@ -230,17 +272,6 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
         - POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/restart/
 
         If instance is in the state that does not allow this transition, error code will be returned.
-
-        Deletion of an instance is done through sending a **DELETE** request to the instance URI.
-        Valid request example (token is user specific):
-
-        .. code-block:: http
-
-            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-        Only stopped instances or instances in ERRED state can be deleted.
         """
         return super(InstanceViewSet, self).retrieve(request, *args, **kwargs)
 
@@ -256,14 +287,61 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             flavor=serializer.validated_data['flavor'],
             skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'],
             floating_ip=serializer.validated_data.get('floating_ip'),
+            is_heavy_task=True,
         )
 
-    def perform_managed_resource_destroy(self, instance, force=False):
-        executors.InstanceDeleteExecutor.execute(instance, force=force)
+    async_executor = True
+
+    @safe_operation(valid_state=(models.Instance.States.OFFLINE, models.Instance.States.ERRED))
+    def destroy(self, request, resource, uuid=None):
+        """
+        Deletion of an instance is done through sending a **DELETE** request to the instance URI.
+        Valid request example (token is user specific):
+
+        .. code-block:: http
+
+            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+        Only stopped instances or instances in ERRED state can be deleted.
+
+        By default when instance is destroyed, all data volumes
+        attached to it are destroyed too. In order to preserve data
+        volumes use query parameter ?delete_volumes=false
+        In this case data volumes are detached from the instance and
+        then instance is destroyed. Note that system volume is deleted anyway.
+        For example:
+
+        .. code-block:: http
+
+            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/?delete_volumes=false HTTP/1.1
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+        """
+        serializer = self.get_serializer(data=request.query_params)
+        serializer.is_valid()
+        delete_volumes = serializer.validated_data['delete_volumes']
+
+        force = resource.state == models.Instance.States.ERRED
+        executors.InstanceDeleteExecutor.execute(
+            resource,
+            force=force,
+            delete_volumes=delete_volumes,
+            async=self.async_executor
+        )
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)
         return serializer or super(InstanceViewSet, self).get_serializer_class()
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=(models.Instance.States.ERRED,
+                                                 models.Instance.States.ONLINE,
+                                                 models.Instance.States.OFFLINE))
+    def pull(self, request, instance, uuid=None):
+        self.pull_executor.execute(instance)
 
     @decorators.detail_route(methods=['post'])
     def allocate_floating_ip(self, request, uuid=None):
@@ -378,11 +456,12 @@ class InstanceViewSet(structure_views.BaseResourceViewSet):
             executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
 
     resize.title = 'Resize virtual machine'
+    resize.deprecated = True
 
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
     def change_flavor(self, request, instance, uuid=None):
-        serializer = serializers.InstanceFlavorChangeSerializer(instance, data=request.data)
+        serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
@@ -810,12 +889,14 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
+                                       structure_views.PullMixin,
                                        StateExecutorViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     delete_executor = executors.TenantDeleteExecutor
+    pull_executor = executors.TenantPullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
     serializers = {
@@ -980,18 +1061,25 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
+                                       structure_views.PullMixin,
                                        StateExecutorViewSet)):
     queryset = models.Volume.objects.all()
     serializer_class = serializers.VolumeSerializer
     create_executor = executors.VolumeCreateExecutor
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
+    pull_executor = executors.VolumePullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
+
+    def get_serializer_class(self):
+        if self.action == 'extend':
+            return serializers.VolumeExtendSerializer
+        return super(VolumeViewSet, self).get_serializer_class()
 
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def extend(self, request, volume, uuid=None):
-        serializer = serializers.VolumeExtendSerializer(volume, data=request.data)
+        serializer = self.get_serializer(volume, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
@@ -1001,12 +1089,14 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewMixin,
+                                         structure_views.PullMixin,
                                          StateExecutorViewSet)):
     queryset = models.Snapshot.objects.all()
     serializer_class = serializers.SnapshotSerializer
     create_executor = executors.SnapshotCreateExecutor
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
+    pull_executor = executors.SnapshotPullExecutor
     filter_class = structure_filters.BaseResourceStateFilter
 
 

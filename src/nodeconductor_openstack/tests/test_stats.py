@@ -1,4 +1,4 @@
-from  __future__ import unicode_literals
+from __future__ import unicode_literals
 
 from rest_framework import test, status
 from nodeconductor.structure.tests import factories as structure_factories

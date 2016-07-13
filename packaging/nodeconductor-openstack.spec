@@ -1,13 +1,13 @@
 Name: nodeconductor-openstack
 Summary: OpenStack plugin for NodeConductor
 Group: Development/Libraries
-Version: 0.4.4
+Version: 0.4.10
 Release: 1.el7
 License: Copyright 2016 OpenNode LLC. All rights reserved.
 Url: http://nodeconductor.com
 Source0: %{name}-%{version}.tar.gz
 
-Requires: nodeconductor > 0.102.2
+Requires: nodeconductor > 0.102.4
 Requires: python-ceilometerclient = 2.3.0
 Requires: python-cinderclient = 1.6.0
 Requires: python-glanceclient = 1:2.0.0
@@ -33,15 +33,34 @@ python setup.py build
 
 %install
 rm -rf %{buildroot}
-python setup.py install --single-version-externally-managed -O1 --root=%{buildroot} --record=INSTALLED_FILES
+%{__python} setup.py install -O1 --root=%{buildroot}
 
 %clean
 rm -rf %{buildroot}
 
-%files -f INSTALLED_FILES
+%files
 %defattr(-,root,root)
+%{python_sitelib}/*
 
 %changelog
+* Thu Jul 7 2016 Jenkins <jenkins@opennodecloud.com> - 0.4.10-1.el7
+- New upstream release
+
+* Thu Jul 7 2016 Jenkins <jenkins@opennodecloud.com> - 0.4.9-1.el7
+- New upstream release
+
+* Wed Jul 6 2016 Jenkins <jenkins@opennodecloud.com> - 0.4.8-1.el7
+- New upstream release
+
+* Tue Jul 5 2016 Jenkins <jenkins@opennodecloud.com> - 0.4.7-1.el7
+- New upstream release
+
+* Tue Jul 5 2016 Jenkins <jenkins@opennodecloud.com> - 0.4.6-1.el7
+- New upstream release
+
+* Mon Jul 4 2016 Jenkins <jenkins@opennodecloud.com> - 0.4.5-1.el7
+- New upstream release
+
 * Thu Jun 30 2016 Jenkins <jenkins@opennodecloud.com> - 0.4.4-1.el7
 - New upstream release
 

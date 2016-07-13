@@ -108,20 +108,31 @@ def check_quota_threshold_breach(sender, instance, **kwargs):
     quota = instance
     alert_threshold = 0.8
 
-    if quota.scope is not None and quota.is_exceeded(threshold=alert_threshold):
-        if isinstance(quota.scope, Tenant):
-            tenant = quota.scope
-            event_logger.openstack_tenant_quota.warning(
-                '{quota_name} quota threshold has been reached for tenant {tenant_name}.',
-                event_type='quota_threshold_reached',
-                event_context={
-                    'quota': quota,
-                    'tenant': tenant,
-                    'service': tenant.service_project_link.service,
-                    'project': tenant.service_project_link.project,
-                    'project_group': tenant.service_project_link.project.project_groups.first(),
-                    'threshold': alert_threshold * quota.limit,
-                })
+    if not quota.tracker.has_changed('usage') and not quota.tracker.has_changed('limit'):
+        return  # no need to log warning if usage or limit was not changed.
+
+    if not isinstance(quota.scope, Tenant) or not quota.is_exceeded(threshold=alert_threshold):
+        return
+
+    previous_usage = quota.tracker.previous('usage')
+    previous_limit = quota.tracker.previous('limit')
+    was_quota_exceeded = previous_limit * alert_threshold < previous_usage
+
+    if was_quota_exceeded:
+        return  # if quota was exceeded warning should be already logged.
+
+    tenant = quota.scope
+    event_logger.openstack_tenant_quota.warning(
+        '{quota_name} quota threshold has been reached for tenant {tenant_name}.',
+        event_type='quota_threshold_reached',
+        event_context={
+            'quota': quota,
+            'tenant': tenant,
+            'service': tenant.service_project_link.service,
+            'project': tenant.service_project_link.project,
+            'project_group': tenant.service_project_link.project.project_groups.first(),
+            'threshold': alert_threshold * quota.limit,
+        })
 
 
 def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
