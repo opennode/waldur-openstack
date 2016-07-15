@@ -4,6 +4,9 @@ import logging
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
+from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
+from nodeconductor.structure import filters as structure_filters
+
 from .log import event_logger
 from .models import SecurityGroup, SecurityGroupRule, Instance, Tenant
 from .tasks import register_instance_in_zabbix
@@ -105,17 +108,54 @@ def check_quota_threshold_breach(sender, instance, **kwargs):
     quota = instance
     alert_threshold = 0.8
 
-    if quota.scope is not None and quota.is_exceeded(threshold=alert_threshold):
-        if isinstance(quota.scope, Tenant):
-            tenant = quota.scope
-            event_logger.openstack_tenant_quota.warning(
-                '{quota_name} quota threshold has been reached for tenant {tenant_name}.',
-                event_type='quota_threshold_reached',
-                event_context={
-                    'quota': quota,
-                    'tenant': tenant,
-                    'service': tenant.service_project_link.service,
-                    'project': tenant.service_project_link.project,
-                    'project_group': tenant.service_project_link.project.project_groups.first(),
-                    'threshold': alert_threshold * quota.limit,
-                })
+    if not quota.tracker.has_changed('usage') and not quota.tracker.has_changed('limit'):
+        return  # no need to log warning if usage or limit was not changed.
+
+    if not isinstance(quota.scope, Tenant) or not quota.is_exceeded(threshold=alert_threshold):
+        return
+
+    previous_usage = quota.tracker.previous('usage')
+    previous_limit = quota.tracker.previous('limit')
+    was_quota_exceeded = previous_limit * alert_threshold < previous_usage
+
+    if was_quota_exceeded:
+        return  # if quota was exceeded warning should be already logged.
+
+    tenant = quota.scope
+    event_logger.openstack_tenant_quota.warning(
+        '{quota_name} quota threshold has been reached for tenant {tenant_name}.',
+        event_type='quota_threshold_reached',
+        event_context={
+            'quota': quota,
+            'tenant': tenant,
+            'service': tenant.service_project_link.service,
+            'project': tenant.service_project_link.project,
+            'project_group': tenant.service_project_link.project.project_groups.first(),
+            'threshold': alert_threshold * quota.limit,
+        })
+
+
+def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
+    """ Delete user ssh keys from tenants that he does not have access now. """
+    tenants = Tenant.objects.filter(**{sender.__name__.lower(): structure})
+    ssh_keys = core_models.SshPublicKey.objects.filter(user=user)
+    for tenant in tenants:
+        if user.has_perm('openstack.change_tenant', tenant):
+            continue  # no need to delete ssh keys if user still have permissions for tenant.
+        serialized_tenant = core_utils.serialize_instance(tenant)
+        for key in ssh_keys:
+            core_tasks.BackendMethodTask().delay(
+                serialized_tenant, 'remove_ssh_key_from_tenant', key.name, key.fingerprint)
+
+
+def remove_ssh_key_from_all_tenants_on_it_deletion(sender, instance, **kwargs):
+    """ Delete key from all tenants that are accessible for user on key deletion. """
+    ssh_key = instance
+    user = ssh_key.user
+    tenants = structure_filters.filter_queryset_for_user(Tenant.objects.all(), user)
+    for tenant in tenants:
+        if not user.has_perm('openstack.change_tenant', tenant):
+            continue
+        serialized_tenant = core_utils.serialize_instance(tenant)
+        core_tasks.BackendMethodTask().delay(
+            serialized_tenant, 'remove_ssh_key_from_tenant', ssh_key.name, ssh_key.fingerprint)

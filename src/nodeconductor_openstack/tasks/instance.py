@@ -2,9 +2,9 @@ import logging
 
 from celery import shared_task
 
-from nodeconductor.core.tasks import save_error_message, transition
+from nodeconductor.core.tasks import save_error_message, transition, ErrorStateTransitionTask
 
-from ..models import Instance
+from ..models import Instance, Volume
 
 
 logger = logging.getLogger(__name__)
@@ -82,3 +82,22 @@ def set_erred(instance_uuid, transition_entity=None):
 @shared_task
 def delete(instance_uuid):
     Instance.objects.get(uuid=instance_uuid).delete()
+
+
+class SetInstanceErredTask(ErrorStateTransitionTask):
+    """ Mark instance as erred and delete resources that were not created. """
+
+    def execute(self, instance):
+        super(SetInstanceErredTask, self).execute(instance)
+
+        # delete volumes if they were not created on backend,
+        # mark as erred if creation was started, but not ended,
+        # leave as is, if they are OK.
+        for volume in instance.volumes.all():
+            if volume.state == Volume.States.CREATION_SCHEDULED:
+                volume.delete()
+            elif volume.state == Volume.States.OK:
+                pass
+            else:
+                volume.set_erred()
+                volume.save(update_fields=['state'])

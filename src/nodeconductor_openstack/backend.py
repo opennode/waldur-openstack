@@ -31,7 +31,7 @@ from novaclient import exceptions as nova_exceptions
 
 from nodeconductor.core.models import StateMixin
 from nodeconductor.core.tasks import send_task
-from nodeconductor.structure import ServiceBackend, ServiceBackendError, log_backend_action
+from nodeconductor.structure import ServiceBackend, ServiceBackendError, log_backend_action, SupportedServices
 
 from . import models
 
@@ -180,8 +180,11 @@ def _update_pulled_fields(instance, imported_instance, fields):
     modified = False
     for field in fields:
         pulled_value = getattr(imported_instance, field)
-        if getattr(instance, field) != pulled_value:
+        current_value = getattr(instance, field)
+        if current_value != pulled_value:
             setattr(instance, field, pulled_value)
+            logger.info("%s's with uuid %s %s field updated from value '%s' to value '%s'",
+                        instance.__class__.__name__, instance.uuid.hex, field, current_value, pulled_value)
             modified = True
     if modified:
         instance.save()
@@ -801,18 +804,22 @@ class OpenStackBackend(ServiceBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    def import_tenant(self, tenant_backend_id, save=True):
-        if save:
-            raise NotImplementedError('Tenant import operation with save == True is not implemented.')
+    def import_tenant(self, tenant_backend_id, service_project_link=None, save=True):
         keystone = self.keystone_admin_client
         try:
             backend_tenant = keystone.tenants.get(tenant_backend_id)
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+
         tenant = models.Tenant()
         tenant.name = backend_tenant.name
         tenant.description = backend_tenant.description
         tenant.backend_id = tenant_backend_id
+
+        if save and service_project_link:
+            tenant.service_project_link = service_project_link
+            tenant.state = models.Tenant.States.OK
+            tenant.save()
         return tenant
 
     @log_backend_action()
@@ -869,7 +876,6 @@ class OpenStackBackend(ServiceBackend):
             flavor = nova.flavors.get(backend_instance.flavor['id'])
             attached_volume_ids = [v.volumeId for v in nova.volumes.get_server_volumes(backend_instance_id)]
         except nova_exceptions.ClientException as e:
-            logger.exception("Failed to lookup instance %s information", backend_instance_id)
             six.reraise(OpenStackBackendError, e)
 
         # import and parse IPs.
@@ -943,27 +949,65 @@ class OpenStackBackend(ServiceBackend):
 
         return instance
 
-    def get_resources_for_import(self):
-        cur_instances = models.Instance.objects.all().values_list('backend_id', flat=True)
+    def get_resources_for_import(self, resource_type=None, tenant=None):
+        if tenant:
+            if resource_type == SupportedServices.get_name_for_model(models.Instance):
+                return self.get_instances_for_import(tenant)
+            elif resource_type == SupportedServices.get_name_for_model(models.Volume):
+                return self.get_volumes_for_import(tenant)
+        else:
+            return self.get_tenants_for_import()
+
+    def get_instances_for_import(self, tenant):
+        cur_instances = set(tenant.instances.values_list('backend_id', flat=True))
+        nova = tenant.get_backend().nova_client
         try:
-            instances = self.nova_client.servers.list()
+            instances = nova.servers.list()
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         return [{
             'id': instance.id,
             'name': instance.name or instance.id,
-            'created_at': instance.created,
-            'status': instance.status,
+            'runtime_state': instance.status,
+            'type': SupportedServices.get_name_for_model(models.Instance)
         } for instance in instances
             if instance.id not in cur_instances and
             self._get_instance_state(instance) != models.Instance.States.ERRED]
 
-    def get_managed_resources(self):
+    def get_volumes_for_import(self, tenant):
+        cur_volumes = set(tenant.volumes.values_list('backend_id', flat=True))
+        cinder = tenant.get_backend().cinder_client
         try:
-            ids = [instance.id for instance in self.nova_client.servers.list()]
-            return models.Instance.objects.filter(backend_id__in=ids)
-        except nova_exceptions.ClientException:
-            return []
+            volumes = cinder.volumes.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        return [{
+            'id': volume.id,
+            'name': volume.display_name,
+            'size': self.gb2mb(volume.size),
+            'runtime_state': volume.status,
+            'type': SupportedServices.get_name_for_model(models.Volume)
+        } for volume in volumes if volume.id not in cur_volumes]
+
+    def get_tenants_for_import(self):
+        cur_tenants = set(models.Tenant.objects.filter(
+            service_project_link__service__settings=self.settings
+        ).values_list('backend_id', flat=True))
+        keystone = self.keystone_admin_client
+        try:
+            tenants = keystone.tenants.list()
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return [{
+            'id': tenant.id,
+            'name': tenant.name,
+            'description': tenant.description,
+            'type': SupportedServices.get_name_for_model(models.Tenant)
+        } for tenant in tenants if tenant.id not in cur_tenants]
+
+    def get_managed_resources(self):
+        return []
 
     @log_backend_action()
     def create_instance(self, instance, backend_flavor_id=None,
@@ -982,7 +1026,11 @@ class OpenStackBackend(ServiceBackend):
             except ObjectDoesNotExist:
                 raise OpenStackBackendError('Floating IP with id %s does not exist.', floating_ip_uuid)
         elif not skip_external_ip_assignment:
-            floating_ip = self._get_or_create_floating_ip(tenant)
+            if tenant.external_network_id:
+                floating_ip = self._get_or_create_floating_ip(tenant)
+            else:
+                logger.warning("Assignment of a floating IP is not possible for instance %s with no external network",
+                               instance.uuid)
 
         if floating_ip:
             floating_ip.status = 'BOOKED'
@@ -1456,7 +1504,7 @@ class OpenStackBackend(ServiceBackend):
             return
 
         ext_gw = router.get('external_gateway_info', {})
-        if 'network_id' in ext_gw:
+        if ext_gw and 'network_id' in ext_gw:
             tenant.external_network_id = ext_gw['network_id']
             tenant.save()
             logger.info('Found and set external network with id %s for tenant %s (PK: %s)',
@@ -1733,9 +1781,14 @@ class OpenStackBackend(ServiceBackend):
             logger.info('Successfully released floating ip %s from instance %s',
                         instance.external_ips, instance.uuid)
         instance.decrease_backend_quotas_usage()
-        for volume in instance.volumes.all():  # instance deletion removes instance volumes too.
-            volume.decrease_backend_quotas_usage()
-            volume.delete()
+
+    @log_backend_action()
+    def pull_instance_volumes(self, instance):
+        for volume in instance.volumes.all():
+            if self.is_volume_deleted(volume):
+                with transaction.atomic():
+                    volume.decrease_backend_quotas_usage()
+                    volume.delete()
 
     @log_backend_action()
     def update_tenant(self, tenant):
@@ -1863,6 +1916,43 @@ class OpenStackBackend(ServiceBackend):
         snapshot.size = self.gb2mb(backend_snapshot.size)
         snapshot.save()
         return snapshot
+
+    def import_snapshot(self, backend_snapshot_id, save=True):
+        """ Restore NC Snapshot instance based on backend data. """
+        cinder = self.cinder_client
+        try:
+            backend_snapshot = cinder.volume_snapshots.get(backend_snapshot_id)
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
+        spl = tenant.service_project_link
+        snapshot = models.Snapshot(
+            name=backend_snapshot.display_name,
+            description=backend_snapshot.display_description,
+            size=self.gb2mb(backend_snapshot.size),
+            metadata=backend_snapshot.metadata,
+            backend_id=backend_snapshot_id,
+            tenant=tenant,
+            runtime_state=backend_snapshot.status,
+            service_project_link=spl,
+            state=models.Snapshot.States.OK,
+        )
+        if hasattr(backend_snapshot, 'volume_id'):
+            snapshot.source_volume = models.Volume.objects.filter(backend_id=backend_snapshot.volume_id).first()
+
+        if save:
+            snapshot.save()
+        return snapshot
+
+    @log_backend_action()
+    def pull_snapshot(self, snapshot):
+        import_time = timezone.now()
+        imported_snapshot = self.import_snapshot(snapshot.backend_id, save=False)
+
+        snapshot.refresh_from_db()
+        if snapshot.modified < import_time:
+            update_fields = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
+            _update_pulled_fields(snapshot, imported_snapshot, update_fields)
 
     @log_backend_action()
     def pull_snapshot_runtime_state(self, snapshot):

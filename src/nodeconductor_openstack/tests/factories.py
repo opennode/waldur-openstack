@@ -18,10 +18,11 @@ class OpenStackServiceFactory(factory.DjangoModelFactory):
     customer = factory.SubFactory(structure_factories.CustomerFactory)
 
     @classmethod
-    def get_url(cls, service=None):
+    def get_url(cls, service=None, action=None):
         if service is None:
             service = OpenStackServiceFactory()
-        return 'http://testserver' + reverse('openstack-detail', kwargs={'uuid': service.uuid})
+        url = 'http://testserver' + reverse('openstack-detail', kwargs={'uuid': service.uuid})
+        return url if action is None else url + action + '/'
 
     @classmethod
     def get_list_url(cls):
@@ -102,7 +103,8 @@ class TenantMixin(object):
 
         if 'tenant' not in kwargs:
             tenant, _ = models.Tenant.objects.get_or_create(
-                service_project_link=kwargs['service_project_link'])
+                service_project_link=kwargs['service_project_link'],
+                backend_id='VALID_ID')
             kwargs['tenant'] = tenant
 
         return manager.create(*args, **kwargs)

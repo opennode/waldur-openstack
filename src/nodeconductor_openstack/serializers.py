@@ -17,6 +17,7 @@ from nodeconductor.core import utils as core_utils
 from nodeconductor.core.fields import JsonField, MappedChoiceField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
+from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import models
 from .backend import OpenStackBackendError
@@ -25,7 +26,9 @@ from .backend import OpenStackBackendError
 logger = logging.getLogger(__name__)
 
 
-class ServiceSerializer(structure_serializers.BaseServiceSerializer):
+class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
+                        core_serializers.RequiredFieldsMixin,
+                        structure_serializers.BaseServiceSerializer):
 
     SERVICE_ACCOUNT_FIELDS = {
         'backend_url': 'Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)',
@@ -35,13 +38,34 @@ class ServiceSerializer(structure_serializers.BaseServiceSerializer):
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
         'tenant_name': 'Administrative tenant',
         'availability_zone': 'Default availability zone for provisioned Instances',
-        'external_network_id': 'ID of OpenStack external network that will be connected to new service tenants',
-        'coordinates': 'Coordinates of the datacenter (e.g. {"latitude": 40.712784, "longitude": -74.005941})',
+        'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
+        'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
+        'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
         view_name = 'openstack-detail'
+        required_fields = 'backend_url', 'username', 'password', 'tenant_name'
+        extra_field_options = {
+          'backend_url': {
+            'label': 'API URL',
+            'default_value': 'http://keystone.example.com:5000/v2.0',
+          },
+          'username': {
+            'default_value': 'admin',
+          },
+          'tenant_name': {
+            'label': 'Admin tenant name',
+            'default_value': 'admin',
+          },
+          'external_network_id': {
+            'label': 'Public/gateway network UUID',
+          },
+          'availability_zone': {
+            'placeholder': 'default',
+          }
+        }
 
 
 class FlavorSerializer(structure_serializers.BasePropertySerializer):
@@ -773,11 +797,37 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         return instance
 
 
-class InstanceImportSerializer(structure_serializers.BaseResourceImportSerializer):
+class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer):
 
     class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
-        model = models.Instance
-        view_name = 'openstack-instance-detail'
+        model = models.Tenant
+        view_name = 'openstack-tenant-detail'
+
+    def create(self, validated_data):
+        try:
+            service_project_link = models.OpenStackServiceProjectLink.objects.get(
+                service=self.context['service'],
+                project=validated_data['project']
+            )
+        except models.OpenStackServiceProjectLink.DoesNotExist:
+            raise serializers.ValidationError(
+                'Service project link for selected project does not exist.'
+            )
+
+        backend = self.context['service'].get_backend()
+        backend_id = validated_data['backend_id']
+
+        try:
+            tenant = backend.import_tenant(backend_id, service_project_link)
+        except OpenStackBackendError as e:
+            raise serializers.ValidationError({
+                'backend_id': "Can't import tenant with ID %s. Reason: %s" % (backend_id, e)
+            })
+        return tenant
+
+
+class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSerializer):
+    class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
         fields = structure_serializers.BaseResourceImportSerializer.Meta.fields + ('tenant',)
 
     tenant = serializers.HyperlinkedRelatedField(
@@ -786,15 +836,59 @@ class InstanceImportSerializer(structure_serializers.BaseResourceImportSerialize
         lookup_field='uuid',
         write_only=True)
 
+    def get_fields(self):
+        fields = super(BaseTenantImportSerializer, self).get_fields()
+        request = self.context['request']
+        fields['tenant'].queryset = filter_queryset_for_user(
+            models.Tenant.objects.all(), request.user
+        )
+        return fields
+
+    def validate(self, attrs):
+        attrs = super(BaseTenantImportSerializer, self).validate(attrs)
+        tenant = attrs['tenant']
+        project = attrs['project']
+
+        if tenant.service_project_link.project != project:
+            raise serializers.ValidationError({
+                'project': 'Tenant should belong to the same project.'
+            })
+        return attrs
+
     def create(self, validated_data):
         tenant = validated_data['tenant']
+        backend_id = validated_data['backend_id']
         backend = tenant.get_backend()
+
         try:
-            instance = backend.import_instance(validated_data['backend_id'])
+            return self.import_resource(backend, backend_id)
         except OpenStackBackendError as e:
-            raise serializers.ValidationError(
-                {'backend_id': "Can't import instance with ID %s. Reason: %s" % (validated_data['backend_id'], e)})
-        return instance
+            raise serializers.ValidationError({
+                'backend_id': "Can't import resource with ID %s. Reason: %s" % (backend_id, e)
+            })
+
+    def import_resource(self, backend, backend_id):
+        raise NotImplementedError()
+
+
+class InstanceImportSerializer(BaseTenantImportSerializer):
+
+    class Meta(BaseTenantImportSerializer.Meta):
+        model = models.Instance
+        view_name = 'openstack-instance-detail'
+
+    def import_resource(self, backend, backend_id):
+        return backend.import_instance(backend_id)
+
+
+class VolumeImportSerializer(BaseTenantImportSerializer):
+
+    class Meta(BaseTenantImportSerializer.Meta):
+        model = models.Volume
+        view_name = 'openstack-volume-detail'
+
+    def import_resource(self, backend, backend_id):
+        return backend.import_volume(backend_id)
 
 
 class VolumeExtendSerializer(serializers.Serializer):
@@ -880,6 +974,10 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
         instance.flavor_name = flavor.name
         instance.save(update_fields=['ram', 'cores', 'flavor_name', 'flavor_disk'])
         return instance
+
+
+class InstanceDeleteSerializer(serializers.Serializer):
+    delete_volumes = serializers.BooleanField(default=True)
 
 
 class TenantSerializer(structure_serializers.BaseResourceSerializer):
