@@ -1,6 +1,4 @@
-from django.conf import settings
-
-from nodeconductor.core import tasks as core_tasks, utils as core_utils
+from nodeconductor.core import tasks as core_tasks
 
 from . import models
 
@@ -60,17 +58,3 @@ class ForceDeleteDRBackupTask(core_tasks.StateTransitionTask):
     def execute(self, dr_backup):
         dr_backup.volume_backups.all().delete()
         dr_backup.delete()
-
-
-# XXX: This task should be refactored or moved to itacloud assembly.
-class SaveCRMMetadataTask(core_tasks.Task):
-
-    def execute(self, dr_backup):
-        from nodeconductor_sugarcrm.models import CRM
-        instance = dr_backup.source_instance
-        try:
-            crm = CRM.objects.get(instance_url__contains=instance.uuid.hex)
-        except CRM.DoesNotExist:
-            return
-        dr_backup.metadata['crm'] = crm.as_dict()
-        dr_backup.save()
