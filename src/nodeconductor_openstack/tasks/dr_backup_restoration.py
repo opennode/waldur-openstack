@@ -1,21 +1,21 @@
-from nodeconductor.core import tasks, utils
+from nodeconductor.core import tasks as core_tasks, utils as core_utils
 
 from .. import models
 
 
-class RestoreVolumeBackupTask(tasks.Task):
+class RestoreVolumeBackupTask(core_tasks.Task):
 
     def execute(self, volume_backup, serialized_volume):
-        volume = utils.deserialize_instance(serialized_volume)
+        volume = core_utils.deserialize_instance(serialized_volume)
         backend = volume_backup.get_backend()
         backend.restore_volume_backup(volume_backup, volume)
         return volume
 
 
-class RestoreVolumeOriginNameTask(tasks.Task):
+class RestoreVolumeOriginNameTask(core_tasks.Task):
 
     def execute(self, volume_backup, serialized_volume):
-        volume = utils.deserialize_instance(serialized_volume)
+        volume = core_utils.deserialize_instance(serialized_volume)
         backend = volume_backup.get_backend()
         volume.name = volume_backup.name
         volume.description = volume_backup.description
@@ -28,21 +28,35 @@ class DRBackupRestorationException(Exception):
     pass
 
 
-class CreateInstanceFromVolumesTask(tasks.Task):
+class CreateInstanceFromVolumesTask(core_tasks.Task):
 
     def execute(self, dr_backup_restoration):
         instance = dr_backup_restoration.instance
         flavor = dr_backup_restoration.flavor
 
         backend = instance.get_backend()
+        skip_external_ip_assignment = not instance.get_crm()  # XXX: should be moved to itacloud assembly
         backend.create_instance(
             instance,
             backend_flavor_id=flavor.backend_id,
-            skip_external_ip_assignment=True,
+            skip_external_ip_assignment=skip_external_ip_assignment,
         )
 
 
-class SetDRBackupRestorationErredTask(tasks.ErrorStateTransitionTask):
+class SuccessRestorationTask(core_tasks.StateTransitionTask):
+
+    def execute(self, instance):
+        # XXX: This should be moved to itacloud assembly:
+        crm = instance.get_crm()
+        if crm:
+            crm.set_online()
+            crm.save()
+            from nodeconductor_sugarcrm.tasks import init_crm_api_url, init_crm_quotas
+            init_crm_api_url.delay(crm.uuid)
+            init_crm_quotas.delay(crm.uuid)
+
+
+class SetDRBackupRestorationErredTask(core_tasks.ErrorStateTransitionTask):
     """ Mark DR backup restoration instance as erred and delete resources that were not created. """
 
     def execute(self, dr_backup_restoration):
@@ -68,3 +82,10 @@ class SetDRBackupRestorationErredTask(tasks.ErrorStateTransitionTask):
             else:
                 resource.set_erred()
                 resource.save(update_fields=['state'])
+
+        # XXX: This should be moved to itacloud assembly:
+        crm = instance.get_crm()
+        if crm:
+            crm.error_message = 'OpenStack Instance restoration failed.'
+            crm.set_erred()
+            crm.save()

@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 from django.db import models
+from django.conf import settings
 from django.core.validators import MaxValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.encoding import python_2_unicode_compatible, force_text
@@ -10,7 +11,7 @@ from model_utils import FieldTracker
 from model_utils.models import TimeStampedModel
 from urlparse import urlparse
 
-from nodeconductor.core import models as core_models
+from nodeconductor.core import models as core_models, NodeConductorExtension
 from nodeconductor.cost_tracking.models import PayableMixin
 from nodeconductor.logging.loggers import LoggableMixin
 from nodeconductor.quotas.fields import QuotaField
@@ -288,7 +289,7 @@ class Instance(structure_models.VirtualMachineMixin,
 
     def as_dict(self):
         """ Represent instance as dict with all necessary attributes """
-        return {
+        data = {
             'name': self.name,
             'description': self.description,
             'service_project_link': self.service_project_link.pk,
@@ -306,6 +307,22 @@ class Instance(structure_models.VirtualMachineMixin,
             'image_name': self.image_name,
             'tags': [tag.name for tag in self.tags.all()],
         }
+        # XXX: This should be moved to itacloud assembly
+        crm = self.get_crm()
+        if crm:
+            data['crm'] = crm.as_dict()
+        return data
+
+    # XXX: This should be moved to itacloud assembly
+    def get_crm(self):
+        nc_settings = getattr(settings, 'NODECONDUCTOR', {})
+        if nc_settings.get('IS_ITACLOUD', False) and NodeConductorExtension.is_installed('nodeconductor_sugarcrm'):
+            from nodeconductor_sugarcrm.models import CRM
+            try:
+                return CRM.objects.get(instance_url__contains=self.uuid.hex)
+            except CRM.DoesNotExist:
+                pass
+        return
 
 
 class InstanceSecurityGroup(models.Model):

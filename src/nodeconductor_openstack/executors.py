@@ -10,7 +10,8 @@ from .tasks import (PollRuntimeStateTask, PollBackendCheckTask, ForceDeleteDRBac
                     SetDRBackupErredTask, CleanUpDRBackupTask, RestoreVolumeOriginNameTask,
                     CreateInstanceFromVolumesTask, RestoreVolumeBackupTask, SetDRBackupRestorationErredTask,
                     LogFlavorChangeSucceeded, LogFlavorChangeFailed, LogVolumeExtendSucceeded, LogVolumeExtendFailed,
-                    SetBackupErredTask, ForceDeleteBackupTask, SetBackupRestorationErredTask, SetInstanceErredTask)
+                    SetBackupErredTask, ForceDeleteBackupTask, SetBackupRestorationErredTask, SetInstanceErredTask,
+                    SuccessRestorationTask)
 
 
 logger = logging.getLogger(__name__)
@@ -868,7 +869,7 @@ class BackupRestorationCreateExecutor(executors.CreateExecutor, executors.BaseCh
     @classmethod
     def get_success_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
         serialized_instance = utils.serialize_instance(backup_restoration.instance)
-        return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
+        return SuccessRestorationTask().si(serialized_instance, state_transition='set_online')
 
     @classmethod
     def get_failure_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):

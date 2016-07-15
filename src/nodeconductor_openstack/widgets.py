@@ -6,7 +6,6 @@ from django.utils.safestring import mark_safe
 from taggit.utils import edit_string_for_tags
 
 from . import Types
-from .models import Instance
 
 
 class OpenStackTagsWidget(Widget):
