@@ -482,7 +482,7 @@ class DRBackupRestorationCreateExecutor(executors.CreateExecutor, executors.Base
     @classmethod
     def get_success_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
         serialized_instance = utils.serialize_instance(dr_backup_restoration.instance)
-        return tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
+        return SuccessRestorationTask().si(serialized_instance, state_transition='set_online')
 
     @classmethod
     def get_failure_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
