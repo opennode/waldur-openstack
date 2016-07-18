@@ -181,6 +181,7 @@ class ServicePermissionTest(test.APITransactionTestCase):
             "backend_url": "http://example.com",
             "username": "user",
             "password": "secret",
+            "tenant_name": "admin",
         }
 
         with patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute') as mocked:
