@@ -58,12 +58,6 @@ class OpenStackExtension(NodeConductorExtension):
                 'args': (),
             },
 
-            'openstack-pull-tenants-properties': {
-                'task': 'nodeconductor.openstack.pull_tenants_properties',
-                'schedule': timedelta(minutes=30),
-                'args': (),
-            },
-
             'openstack-pull-instances': {
                 'task': 'nodeconductor.openstack.pull_instances',
                 'schedule': timedelta(minutes=30),
