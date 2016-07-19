@@ -1,6 +1,6 @@
 import logging
 
-from celery import chain, group
+from celery import chain
 
 from nodeconductor.core import tasks as core_tasks, executors as core_executors, utils as core_utils
 
@@ -99,7 +99,8 @@ class TenantUpdateExecutor(core_executors.UpdateExecutor):
     def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
         updated_fields = kwargs['updated_fields']
         if 'name' in updated_fields or 'description' in updated_fields:
-            return core_tasks.BackendMethodTask().si(serialized_tenant, 'update_tenant', state_transition='begin_updating')
+            return core_tasks.BackendMethodTask().si(
+                serialized_tenant, 'update_tenant', state_transition='begin_updating')
         else:
             return core_tasks.StateTransitionTask().si(serialized_tenant, state_transition='begin_updating')
 
@@ -230,7 +231,8 @@ class VolumeUpdateExecutor(core_executors.UpdateExecutor):
         updated_fields = kwargs['updated_fields']
         # TODO: call separate task on metadata update
         if 'name' in updated_fields or 'description' in updated_fields:
-            return core_tasks.BackendMethodTask().si(serialized_volume, 'update_volume', state_transition='begin_updating')
+            return core_tasks.BackendMethodTask().si(
+                serialized_volume, 'update_volume', state_transition='begin_updating')
         else:
             return core_tasks.StateTransitionTask().si(serialized_volume, state_transition='begin_updating')
 
@@ -241,7 +243,8 @@ class VolumeDeleteExecutor(core_executors.DeleteExecutor):
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         if volume.backend_id:
             return chain(
-                core_tasks.BackendMethodTask().si(serialized_volume, 'delete_volume', state_transition='begin_deleting'),
+                core_tasks.BackendMethodTask().si(
+                    serialized_volume, 'delete_volume', state_transition='begin_deleting'),
                 tasks.PollBackendCheckTask().si(serialized_volume, 'is_volume_deleted'),
             )
         else:
@@ -262,7 +265,8 @@ class SnapshotCreateExecutor(core_executors.CreateExecutor):
     @classmethod
     def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
         return chain(
-            core_tasks.BackendMethodTask().si(serialized_snapshot, 'create_snapshot', state_transition='begin_creating'),
+            core_tasks.BackendMethodTask().si(
+                serialized_snapshot, 'create_snapshot', state_transition='begin_creating'),
             tasks.PollRuntimeStateTask().si(
                 serialized_snapshot,
                 backend_pull_method='pull_snapshot_runtime_state',
@@ -291,7 +295,8 @@ class SnapshotDeleteExecutor(core_executors.DeleteExecutor):
     def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
         if snapshot.backend_id:
             return chain(
-                core_tasks.BackendMethodTask().si(serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting'),
+                core_tasks.BackendMethodTask().si(
+                    serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting'),
                 tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'),
             )
         else:
@@ -307,63 +312,91 @@ class SnapshotPullExecutor(core_executors.ActionExecutor):
             state_transition='begin_updating')
 
 
-class DRBackupCreateExecutor(core_executors.BaseChordExecutor):
+class DRBackupCreateExecutor(core_executors.BaseExecutor):
     """ Create backup for each instance volume separately using temporary volumes and snapshots """
 
     @classmethod
     def get_task_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
-        creation_tasks = [
-            core_tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_creating'),
-            core_tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Creating temporary snapshots')
-        ]
-        for volume_backup in dr_backup.volume_backups.all():
-            tmp_volume = volume_backup.source_volume
-            tmp_snapshot = tmp_volume.source_snapshot
-            serialzied_tmp_volume = core_utils.serialize_instance(tmp_volume)
-            serialized_tmp_snapshot = core_utils.serialize_instance(tmp_snapshot)
-            serialized_volume_backup = core_utils.serialize_instance(volume_backup)
+        volumes_backups = dr_backup.volume_backups.all()
+        tmp_volumes = [volume_backup.source_volume for volume_backup in volumes_backups]
+        tmp_snapshots = [tmp_volume.source_snapshot for tmp_volume in tmp_volumes]
 
-            creation_tasks.append(chain(
-                # 1. Create temporary snapshot on backend.
-                core_tasks.BackendMethodTask().si(
-                    serialized_tmp_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'),
-                tasks.PollRuntimeStateTask().si(
-                    serialized_tmp_snapshot,
-                    backend_pull_method='pull_snapshot_runtime_state',
-                    success_state='available',
-                    erred_state='error',
-                ).set(countdown=10),
-                core_tasks.StateTransitionTask().si(serialized_tmp_snapshot, state_transition='set_ok'),
-                core_tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Creating temporary volumes'),
-                # 2. Create temporary volume on backend.
-                core_tasks.BackendMethodTask().si(
-                    serialzied_tmp_volume, 'create_volume', state_transition='begin_creating'),
-                tasks.PollRuntimeStateTask().si(
-                    serialzied_tmp_volume,
-                    backend_pull_method='pull_volume_runtime_state',
-                    success_state='available',
-                    erred_state='error',
-                ).set(countdown=30),
-                core_tasks.StateTransitionTask().si(serialzied_tmp_volume, state_transition='set_ok'),
-                core_tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Backing up temporary volumes'),
-                # 3. Create volume_backup on backend
-                core_tasks.BackendMethodTask().si(
-                    serialized_volume_backup, 'create_volume_backup', state_transition='begin_creating'),
-                tasks.PollRuntimeStateTask().si(
-                    serialized_volume_backup,
-                    backend_pull_method='pull_volume_backup_runtime_state',
-                    success_state='available',
-                    erred_state='error',
-                ).set(countdown=50),
-                core_tasks.BackendMethodTask().si(serialized_volume_backup, 'pull_volume_backup_record'),
-                core_tasks.StateTransitionTask().si(serialized_volume_backup, state_transition='set_ok'),
-            ))
-        return group(creation_tasks)
+        serialized_volume_backups = [
+            core_utils.serialize_instance(volumes_backup) for volumes_backup in volumes_backups]
+        serialized_tmp_volumes = [core_utils.serialize_instance(tmp_volume) for tmp_volume in tmp_volumes]
+        serialized_tmp_snapshots = [core_utils.serialize_instance(tmp_snapshot) for tmp_snapshot in tmp_snapshots]
+
+        _tasks = [
+            core_tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_creating'),
+        ]
+
+        # Part 1. Temporary snapshots
+        _tasks.append(
+            core_tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Creating temporary snapshots'))
+        # create temporary snapshots
+        for serialized_tmp_snapshot in serialized_tmp_snapshots:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_tmp_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'))
+        # wait for snapshots creation
+        for serialized_tmp_snapshot in serialized_tmp_snapshots:
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_tmp_snapshot,
+                backend_pull_method='pull_snapshot_runtime_state',
+                success_state='available',
+                erred_state='error',
+            ).set(countdown=10))
+        # mark snapshots as OK on success creation
+        for serialized_tmp_snapshot in serialized_tmp_snapshots:
+            _tasks.append(core_tasks.StateTransitionTask().si(serialized_tmp_snapshot, state_transition='set_ok'))
+
+        # Part 2. Temporary volumes
+        # Countdown added make sure that volume creation starts in 10 seconds
+        # after snapshot creation due to OpenStack internal restrictions
+        _tasks.append(core_tasks.RuntimeStateChangeTask().si(
+            serialized_dr_backup, runtime_state='Creating temporary volumes').set(countdown=10))
+        # Create temporary volumes from temporary snapshots
+        for serialized_tmp_volume in serialized_tmp_volumes:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_tmp_volume, 'create_volume', state_transition='begin_creating'))
+        # Wait for volumes creation
+        for serialized_tmp_volume in serialized_tmp_volumes:
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_tmp_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error',
+            ).set(countdown=30))
+        # Mark volumes as OK on success creation
+        for serialized_tmp_volume in serialized_tmp_volumes:
+            _tasks.append(core_tasks.StateTransitionTask().si(serialized_tmp_volume, state_transition='set_ok'))
+
+        # Part 3. Backups of temporary volumes
+        # Countdown added make sure that backup creation starts in 10 seconds
+        # after volume creation due to OpenStack internal restrictions
+        _tasks.append(core_tasks.RuntimeStateChangeTask().si(
+            serialized_dr_backup, runtime_state='Creating volume backups').set(countdown=10))
+        # Create backup of temporary volume
+        for serialized_volume_backup in serialized_volume_backups:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_volume_backup, 'create_volume_backup', state_transition='begin_creating'))
+        # Wait for backups creation
+        for index, serialized_volume_backup in enumerate(serialized_volume_backups):
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_volume_backup,
+                backend_pull_method='pull_volume_backup_runtime_state',
+                success_state='available',
+                erred_state='error',
+            ).set(countdown=50 if index == 0 else 0))
+            # Pull backup record and mark it as OK on success creation
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_volume_backup, 'pull_volume_backup_record'))
+            _tasks.append(core_tasks.StateTransitionTask().si(serialized_volume_backup, state_transition='set_ok'))
+
+        return chain(*_tasks)
 
     @classmethod
     def get_success_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
         # mark DR backup as OK and delete all temporary objects - volumes and snapshots
-        return tasks.CleanUpDRBackupTask().si(serialized_dr_backup, state_transition='set_ok')
+        return tasks.CleanUpDRBackupTask().si(serialized_dr_backup, state_transition='set_ok').set(countdown=10)
 
     @classmethod
     def get_failure_signature(cls, dr_backup, serialized_dr_backup, **kwargs):
@@ -371,7 +404,7 @@ class DRBackupCreateExecutor(core_executors.BaseChordExecutor):
         return tasks.SetDRBackupErredTask().s(serialized_dr_backup)
 
 
-class DRBackupDeleteExecutor(core_executors.DeleteExecutor, core_executors.BaseChordExecutor):
+class DRBackupDeleteExecutor(core_executors.DeleteExecutor):
 
     @classmethod
     def pre_apply(cls, dr_backup, **kwargs):
@@ -382,96 +415,107 @@ class DRBackupDeleteExecutor(core_executors.DeleteExecutor, core_executors.BaseC
 
     @classmethod
     def get_task_signature(cls, dr_backup, serialized_dr_backup, force=False, **kwargs):
-        deletion_tasks = [
+        _tasks = [
             core_tasks.StateTransitionTask().si(serialized_dr_backup, state_transition='begin_deleting'),
             core_tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Deleting volume backups'),
             tasks.CleanUpDRBackupTask().si(serialized_dr_backup, force=force),  # remove temporary volumes and snapshots
         ]
-        # remove volume backups
-        for volume_backup in dr_backup.volume_backups.all():
-            serialized = core_utils.serialize_instance(volume_backup)
-            deletion_tasks.append(chain(
-                core_tasks.BackendMethodTask().si(serialized, 'delete_volume_backup', state_transition='begin_deleting'),
-                tasks.PollBackendCheckTask().si(serialized, 'is_volume_backup_deleted'),
-                core_tasks.DeletionTask().si(serialized),
-            ))
+        # Remove volume backups
+        serialized_volume_backups = [
+            core_utils.serialize_instance(volume_backup) for volume_backup in dr_backup.volume_backups.all()]
+        # Start volume backups deletion
+        for serialized_volume_backup in serialized_volume_backups:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_volume_backup, 'delete_volume_backup', state_transition='begin_deleting'))
+        # Poll for deletion and delete backups from NodeConductor database
+        for serialized_volume_backup in serialized_volume_backups:
+            _tasks.append(tasks.PollBackendCheckTask().si(serialized_volume_backup, 'is_volume_backup_deleted'))
+            _tasks.append(core_tasks.DeletionTask().si(serialized_volume_backup))
 
-        return group(deletion_tasks)
+        return chain(*_tasks)
 
     @classmethod
     def get_failure_signature(cls, dr_backup, serialized_dr_backup, force=False, **kwargs):
-        # mark DR and all related non-OK resources as Erred
+        # Mark DR and all related non-OK resources as Erred
         if not force:
             return tasks.SetDRBackupErredTask().s(serialized_dr_backup)
         else:
             return tasks.ForceDeleteDRBackupTask().s(serialized_dr_backup)
 
 
-class DRBackupRestorationCreateExecutor(core_executors.CreateExecutor, core_executors.BaseChordExecutor):
+class DRBackupRestorationCreateExecutor(core_executors.CreateExecutor):
     """ DRBackup restoration process creates new volumes and restores backups. """
 
     @classmethod
     def get_task_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
         """ Restore each volume backup on separate volume. """
+        volume_backup_restorations = dr_backup_restoration.volume_backup_restorations.all()
+        volume_backups = [
+            volume_backup_restoration.volume_backup for volume_backup_restoration in volume_backup_restorations]
+        volumes = [volume_backup_restoration.volume for volume_backup_restoration in volume_backup_restorations]
+        mirrored_backups = [volume_backup_restoration.mirorred_volume_backup
+                            for volume_backup_restoration in volume_backup_restorations]
+
         serialized_instance = core_utils.serialize_instance(dr_backup_restoration.instance)
-        volume_backup_restoration_tasks = [
+        serialized_volume_backups = [core_utils.serialize_instance(volume_backup) for volume_backup in volume_backups]
+        serialized_volumes = [core_utils.serialize_instance(volume) for volume in volumes]
+        serialized_mirrored_backups = [
+            core_utils.serialize_instance(mirrored_backup)
+            for mirrored_backup in mirrored_backups]
+
+        _tasks = [
             core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')
         ]
-        for volume_backup_restoration in dr_backup_restoration.volume_backup_restorations.all():
-            volume_backup = volume_backup_restoration.volume_backup
-            serialized_volume_backup = core_utils.serialize_instance(volume_backup)
-            # volume that is restored from backup.
-            volume = volume_backup_restoration.volume
-            serialized_volume = core_utils.serialize_instance(volume)
-            # temporary copy of volume backup that is used for volume restoration
-            mirorred_volume_backup = volume_backup_restoration.mirorred_volume_backup
-            serialized_mirorred_volume_backup = core_utils.serialize_instance(mirorred_volume_backup)
-
-            volume_backup_restoration_tasks.append(chain(
-                # Start volume creation on backend.
-                core_tasks.BackendMethodTask().si(serialized_volume, 'create_volume', state_transition='begin_creating'),
-                # Start tmp volume backup import.
-                core_tasks.BackendMethodTask().si(serialized_mirorred_volume_backup, 'import_volume_backup_from_record',
-                                                  state_transition='begin_creating'),
-                # Wait for volume creation.
-                tasks.PollRuntimeStateTask().si(
-                    serialized_volume,
-                    backend_pull_method='pull_volume_runtime_state',
-                    success_state='available',
-                    erred_state='error',
-                ).set(countdown=30),
-                # Wait for backup import.
-                tasks.PollRuntimeStateTask().si(
-                    serialized_mirorred_volume_backup,
-                    backend_pull_method='pull_volume_backup_runtime_state',
-                    success_state='available',
-                    erred_state='error',
-                ),
-                core_tasks.StateTransitionTask().si(serialized_mirorred_volume_backup, state_transition='set_ok'),
-                # Restore backup on volume.
-                tasks.RestoreVolumeBackupTask().si(serialized_mirorred_volume_backup, serialized_volume),
-                # Wait for volume restoration.
-                tasks.PollRuntimeStateTask().si(
-                    serialized_volume,
-                    backend_pull_method='pull_volume_runtime_state',
-                    success_state='available',
-                    erred_state='error_restoring',
-                ).set(countdown=20),
-                # Pull volume to make sure it reflects restored data.
-                core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
-                # After restoration volumes will have names of temporary copied for backup volumes,
-                # we need to rename them.
-                # This task should be deleted if backend will be done from origin volume, not its
-                # temporary copy.
-                tasks.RestoreVolumeOriginNameTask().si(serialized_volume_backup, serialized_volume),
-                core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'),
+        # Create empty volumes for instance
+        for serialized_volume in serialized_volumes:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_volume, 'create_volume', state_transition='begin_creating'))
+        # Import backups
+        for serialized_mirrored_backup in serialized_mirrored_backups:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_mirrored_backup, 'import_volume_backup_from_record',
+                state_transition='begin_creating'))
+        # Wait for volumes creation
+        for index, serialized_volume in enumerate(serialized_volumes):
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error',
+            ).set(countdown=30 if index == 0 else 0))
+        # Wait for backups import
+        for serialized_mirrored_backup in serialized_mirrored_backups:
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_mirrored_backup,
+                backend_pull_method='pull_volume_backup_runtime_state',
+                success_state='available',
+                erred_state='error',
             ))
-
-        return group(volume_backup_restoration_tasks)
-
-    @classmethod
-    def get_callback_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
-        return tasks.CreateInstanceFromVolumesTask().si(serialized_dr_backup_restoration)
+            # Mark backup as OK on success import
+            _tasks.append(core_tasks.StateTransitionTask().si(
+                serialized_mirrored_backup, state_transition='set_ok'))
+        # Restore backups on volumes
+        for serialized_volume, serialized_mirrored_backup in zip(serialized_volumes, serialized_mirrored_backups):
+            _tasks.append(tasks.RestoreVolumeBackupTask().si(serialized_mirrored_backup, serialized_volume))
+        # Wait for volumes restoration
+        for index, serialized_volume in enumerate(serialized_volumes):
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error_restoring',
+            ).set(countdown=20 if index == 0 else 0))
+            # Pull volume to make sure it reflects restored data
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'))
+        # After restoration volumes will have names of temporary copied for backup volumes, we need to rename them.
+        # This task should be deleted if backend will be done from origin volume, not its temporary copy.
+        for serialized_volume_backup, serialized_volume in zip(serialized_volume_backups, serialized_volumes):
+            _tasks.append(tasks.RestoreVolumeOriginNameTask().si(serialized_volume_backup, serialized_volume))
+            _tasks.append(core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'))
+        # Create instance based on restored volumes.
+        # Wait 10 seconds before instance creation due to OpenStack restrictions.
+        _tasks.append(tasks.CreateInstanceFromVolumesTask().si(serialized_dr_backup_restoration).set(countdown=10))
+        return chain(*_tasks)
 
     @classmethod
     def get_success_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
@@ -483,48 +527,46 @@ class DRBackupRestorationCreateExecutor(core_executors.CreateExecutor, core_exec
         return tasks.SetDRBackupRestorationErredTask().s(serialized_dr_backup_restoration)
 
 
-class InstanceCreateExecutor(core_executors.CreateExecutor, core_executors.BaseChordExecutor):
+class InstanceCreateExecutor(core_executors.CreateExecutor):
     """ First - create instance volumes in parallel, after - create instance based on created volumes """
 
     @classmethod
-    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+    def get_task_signature(cls, instance, serialized_instance,
+                           ssh_key=None, flavor=None, floating_ip=None, skip_external_ip_assignment=False):
         """ Create all instance volumes in parallel and wait for them to provision """
-        volumes_tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')]
-        for volume in instance.volumes.all():
-            serialized_volume = core_utils.serialize_instance(volume)
-            volumes_tasks.append(chain(
-                # start volume creation
-                core_tasks.BackendMethodTask().si(serialized_volume, 'create_volume', state_transition='begin_creating'),
-                # wait until volume become available
-                tasks.PollRuntimeStateTask().si(
-                    serialized_volume,
-                    backend_pull_method='pull_volume_runtime_state',
-                    success_state='available',
-                    erred_state='error',
-                ).set(countdown=30),
-                # pull volume to sure that it is bootable
-                core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
-                # mark volume as OK
-                core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'),
-            ))
-        return group(volumes_tasks)
+        serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
-    @classmethod
-    def get_callback_signature(cls, instance, serialized_instance,
-                               ssh_key=None, flavor=None, floating_ip=None,
-                               skip_external_ip_assignment=False):
-        # Note that flavor is required for instance creation.
+        _tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')]
+        # Create volumes
+        for serialized_volume in serialized_volumes:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_volume, 'create_volume', state_transition='begin_creating'))
+        for index, serialized_volume in enumerate(serialized_volumes):
+            # Wait for volume creation
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error',
+            ).set(countdown=30 if index == 0 else 0))
+            # Pull volume to sure that it is bootable
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'))
+            # Mark volume as OK
+            _tasks.append(core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'))
+        # Create instance based on volumes
         kwargs = {
             'backend_flavor_id': flavor.backend_id,
             'skip_external_ip_assignment': skip_external_ip_assignment,
         }
         if ssh_key is not None:
             kwargs['public_key'] = ssh_key.public_key
-
         if floating_ip is not None:
             kwargs['floating_ip_uuid'] = floating_ip.uuid.hex
+        # Wait 10 seconds after volume creation due to OpenStack restrictions.
+        _tasks.append(core_tasks.BackendMethodTask().si(
+            serialized_instance, 'create_instance', **kwargs).set(countdown=10))
 
-        return core_tasks.BackendMethodTask().si(serialized_instance, 'create_instance', **kwargs)
+        return chain(*_tasks)
 
     @classmethod
     def get_success_signature(cls, instance, serialized_instance, **kwargs):
@@ -766,32 +808,33 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
         return tasks.LogVolumeExtendFailed().s(serialized_volume, new_size=new_size)
 
 
-class BackupCreateExecutor(core_executors.CreateExecutor, core_executors.BaseChordExecutor):
+class BackupCreateExecutor(core_executors.CreateExecutor):
 
     @classmethod
     def get_task_signature(cls, backup, serialized_backup, **kwargs):
-        creations_tasks = [core_tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_creating')]
-        for snapshot in backup.snapshots.all():
-            serialized_snapshot = core_utils.serialize_instance(snapshot)
-            creations_tasks.append(chain(
-                core_tasks.BackendMethodTask().si(
-                    serialized_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'),
-                tasks.PollRuntimeStateTask().si(
-                    serialized_snapshot,
-                    backend_pull_method='pull_snapshot_runtime_state',
-                    success_state='available',
-                    erred_state='error',
-                ).set(countdown=10),
-                core_tasks.StateTransitionTask().si(serialized_snapshot, state_transition='set_ok'),
-            ))
-        return group(creations_tasks)
+        serialized_snapshots = [core_utils.serialize_instance(snapshot) for snapshot in backup.snapshots.all()]
+
+        _tasks = [core_tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_creating')]
+        for serialized_snapshot in serialized_snapshots:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'))
+        for index, serialized_snapshot in enumerate(serialized_snapshots):
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_snapshot,
+                backend_pull_method='pull_snapshot_runtime_state',
+                success_state='available',
+                erred_state='error',
+            ).set(countdown=10 if index == 0 else 0))
+            _tasks.append(core_tasks.StateTransitionTask().si(serialized_snapshot, state_transition='set_ok'))
+
+        return chain(*_tasks)
 
     @classmethod
     def get_failure_signature(cls, backup, serialized_backup, **kwargs):
         return tasks.SetBackupErredTask().s(serialized_backup)
 
 
-class BackupDeleteExecutor(core_executors.DeleteExecutor, core_executors.BaseChordExecutor):
+class BackupDeleteExecutor(core_executors.DeleteExecutor):
 
     @classmethod
     def pre_apply(cls, backup, **kwargs):
@@ -802,17 +845,17 @@ class BackupDeleteExecutor(core_executors.DeleteExecutor, core_executors.BaseCho
 
     @classmethod
     def get_task_signature(cls, backup, serialized_backup, force=False, **kwargs):
-        deletion_tasks = [core_tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_deleting')]
-        # remove volume backups
-        for snapshot in backup.snapshots.all():
-            serialized = core_utils.serialize_instance(snapshot)
-            deletion_tasks.append(chain(
-                core_tasks.BackendMethodTask().si(serialized, 'delete_snapshot', state_transition='begin_deleting'),
-                tasks.PollBackendCheckTask().si(serialized, 'is_snapshot_deleted'),
-                core_tasks.DeletionTask().si(serialized),
-            ))
+        serialized_snapshots = [core_utils.serialize_instance(snapshot) for snapshot in backup.snapshots.all()]
 
-        return group(deletion_tasks)
+        _tasks = [core_tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_deleting')]
+        for serialized_snapshot in serialized_snapshots:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting'))
+        for serialized_snapshot in serialized_snapshots:
+            _tasks.append(tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'))
+            _tasks.append(core_tasks.DeletionTask().si(serialized_snapshot))
+
+        return chain(*_tasks)
 
     @classmethod
     def get_failure_signature(cls, backup, serialized_backup, force=False, **kwargs):
@@ -822,7 +865,7 @@ class BackupDeleteExecutor(core_executors.DeleteExecutor, core_executors.BaseCho
             return tasks.ForceDeleteBackupTask().s(serialized_backup)
 
 
-class BackupRestorationCreateExecutor(core_executors.CreateExecutor, core_executors.BaseChordExecutor):
+class BackupRestorationCreateExecutor(core_executors.CreateExecutor):
     """ Restore volumes from backup snapshots, create instance based on restored volumes """
 
     @classmethod
@@ -830,35 +873,32 @@ class BackupRestorationCreateExecutor(core_executors.CreateExecutor, core_execut
         """ Restore each volume from snapshot """
         instance = backup_restoration.instance
         serialized_instance = core_utils.serialize_instance(instance)
-        volumes_tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')]
-        for volume in instance.volumes.all():
-            serialized_volume = core_utils.serialize_instance(volume)
-            volumes_tasks.append(chain(
-                # start volume creation
-                core_tasks.BackendMethodTask().si(serialized_volume, 'create_volume', state_transition='begin_creating'),
-                # wait until volume become available
-                tasks.PollRuntimeStateTask().si(
-                    serialized_volume,
-                    backend_pull_method='pull_volume_runtime_state',
-                    success_state='available',
-                    erred_state='error',
-                ).set(countdown=30),
-                # pull volume to sure that it is bootable
-                core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
-                # mark volume as OK
-                core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'),
-            ))
-        return group(volumes_tasks)
+        serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
-    @classmethod
-    def get_callback_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
-        flavor = backup_restoration.flavor
-        kwargs = {
-            'backend_flavor_id': flavor.backend_id,
-            'skip_external_ip_assignment': False,
-        }
-        serialized_instance = core_utils.serialize_instance(backup_restoration.instance)
-        return core_tasks.BackendMethodTask().si(serialized_instance, 'create_instance', **kwargs)
+        _tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')]
+        # Create volumes
+        for serialized_volume in serialized_volumes:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_volume, 'create_volume', state_transition='begin_creating'))
+        for index, serialized_volume in enumerate(serialized_volumes):
+            # Wait for volume creation
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error',
+            ).set(countdown=30 if index == 0 else 0))
+            # Pull volume to sure that it is bootable
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'))
+            # Mark volume as OK
+            _tasks.append(core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'))
+        # Create instance. Wait 10 seconds after volumes creation due to OpenStack restrictions.
+        _tasks.append(core_tasks.BackendMethodTask().si(
+            serialized_instance, 'create_instance',
+            skip_external_ip_assignment=False,
+            backend_flavor_id=backup_restoration.flavor.backend_id
+        ).set(countdown=10))
+        return chain(*_tasks)
 
     @classmethod
     def get_success_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
