@@ -206,7 +206,7 @@ class DRBackupAdmin(TenantResourceAdmin):
 
 class DRBackupRestorationAdmin(admin.ModelAdmin):
     list_filter = ('tenant', )
-    list_display = ('uuid', 'backup', 'instance', 'get_tenant')
+    list_display = ('uuid', 'backup', 'instance', 'get_tenant', 'created')
 
     def get_tenant(self, obj):
         tenant = obj.tenant

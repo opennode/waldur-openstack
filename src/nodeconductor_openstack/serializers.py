@@ -405,8 +405,8 @@ class BasicRestorationSerializer(serializers.HyperlinkedModelSerializer):
     class Meta(object):
         model = NotImplemented
         view_name = NotImplemented
-        fields = ('url', 'uuid', 'instance', 'instance_uuid', 'instance_name', 'instance_state')
-        read_only_fields = ('instance',)
+        fields = ('url', 'uuid', 'instance', 'instance_uuid', 'instance_name', 'instance_state', 'created')
+        read_only_fields = ('instance', 'created')
         extra_kwargs = dict(
             url={'lookup_field': 'uuid'},
             instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},

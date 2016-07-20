@@ -71,8 +71,8 @@ class BackupScheduleBackend(object):
         try:
             with transaction.atomic():
                 dr_backup = models.DRBackup.objects.create(
-                    source_instance=('Backup of instance "%s"' % self.schedule.instance)[:150],
-                    name='DR backup of instance "%s"' % self.schedule.instance,
+                    source_instance=self.schedule.instance,
+                    name=('Backup of instance "%s"' % self.schedule.instance)[:150],
                     description='Scheduled DR backup.',
                     tenant=self.schedule.instance.tenant,
                     service_project_link=self.schedule.instance.service_project_link,

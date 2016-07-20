@@ -32,7 +32,8 @@ class PollRuntimeStateTask(Task):
             self.retry()
         elif instance.runtime_state == erred_state:
             raise RuntimeStateException(
-                'Instance %s (PK: %s) runtime state become erred: %s' % (instance, instance.pk, erred_state))
+                '%s %s (PK: %s) runtime state become erred: %s' % (
+                    instance.__class__.__name__, instance, instance.pk, erred_state))
         return instance
 
 
