@@ -412,12 +412,6 @@ class BasicRestorationSerializer(serializers.HyperlinkedModelSerializer):
             instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
         )
 
-
-class BasicBackupRestorationSerializer(BasicRestorationSerializer):
-    class Meta(BasicRestorationSerializer.Meta):
-        model = models.BackupRestoration
-        view_name = 'openstack-backup-restoration-detail'
-
     def create_instance_crm(self, instance, backup):
         # XXX: This should be moved to itacloud assembly and refactored.
         nc_settings = getattr(settings, 'NODECONDUCTOR', {})
@@ -445,6 +439,12 @@ class BasicBackupRestorationSerializer(BasicRestorationSerializer):
                              (instance.name, instance.pk))
             except Exception as e:
                 logger.error('Cannot restore instance %s (PK: %s) CRM. Error: %s' % (instance.name, instance.pk, e))
+
+
+class BasicBackupRestorationSerializer(BasicRestorationSerializer):
+    class Meta(BasicRestorationSerializer.Meta):
+        model = models.BackupRestoration
+        view_name = 'openstack-backup-restoration-detail'
 
 
 class BackupSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
