@@ -266,10 +266,10 @@ class Instance(structure_models.VirtualMachineMixin,
 
     def detect_coordinates(self):
         settings = self.service_project_link.service.settings
-        data = settings.get_option('coordinates')
-        if data:
-            return Coordinates(latitude=data['latitude'],
-                               longitude=data['longitude'])
+        options = settings.options or {}
+        if 'latitude' in options and 'longitude' in options:
+            return Coordinates(latitude=settings['latitude'],
+                               longitude=settings['longitude'])
         else:
             hostname = urlparse(settings.backend_url).hostname
             if hostname:

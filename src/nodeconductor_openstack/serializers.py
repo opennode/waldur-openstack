@@ -26,7 +26,9 @@ from .backend import OpenStackBackendError
 logger = logging.getLogger(__name__)
 
 
-class ServiceSerializer(structure_serializers.BaseServiceSerializer):
+class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
+                        core_serializers.RequiredFieldsMixin,
+                        structure_serializers.BaseServiceSerializer):
 
     SERVICE_ACCOUNT_FIELDS = {
         'backend_url': 'Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)',
@@ -36,13 +38,34 @@ class ServiceSerializer(structure_serializers.BaseServiceSerializer):
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
         'tenant_name': 'Administrative tenant',
         'availability_zone': 'Default availability zone for provisioned Instances',
-        'external_network_id': 'ID of OpenStack external network that will be connected to new service tenants',
-        'coordinates': 'Coordinates of the datacenter (e.g. {"latitude": 40.712784, "longitude": -74.005941})',
+        'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
+        'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
+        'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
         view_name = 'openstack-detail'
+        required_fields = 'backend_url', 'username', 'password', 'tenant_name'
+        extra_field_options = {
+          'backend_url': {
+            'label': 'API URL',
+            'default_value': 'http://keystone.example.com:5000/v2.0',
+          },
+          'username': {
+            'default_value': 'admin',
+          },
+          'tenant_name': {
+            'label': 'Admin tenant name',
+            'default_value': 'admin',
+          },
+          'external_network_id': {
+            'label': 'Public/gateway network UUID',
+          },
+          'availability_zone': {
+            'placeholder': 'default',
+          }
+        }
 
 
 class FlavorSerializer(structure_serializers.BasePropertySerializer):
