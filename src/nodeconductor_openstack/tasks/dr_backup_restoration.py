@@ -16,7 +16,7 @@ class RestoreVolumeOriginNameTask(tasks.Task):
 
     def execute(self, volume_backup, serialized_volume):
         volume = utils.deserialize_instance(serialized_volume)
-        backend = volume_backup.get_backend()
+        backend = volume.get_backend()
         volume.name = volume_backup.name
         volume.description = volume_backup.description
         volume.save()
