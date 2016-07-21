@@ -520,7 +520,7 @@ class DRBackupRestorationCreateExecutor(core_executors.CreateExecutor):
     @classmethod
     def get_success_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
         serialized_instance = core_utils.serialize_instance(dr_backup_restoration.instance)
-        return core_tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
+        return tasks.SuccessRestorationTask().si(serialized_instance, state_transition='set_online')
 
     @classmethod
     def get_failure_signature(cls, dr_backup_restoration, serialized_dr_backup_restoration, **kwargs):
@@ -903,7 +903,7 @@ class BackupRestorationCreateExecutor(core_executors.CreateExecutor):
     @classmethod
     def get_success_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
         serialized_instance = core_utils.serialize_instance(backup_restoration.instance)
-        return core_tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
+        return tasks.SuccessRestorationTask().si(serialized_instance, state_transition='set_online')
 
     @classmethod
     def get_failure_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):

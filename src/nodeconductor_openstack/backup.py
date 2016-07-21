@@ -103,7 +103,8 @@ class BackupScheduleBackend(object):
         stable_backups = backups.filter(state=States.OK)
         extra_backups_count = backups.count() - self.schedule.maximal_number_of_backups
         if extra_backups_count > 0:
-            for backup in stable_backups.order_by('created_at')[:extra_backups_count]:
+            order_field = 'created_at' if self.schedule.backup_type == self.schedule.BackupTypes.REGULAR else 'created'
+            for backup in stable_backups.order_by(order_field)[:extra_backups_count]:
                 delete_executor.execute(backup)
 
     def execute(self):
