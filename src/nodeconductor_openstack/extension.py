@@ -52,6 +52,12 @@ class OpenStackExtension(NodeConductorExtension):
                 'args': (),
             },
 
+            'openstack-set-erred-stuck-resources': {
+                'task': 'nodeconductor.openstack.set_erred_stuck_resources',
+                'schedule': timedelta(minutes=10),
+                'args': (),
+            },
+
             'openstack-pull-tenants': {
                 'task': 'nodeconductor.openstack.pull_tenants',
                 'schedule': timedelta(minutes=30),

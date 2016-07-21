@@ -1,6 +1,7 @@
 from celery import shared_task
 
 from nodeconductor.core.tasks import Task
+from nodeconductor.core import models as core_models
 
 from .. import models
 
@@ -50,3 +51,34 @@ class PollBackendCheckTask(Task):
         if not getattr(backend, backend_check_method)(instance):
             self.retry()
         return instance
+
+
+class BaseThrottleProvisionTask(Task):
+    max_retries = 300
+    default_retry_delay = 5
+
+    max_concurrent_resources = 4
+    model_class = NotImplemented
+    target_state = core_models.StateMixin.States.CREATING
+
+    def execute(self, settings):
+        if self.model_class.objects.filter(
+            state=self.target_state,
+            service_project_link__service__settings=settings
+        ).count() > self.max_concurrent_resources:
+            self.retry()
+        else:
+            return True
+
+
+class ThrottleInstanceProvisionTask(BaseThrottleProvisionTask):
+    model_class = models.Instance
+    target_state = models.Instance.States.PROVISIONING
+
+
+class ThrottleVolumeProvisionTask(BaseThrottleProvisionTask):
+    model_class = models.Volume
+
+
+class ThrottleSnapshotProvisionTask(BaseThrottleProvisionTask):
+    model_class = models.Snapshot

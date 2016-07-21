@@ -1,10 +1,11 @@
 import logging
 
 from celery import shared_task
+from datetime import timedelta
 from django.utils import six, timezone
 
 from nodeconductor.core import tasks as core_tasks, utils as core_utils
-from nodeconductor.structure import ServiceBackendError
+from nodeconductor.structure import ServiceBackendError, models as structure_models
 
 from . import models
 
@@ -138,3 +139,22 @@ def delete_expired_backups():
         executors.BackupDeleteExecutor.execute(backup)
     for dr_backup in models.DRBackup.objects.filter(kept_until__lt=timezone.now(), state=models.DRBackup.States.OK):
         executors.DRBackupDeleteExecutor.execute(dr_backup)
+
+
+@shared_task(name='nodeconductor.openstack.set_erred_stuck_resources')
+def set_erred_stuck_resources():
+    for model in (models.Instance, models.Volume, models.Snapshot):
+        if isinstance(model, structure_models.Resource):
+            source_state = structure_models.Resource.States.PROVISIONING
+            target_state = structure_models.Resource.States.ERRED
+        elif isinstance(model, structure_models.NewResource):
+            source_state = structure_models.NewResource.States.CREATING
+            target_state = structure_models.NewResource.States.ERRED
+
+        model.objects.filter(
+            created__lt=timezone.now() - timedelta(minute=30),
+            state=source_state
+        ).update(
+            state=target_state,
+            error_message='Provisioning is timed out.'
+        )

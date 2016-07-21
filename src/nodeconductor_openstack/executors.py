@@ -213,8 +213,16 @@ class VolumeCreateExecutor(core_executors.CreateExecutor):
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        serialized_settings = core_utils.serialize_instance(
+            volume.service_project_link.service.settings
+        )
         return chain(
-            core_tasks.BackendMethodTask().si(serialized_volume, 'create_volume', state_transition='begin_creating'),
+            tasks.ThrottleVolumeProvisionTask().si(serialized_settings),
+            core_tasks.BackendMethodTask().si(
+                serialized_volume,
+                'create_volume',
+                state_transition='begin_creating'
+            ),
             tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
@@ -264,7 +272,12 @@ class SnapshotCreateExecutor(core_executors.CreateExecutor):
 
     @classmethod
     def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
+        serialized_settings = core_utils.serialize_instance(
+            snapshot.service_project_link.service.settings
+        )
+
         return chain(
+            tasks.ThrottleSnapshotProvisionTask().si(serialized_settings),
             core_tasks.BackendMethodTask().si(
                 serialized_snapshot, 'create_snapshot', state_transition='begin_creating'),
             tasks.PollRuntimeStateTask().si(
@@ -535,8 +548,14 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
                            ssh_key=None, flavor=None, floating_ip=None, skip_external_ip_assignment=False):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
+        serialized_settings = core_utils.serialize_instance(
+            instance.service_project_link.service.settings
+        )
 
-        _tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')]
+        _tasks = [
+            tasks.ThrottleInstanceProvisionTask().si(serialized_settings),
+            core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')
+        ]
         # Create volumes
         for serialized_volume in serialized_volumes:
             _tasks.append(core_tasks.BackendMethodTask().si(
