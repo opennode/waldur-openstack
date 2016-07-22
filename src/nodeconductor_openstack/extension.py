@@ -25,6 +25,11 @@ class OpenStackExtension(NodeConductorExtension):
                     ),
                 },
             ),
+            'MAX_CONCURRENT_PROVISION': {
+                'OpenStack.Instance': 4,
+                'OpenStack.Volume': 4,
+                'OpenStack.Snapshot': 4
+            }
         }
 
     @staticmethod

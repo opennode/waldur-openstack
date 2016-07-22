@@ -144,17 +144,18 @@ def delete_expired_backups():
 @shared_task(name='nodeconductor.openstack.set_erred_stuck_resources')
 def set_erred_stuck_resources():
     for model in (models.Instance, models.Volume, models.Snapshot):
-        if isinstance(model, structure_models.Resource):
+        if issubclass(model, structure_models.Resource):
             source_state = structure_models.Resource.States.PROVISIONING
-            target_state = structure_models.Resource.States.ERRED
-        elif isinstance(model, structure_models.NewResource):
+        elif issubclass(model, structure_models.NewResource):
             source_state = structure_models.NewResource.States.CREATING
-            target_state = structure_models.NewResource.States.ERRED
+        else:
+            continue
 
-        model.objects.filter(
-            created__lt=timezone.now() - timedelta(minute=30),
-            state=source_state
-        ).update(
-            state=target_state,
-            error_message='Provisioning is timed out.'
-        )
+        cutoff = timezone.now() - timedelta(minutes=30)
+        for resource in model.objects.filter(modified__lt=cutoff, state=source_state):
+            resource.set_erred()
+            resource.error_message = 'Provisioning is timed out.'
+            resource.save(update_fields=['state', 'error_message'])
+            logger.warning('Switching resource %s to erred state, '
+                           'because provisioning is timed out.',
+                           core_utils.serialize_instance(resource))

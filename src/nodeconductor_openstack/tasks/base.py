@@ -1,7 +1,8 @@
 from celery import shared_task
+from django.conf import settings
 
-from nodeconductor.core.tasks import Task
-from nodeconductor.core import models as core_models
+from nodeconductor.core.tasks import Task, BackendMethodTask
+from nodeconductor.structure import SupportedServices, models as structure_models
 
 from .. import models
 
@@ -53,32 +54,50 @@ class PollBackendCheckTask(Task):
         return instance
 
 
-class BaseThrottleProvisionTask(Task):
+class RetryUntilAvailableTask(Task):
     max_retries = 300
     default_retry_delay = 5
 
-    max_concurrent_resources = 4
-    model_class = NotImplemented
-    target_state = core_models.StateMixin.States.CREATING
-
-    def execute(self, settings):
-        if self.model_class.objects.filter(
-            state=self.target_state,
-            service_project_link__service__settings=settings
-        ).count() > self.max_concurrent_resources:
+    def pre_execute(self, instance):
+        if not self.is_available(instance):
             self.retry()
-        else:
-            return True
+        super(RetryUntilAvailableTask, self).pre_execute(instance)
+
+    def is_available(self, instance):
+        return True
 
 
-class ThrottleInstanceProvisionTask(BaseThrottleProvisionTask):
-    model_class = models.Instance
-    target_state = models.Instance.States.PROVISIONING
+class ThrottleProvisionTask(RetryUntilAvailableTask, BackendMethodTask):
+    """
+    One OpenStack settings does not support provisioning of more than
+    4 instances together, also there are limitations for volumes and snapshots.
+    Before starting resource provisioning we need to count how many resources
+    are already in "creating" state and delay provisioning if there are too many of them.
+    """
+    DEFAULT_LIMIT = 4
 
+    def is_available(self, instance):
+        usage = self.get_usage(instance)
+        limit = self.get_limit(instance)
+        return usage <= limit
 
-class ThrottleVolumeProvisionTask(BaseThrottleProvisionTask):
-    model_class = models.Volume
+    def get_usage(self, instance):
+        state = self.get_provisioning_state(instance)
+        service_settings = instance.service_project_link.service.settings
+        model_class = instance._meta.model
+        return model_class.objects.filter(
+            state=state,
+            service_project_link__service__settings=service_settings
+        ).count()
 
+    def get_provisioning_state(self, instance):
+        if isinstance(instance, structure_models.Resource):
+            return structure_models.Resource.States.PROVISIONING
+        elif isinstance(instance, structure_models.NewResource):
+            return structure_models.NewResource.States.CREATING
 
-class ThrottleSnapshotProvisionTask(BaseThrottleProvisionTask):
-    model_class = models.Snapshot
+    def get_limit(self, instance):
+        nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
+        limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
+        model_name = SupportedServices.get_name_for_model(instance)
+        return limit_per_type.get(model_name, self.DEFAULT_LIMIT)
