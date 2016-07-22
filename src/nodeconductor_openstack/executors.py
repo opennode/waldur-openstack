@@ -372,17 +372,16 @@ class DRBackupCreateExecutor(core_executors.BaseExecutor):
                 'create_volume',
                 state_transition='begin_creating'
             ))
-        # Wait for volumes creation
-        for serialized_tmp_volume in serialized_tmp_volumes:
+            # Wait for volumes creation
             _tasks.append(tasks.PollRuntimeStateTask().si(
                 serialized_tmp_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
                 erred_state='error',
             ).set(countdown=30))
-        # Mark volumes as OK on success creation
-        for serialized_tmp_volume in serialized_tmp_volumes:
-            _tasks.append(core_tasks.StateTransitionTask().si(serialized_tmp_volume, state_transition='set_ok'))
+            # Mark volumes as OK on success creation
+            for serialized_tmp_volume in serialized_tmp_volumes:
+                _tasks.append(core_tasks.StateTransitionTask().si(serialized_tmp_volume, state_transition='set_ok'))
 
         # Part 3. Backups of temporary volumes
         # Countdown added make sure that backup creation starts in 10 seconds
@@ -487,19 +486,18 @@ class DRBackupRestorationCreateExecutor(core_executors.CreateExecutor):
         for serialized_volume in serialized_volumes:
             _tasks.append(tasks.ThrottleProvisionTask().si(
                 serialized_volume, 'create_volume', state_transition='begin_creating'))
-        # Import backups
-        for serialized_mirrored_backup in serialized_mirrored_backups:
-            _tasks.append(core_tasks.BackendMethodTask().si(
-                serialized_mirrored_backup, 'import_volume_backup_from_record',
-                state_transition='begin_creating'))
-        # Wait for volumes creation
-        for index, serialized_volume in enumerate(serialized_volumes):
+            # Wait for volumes creation
             _tasks.append(tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
                 erred_state='error',
-            ).set(countdown=30 if index == 0 else 0))
+            ).set(countdown=30))
+        # Import backups
+        for serialized_mirrored_backup in serialized_mirrored_backups:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_mirrored_backup, 'import_volume_backup_from_record',
+                state_transition='begin_creating'))
         # Wait for backups import
         for serialized_mirrored_backup in serialized_mirrored_backups:
             _tasks.append(tasks.PollRuntimeStateTask().si(
