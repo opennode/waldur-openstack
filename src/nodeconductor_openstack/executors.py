@@ -342,8 +342,12 @@ class DRBackupCreateExecutor(core_executors.BaseExecutor):
             core_tasks.RuntimeStateChangeTask().si(serialized_dr_backup, runtime_state='Creating temporary snapshots'))
         # create temporary snapshots
         for serialized_tmp_snapshot in serialized_tmp_snapshots:
-            _tasks.append(core_tasks.BackendMethodTask().si(
-                serialized_tmp_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'))
+            _tasks.append(tasks.ThrottleProvisionTask().si(
+                serialized_tmp_snapshot,
+                'create_snapshot',
+                force=True,
+                state_transition='begin_creating'
+            ))
         # wait for snapshots creation
         for serialized_tmp_snapshot in serialized_tmp_snapshots:
             _tasks.append(tasks.PollRuntimeStateTask().si(
@@ -363,8 +367,11 @@ class DRBackupCreateExecutor(core_executors.BaseExecutor):
             serialized_dr_backup, runtime_state='Creating temporary volumes').set(countdown=10))
         # Create temporary volumes from temporary snapshots
         for serialized_tmp_volume in serialized_tmp_volumes:
-            _tasks.append(core_tasks.BackendMethodTask().si(
-                serialized_tmp_volume, 'create_volume', state_transition='begin_creating'))
+            _tasks.append(tasks.ThrottleProvisionTask().si(
+                serialized_tmp_volume,
+                'create_volume',
+                state_transition='begin_creating'
+            ))
         # Wait for volumes creation
         for serialized_tmp_volume in serialized_tmp_volumes:
             _tasks.append(tasks.PollRuntimeStateTask().si(
@@ -471,11 +478,14 @@ class DRBackupRestorationCreateExecutor(core_executors.CreateExecutor):
             for mirrored_backup in mirrored_backups]
 
         _tasks = [
-            core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')
+            tasks.ThrottleProvisionStateTask().si(
+                serialized_instance,
+                state_transition='begin_provisioning'
+            )
         ]
         # Create empty volumes for instance
         for serialized_volume in serialized_volumes:
-            _tasks.append(core_tasks.BackendMethodTask().si(
+            _tasks.append(tasks.ThrottleProvisionTask().si(
                 serialized_volume, 'create_volume', state_transition='begin_creating'))
         # Import backups
         for serialized_mirrored_backup in serialized_mirrored_backups:
@@ -546,7 +556,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         _tasks = [tasks.ThrottleProvisionTask().si(serialized_instance, state_transition='begin_provisioning')]
         # Create volumes
         for serialized_volume in serialized_volumes:
-            _tasks.append(core_tasks.BackendMethodTask().si(
+            _tasks.append(tasks.ThrottleProvisionTask().si(
                 serialized_volume, 'create_volume', state_transition='begin_creating'))
         for index, serialized_volume in enumerate(serialized_volumes):
             # Wait for volume creation
@@ -823,7 +833,7 @@ class BackupCreateExecutor(core_executors.CreateExecutor):
 
         _tasks = [core_tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_creating')]
         for serialized_snapshot in serialized_snapshots:
-            _tasks.append(core_tasks.BackendMethodTask().si(
+            _tasks.append(tasks.ThrottleProvisionTask().si(
                 serialized_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'))
         for index, serialized_snapshot in enumerate(serialized_snapshots):
             _tasks.append(tasks.PollRuntimeStateTask().si(
@@ -882,10 +892,15 @@ class BackupRestorationCreateExecutor(core_executors.CreateExecutor):
         serialized_instance = core_utils.serialize_instance(instance)
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
-        _tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_provisioning')]
+        _tasks = [
+            tasks.ThrottleProvisionStateTask().si(
+                serialized_instance,
+                state_transition='begin_provisioning'
+            )
+        ]
         # Create volumes
         for serialized_volume in serialized_volumes:
-            _tasks.append(core_tasks.BackendMethodTask().si(
+            _tasks.append(tasks.ThrottleProvisionTask().si(
                 serialized_volume, 'create_volume', state_transition='begin_creating'))
         for index, serialized_volume in enumerate(serialized_volumes):
             # Wait for volume creation

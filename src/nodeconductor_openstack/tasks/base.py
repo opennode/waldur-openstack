@@ -1,7 +1,7 @@
 from celery import shared_task
 from django.conf import settings
 
-from nodeconductor.core.tasks import Task, BackendMethodTask
+from nodeconductor.core import tasks as core_tasks
 from nodeconductor.structure import SupportedServices, models as structure_models
 
 from .. import models
@@ -19,7 +19,7 @@ class RuntimeStateException(Exception):
     pass
 
 
-class PollRuntimeStateTask(Task):
+class PollRuntimeStateTask(core_tasks.Task):
     max_retries = 300
     default_retry_delay = 5
 
@@ -39,7 +39,7 @@ class PollRuntimeStateTask(Task):
         return instance
 
 
-class PollBackendCheckTask(Task):
+class PollBackendCheckTask(core_tasks.Task):
     max_retries = 60
     default_retry_delay = 5
 
@@ -54,7 +54,7 @@ class PollBackendCheckTask(Task):
         return instance
 
 
-class RetryUntilAvailableTask(Task):
+class RetryUntilAvailableTask(core_tasks.Task):
     max_retries = 300
     default_retry_delay = 5
 
@@ -67,7 +67,7 @@ class RetryUntilAvailableTask(Task):
         return True
 
 
-class ThrottleProvisionTask(RetryUntilAvailableTask, BackendMethodTask):
+class BaseThrottleProvisionTask(RetryUntilAvailableTask):
     """
     One OpenStack settings does not support provisioning of more than
     4 instances together, also there are limitations for volumes and snapshots.
@@ -101,3 +101,11 @@ class ThrottleProvisionTask(RetryUntilAvailableTask, BackendMethodTask):
         limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
         model_name = SupportedServices.get_name_for_model(instance)
         return limit_per_type.get(model_name, self.DEFAULT_LIMIT)
+
+
+class ThrottleProvisionTask(BaseThrottleProvisionTask, core_tasks.BackendMethodTask):
+    pass
+
+
+class ThrottleProvisionStateTask(BaseThrottleProvisionTask, core_tasks.StateTransitionTask):
+    pass
