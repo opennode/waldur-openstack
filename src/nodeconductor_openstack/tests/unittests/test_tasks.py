@@ -1,8 +1,12 @@
 import mock
 
 from datetime import timedelta
+
+from ddt import ddt, data
 from django.test import TestCase
 from django.utils import timezone
+
+from nodeconductor.core import utils as core_utils
 
 from ... import tasks, models
 from ...tests import factories
@@ -50,3 +54,65 @@ class ExecuteScheduleTaskTest(TestCase):
     def test_command_does_not_create_backups_created_for_schedule_with_next_trigger_in_future(self):
         tasks.schedule_backups()
         self.assertEqual(self.future_schedule.backups.count(), 0)
+
+
+class SetErredProvisioningResourcesTaskTest(TestCase):
+    def test_stuck_resource_becomes_erred(self):
+        with mock.patch('model_utils.fields.now') as mocked_now:
+            mocked_now.return_value = timezone.now() - timedelta(hours=1)
+            stuck_vm = factories.InstanceFactory(state=models.Instance.States.PROVISIONING)
+            stuck_volume = factories.VolumeFactory(state=models.Volume.States.CREATING)
+
+        tasks.set_erred_stuck_resources()
+
+        stuck_vm.refresh_from_db()
+        stuck_volume.refresh_from_db()
+
+        self.assertEqual(stuck_vm.state, models.Instance.States.ERRED)
+        self.assertEqual(stuck_volume.state, models.Volume.States.ERRED)
+
+    def test_ok_vm_unchanged(self):
+        ok_vm = factories.InstanceFactory(
+            state=models.Instance.States.PROVISIONING,
+            modified=timezone.now() - timedelta(minutes=1)
+        )
+        ok_volume = factories.VolumeFactory(
+            state=models.Volume.States.CREATING,
+            modified=timezone.now() - timedelta(minutes=1)
+        )
+        tasks.set_erred_stuck_resources()
+
+        ok_vm.refresh_from_db()
+        ok_volume.refresh_from_db()
+
+        self.assertEqual(ok_vm.state, models.Instance.States.PROVISIONING)
+        self.assertEqual(ok_volume.state, models.Volume.States.CREATING)
+
+
+@ddt
+class ThrottleProvisionTaskTest(TestCase):
+
+    @data(
+        dict(size=tasks.ThrottleProvisionTask.DEFAULT_LIMIT + 1, retried=True),
+        dict(size=tasks.ThrottleProvisionTask.DEFAULT_LIMIT - 1, retried=False),
+    )
+    def test_if_limit_is_reached_provisioning_is_delayed(self, params):
+        link = factories.OpenStackServiceProjectLinkFactory()
+        factories.InstanceFactory.create_batch(
+            size=params['size'],
+            state=models.Instance.States.PROVISIONING,
+            service_project_link=link
+        )
+        vm = factories.InstanceFactory(
+            state=models.Instance.States.PROVISIONING_SCHEDULED,
+            service_project_link=link
+        )
+        serialized_vm = core_utils.serialize_instance(vm)
+        mocked_retry = mock.Mock()
+        tasks.ThrottleProvisionTask.retry = mocked_retry
+        tasks.ThrottleProvisionTask().si(
+            serialized_vm,
+            'create_instance',
+            state_transition='begin_creating'
+        ).apply()
+        self.assertEqual(mocked_retry.called, params['retried'])

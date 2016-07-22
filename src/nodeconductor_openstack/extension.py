@@ -25,6 +25,11 @@ class OpenStackExtension(NodeConductorExtension):
                     ),
                 },
             ),
+            'MAX_CONCURRENT_PROVISION': {
+                'OpenStack.Instance': 4,
+                'OpenStack.Volume': 4,
+                'OpenStack.Snapshot': 4
+            }
         }
 
     @staticmethod
@@ -48,6 +53,12 @@ class OpenStackExtension(NodeConductorExtension):
 
             'openstack-delete-expired-backups': {
                 'task': 'nodeconductor.openstack.delete_expired_backups',
+                'schedule': timedelta(minutes=10),
+                'args': (),
+            },
+
+            'openstack-set-erred-stuck-resources': {
+                'task': 'nodeconductor.openstack.set_erred_stuck_resources',
                 'schedule': timedelta(minutes=10),
                 'args': (),
             },
