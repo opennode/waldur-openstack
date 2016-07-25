@@ -380,8 +380,7 @@ class DRBackupCreateExecutor(core_executors.BaseExecutor):
                 erred_state='error',
             ).set(countdown=30))
             # Mark volumes as OK on success creation
-            for serialized_tmp_volume in serialized_tmp_volumes:
-                _tasks.append(core_tasks.StateTransitionTask().si(serialized_tmp_volume, state_transition='set_ok'))
+            _tasks.append(core_tasks.StateTransitionTask().si(serialized_tmp_volume, state_transition='set_ok'))
 
         # Part 3. Backups of temporary volumes
         # Countdown added make sure that backup creation starts in 10 seconds
