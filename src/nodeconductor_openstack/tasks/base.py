@@ -23,6 +23,10 @@ class PollRuntimeStateTask(core_tasks.Task):
     max_retries = 300
     default_retry_delay = 5
 
+    @classmethod
+    def get_description(cls, instance, backend_pull_method, *args, **kwargs):
+        return 'Poll instance "%s" with method "%s"' % (instance, backend_pull_method)
+
     def get_backend(self, instance):
         return instance.get_backend()
 
@@ -42,6 +46,10 @@ class PollRuntimeStateTask(core_tasks.Task):
 class PollBackendCheckTask(core_tasks.Task):
     max_retries = 60
     default_retry_delay = 5
+
+    @classmethod
+    def get_description(cls, instance, backend_check_method, *args, **kwargs):
+        return 'Check instance "%s" with method "%s"' % (instance, backend_check_method)
 
     def get_backend(self, instance):
         return instance.get_backend()
