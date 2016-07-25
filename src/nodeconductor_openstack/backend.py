@@ -242,9 +242,14 @@ class OpenStackBackend(ServiceBackend):
             "'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
 
     def ping(self, raise_exception=False):
-        # Session validation occurs on class creation so assume it's active
-        # TODO: Consider validating session depending on tenant permissions
-        return True
+        try:
+            self.keystone_admin_client
+        except keystone_exceptions.ClientException as e:
+            if raise_exception:
+                six.reraise(OpenStackBackendError, e)
+            return False
+        else:
+            return True
 
     def ping_resource(self, instance):
         try:
