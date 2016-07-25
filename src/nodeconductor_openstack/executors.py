@@ -551,7 +551,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
-        _tasks = [tasks.ThrottleProvisionTask().si(serialized_instance, state_transition='begin_provisioning')]
+        _tasks = [tasks.ThrottleProvisionStateTask().si(serialized_instance, state_transition='begin_provisioning')]
         # Create volumes
         for serialized_volume in serialized_volumes:
             _tasks.append(tasks.ThrottleProvisionTask().si(
