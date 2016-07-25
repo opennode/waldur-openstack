@@ -24,9 +24,8 @@ class PollRuntimeStateTask(core_tasks.Task):
     default_retry_delay = 5
 
     @classmethod
-    def get_description(cls, *args, **kwargs):
-        instance, pull_method = args[:2]
-        return 'Poll instance "%s" with method "%s"' % (instance, pull_method)
+    def get_description(cls, instance, backend_pull_method, *args, **kwargs):
+        return 'Poll instance "%s" with method "%s"' % (instance, backend_pull_method)
 
     def get_backend(self, instance):
         return instance.get_backend()
@@ -49,9 +48,8 @@ class PollBackendCheckTask(core_tasks.Task):
     default_retry_delay = 5
 
     @classmethod
-    def get_description(cls, *args, **kwargs):
-        instance, check_method = args[:2]
-        return 'Check instance "%s" with method "%s"' % (instance, check_method)
+    def get_description(cls, instance, backend_check_method, *args, **kwargs):
+        return 'Check instance "%s" with method "%s"' % (instance, backend_check_method)
 
     def get_backend(self, instance):
         return instance.get_backend()
