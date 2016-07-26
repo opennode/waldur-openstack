@@ -117,7 +117,7 @@ class VolumeFactory(TenantMixin, factory.DjangoModelFactory):
     name = factory.Sequence(lambda n: 'volume%s' % n)
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
     size = 10 * 1024
-    backend_id = uuid.uuid4
+    backend_id = factory.LazyAttribute(lambda _: uuid.uuid4())
 
     @classmethod
     def get_url(cls, instance=None, action=None):
@@ -319,7 +319,8 @@ class TenantFactory(factory.DjangoModelFactory):
     name = factory.Sequence(lambda n: 'tenant%s' % n)
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
     state = models.Tenant.States.OK
-    external_network_id = factory.Sequence(lambda n: 'external_network_id%s' % n)
+    external_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
+    internal_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
 
     @classmethod
     def get_url(cls, tenant=None, action=None):

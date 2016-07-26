@@ -705,6 +705,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     "Security group {} has wrong service or project. New instance and its "
                     "security groups have to belong to same project and service".format(security_group.name))
 
+        if not tenant.internal_network_id:
+            raise serializers.ValidationError({
+                'tenant': 'Tenant does not have an internal network.'
+            })
+
         self._validate_external_ip(attrs)
 
         return attrs
