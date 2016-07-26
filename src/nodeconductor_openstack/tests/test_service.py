@@ -172,7 +172,8 @@ class ServicePermissionTest(test.APITransactionTestCase):
             )
 
     # Creation tests
-    def test_user_can_add_service_to_the_customer_he_owns(self):
+    @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
+    def test_user_can_add_service_to_the_customer_he_owns(self, mocked_backend):
         self.client.force_authenticate(user=self.users['customer_owner'])
 
         payload = {
@@ -186,12 +187,13 @@ class ServicePermissionTest(test.APITransactionTestCase):
 
         with patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute') as mocked:
             response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), payload)
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
             settings = ServiceSettings.objects.get(name=payload['name'])
             self.assertFalse(settings.shared)
 
             mocked.assert_any_call(settings)
+            mocked_backend().ping.assert_called_once()
 
     def test_user_cannot_add_service_to_the_customer_he_sees_but_doesnt_own(self):
         choices = {
