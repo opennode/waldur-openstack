@@ -264,6 +264,9 @@ class Instance(structure_models.VirtualMachineMixin,
             'data_volume_size', 'system_volume_size',
         )
 
+    def get_children(self):
+        return list(self.backups.all())
+
     def detect_coordinates(self):
         settings = self.service_project_link.service.settings
         options = settings.options or {}
@@ -372,6 +375,7 @@ class BackupSchedule(core_models.UuidMixin,
 class Backup(core_models.UuidMixin,
              core_models.DescribableMixin,
              core_models.StateMixin,
+             core_models.DescendantMixin,
              LoggableMixin):
 
     class Permissions(object):
