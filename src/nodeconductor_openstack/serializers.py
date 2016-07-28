@@ -3,6 +3,7 @@ import pytz
 import re
 import urlparse
 
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.template.defaultfilters import slugify
@@ -11,9 +12,8 @@ from netaddr import IPNetwork
 from rest_framework import serializers, reverse
 from taggit.models import Tag
 
-from nodeconductor.core import models as core_models
-from nodeconductor.core import serializers as core_serializers
-from nodeconductor.core import utils as core_utils
+from nodeconductor.core import (utils as core_utils, models as core_models, serializers as core_serializers,
+                                NodeConductorExtension)
 from nodeconductor.core.fields import JsonField, MappedChoiceField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
@@ -405,12 +405,40 @@ class BasicRestorationSerializer(serializers.HyperlinkedModelSerializer):
     class Meta(object):
         model = NotImplemented
         view_name = NotImplemented
-        fields = ('url', 'uuid', 'instance', 'instance_uuid', 'instance_name', 'instance_state')
-        read_only_fields = ('instance',)
+        fields = ('url', 'uuid', 'instance', 'instance_uuid', 'instance_name', 'instance_state', 'created')
+        read_only_fields = ('instance', 'created')
         extra_kwargs = dict(
             url={'lookup_field': 'uuid'},
             instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
         )
+
+    def create_instance_crm(self, instance, backup):
+        # XXX: This should be moved to itacloud assembly and refactored.
+        nc_settings = getattr(settings, 'NODECONDUCTOR', {})
+        metadata = backup.metadata
+        if ('crm' in metadata and nc_settings.get('IS_ITACLOUD', False) and
+                NodeConductorExtension.is_installed('nodeconductor_sugarcrm')):
+            from nodeconductor_sugarcrm.models import SugarCRMServiceProjectLink, CRM
+            try:
+                crm_data = metadata['crm']
+                spl = SugarCRMServiceProjectLink.objects.get(pk=crm_data['service_project_link'])
+                instance_url = reverse.reverse(
+                    'openstack-instance-detail', kwargs={'uuid': instance.uuid.hex}, request=self.context['request'])
+                crm = CRM.objects.create(
+                    name=crm_data['name'],
+                    service_project_link=spl,
+                    description=crm_data['description'],
+                    admin_username=crm_data['admin_username'],
+                    admin_password=crm_data['admin_password'],
+                    state=CRM.States.PROVISIONING,
+                    instance_url=instance_url,
+                )
+                crm.tags.add(*crm_data['tags'])
+            except SugarCRMServiceProjectLink.DoesNotExist:
+                logger.error('Cannot restore instance %s (PK: %s) CRM. Its SPL does not exist anymore.' %
+                             (instance.name, instance.pk))
+            except Exception as e:
+                logger.error('Cannot restore instance %s (PK: %s) CRM. Error: %s' % (instance.name, instance.pk, e))
 
 
 class BasicBackupRestorationSerializer(BasicRestorationSerializer):
@@ -536,6 +564,8 @@ class BackupRestorationSerializer(BasicBackupRestorationSerializer):
             volume.save()
             volume.increase_backend_quotas_usage()
             instance.volumes.add(volume)
+        # XXX: This should be moved to itacloud assembly
+        self.create_instance_crm(instance, backup)
         return backup_restoration
 
 
@@ -674,6 +704,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                 raise serializers.ValidationError(
                     "Security group {} has wrong service or project. New instance and its "
                     "security groups have to belong to same project and service".format(security_group.name))
+
+        if not tenant.internal_network_id:
+            raise serializers.ValidationError({
+                'tenant': 'Tenant does not have an internal network.'
+            })
 
         self._validate_external_ip(attrs)
 
@@ -1371,4 +1406,6 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
                 volume=volume,
             )
             dr_backup_restoration.volume_backup_restorations.add(volume_backup_restoration)
+        # XXX: This should be moved to itacloud assembly
+        self.create_instance_crm(instance, dr_backup)
         return dr_backup_restoration

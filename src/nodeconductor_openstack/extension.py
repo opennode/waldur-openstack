@@ -25,6 +25,11 @@ class OpenStackExtension(NodeConductorExtension):
                     ),
                 },
             ),
+            'MAX_CONCURRENT_PROVISION': {
+                'OpenStack.Instance': 4,
+                'OpenStack.Volume': 4,
+                'OpenStack.Snapshot': 4
+            }
         }
 
     @staticmethod
@@ -52,14 +57,14 @@ class OpenStackExtension(NodeConductorExtension):
                 'args': (),
             },
 
-            'openstack-pull-tenants': {
-                'task': 'nodeconductor.openstack.pull_tenants',
-                'schedule': timedelta(minutes=30),
+            'openstack-set-erred-stuck-resources': {
+                'task': 'nodeconductor.openstack.set_erred_stuck_resources',
+                'schedule': timedelta(minutes=10),
                 'args': (),
             },
 
-            'openstack-pull-tenants-properties': {
-                'task': 'nodeconductor.openstack.pull_tenants_properties',
+            'openstack-pull-tenants': {
+                'task': 'nodeconductor.openstack.pull_tenants',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },

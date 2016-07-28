@@ -110,14 +110,8 @@ Available settings:
 
           For *icmp* protocol only.
 
-    OPENSTACK_QUOTAS_INSTANCE_RATIOS
-      Dictionary of default ratio values per instance.
-
-        volumes
-          Number of volumes per instance.
-
-        snapshots
-          Number of snapshots per instance.
+    MAX_CONCURRENT_PROVISION
+      Dictionary with model name as key and concurrent resources provisioning limit as value.
 
 
 Installation from RPM repository

@@ -1,9 +1,9 @@
-from nodeconductor.core import tasks
+from nodeconductor.core import tasks as core_tasks
 
 from . import models
 
 
-class SetDRBackupErredTask(tasks.ErrorStateTransitionTask):
+class SetDRBackupErredTask(core_tasks.ErrorStateTransitionTask):
     """ Mark DR backup and all related resources that are not in state OK as Erred """
 
     def execute(self, dr_backup):
@@ -28,7 +28,7 @@ class SetDRBackupErredTask(tasks.ErrorStateTransitionTask):
         schedule = dr_backup.backup_schedule
         if schedule:
             schedule.error_message = 'Failed to execute backup schedule for %s. Error: %s' % (
-                dr_backup.instance, dr_backup.error_message)
+                dr_backup.source_instance, dr_backup.error_message)
             schedule.runtime_state = 'Failed to create backup'
             schedule.is_active = False
             schedule.save()
@@ -36,7 +36,7 @@ class SetDRBackupErredTask(tasks.ErrorStateTransitionTask):
         dr_backup.save(update_fields=['runtime_state'])
 
 
-class CleanUpDRBackupTask(tasks.StateTransitionTask):
+class CleanUpDRBackupTask(core_tasks.StateTransitionTask):
     """ Mark DR backup as OK and delete related resources.
 
         Celery is too fragile with groups or chains in callback.
@@ -53,7 +53,7 @@ class CleanUpDRBackupTask(tasks.StateTransitionTask):
         dr_backup.save(update_fields=['runtime_state'])
 
 
-class ForceDeleteDRBackupTask(tasks.StateTransitionTask):
+class ForceDeleteDRBackupTask(core_tasks.StateTransitionTask):
 
     def execute(self, dr_backup):
         dr_backup.volume_backups.all().delete()

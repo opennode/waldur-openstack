@@ -242,9 +242,14 @@ class OpenStackBackend(ServiceBackend):
             "'%s' object has no attribute '%s'" % (self.__class__.__name__, name))
 
     def ping(self, raise_exception=False):
-        # Session validation occurs on class creation so assume it's active
-        # TODO: Consider validating session depending on tenant permissions
-        return True
+        try:
+            self.keystone_admin_client
+        except keystone_exceptions.ClientException as e:
+            if raise_exception:
+                six.reraise(OpenStackBackendError, e)
+            return False
+        else:
+            return True
 
     def ping_resource(self, instance):
         try:
@@ -371,19 +376,6 @@ class OpenStackBackend(ServiceBackend):
         return self._wait_for_object_status(
             server_id, nova.servers.get, complete_status, error_status, retries, poll_interval)
 
-    def _wait_for_volume_status(self, volume_id, cinder, complete_status,
-                                error_status=None, retries=300, poll_interval=3):
-        return self._wait_for_object_status(
-            volume_id, cinder.volumes.get, complete_status, error_status, retries, poll_interval)
-
-    def _wait_for_snapshot_status(self, snapshot_id, cinder, complete_status, error_status, retries=90, poll_interval=3):
-        return self._wait_for_object_status(
-            snapshot_id, cinder.volume_snapshots.get, complete_status, error_status, retries, poll_interval)
-
-    def _wait_for_backup_status(self, backup, cinder, complete_status, error_status, retries=90, poll_interval=3):
-        return self._wait_for_object_status(
-            backup, cinder.backups.get, complete_status, error_status, retries, poll_interval)
-
     def _wait_for_object_status(self, obj_id, client_get_method, complete_status, error_status=None,
                                 retries=30, poll_interval=3):
         complete_state_predicate = lambda o: o.status == complete_status
@@ -427,17 +419,6 @@ class OpenStackBackend(ServiceBackend):
             return True
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
-
-    # deprecated
-    def _wait_for_snapshot_deletion(self, snapshot_id, cinder, retries=90, poll_interval=3):
-        try:
-            for _ in range(retries):
-                cinder.volume_snapshots.get(snapshot_id)
-                time.sleep(poll_interval)
-
-            return False
-        except cinder_exceptions.NotFound:
-            return True
 
     @log_backend_action('check is volume backup deleted')
     def is_volume_backup_deleted(self, volume_backup):

@@ -54,7 +54,19 @@ class BackupScheduleAdmin(admin.ModelAdmin):
 
 
 class InstanceAdmin(structure_admin.VirtualMachineAdmin):
+
+    actions = structure_admin.VirtualMachineAdmin.actions + ['pull']
     form = InstanceForm
+
+    class Pull(ExecutorAdminAction):
+        executor = executors.InstancePullExecutor
+        short_description = 'Pull'
+
+        def validate(self, instance):
+            if instance.state not in (models.Instance.States.ONLINE, models.Instance.States.OFFLINE, models.Instance.States.ERRED):
+                raise ValidationError('Instance has to be in ONLINE, OFFLINE or ERRED state.')
+
+    pull = Pull()
 
 
 class TenantAdmin(structure_admin.ResourceAdmin):
@@ -206,7 +218,7 @@ class DRBackupAdmin(TenantResourceAdmin):
 
 class DRBackupRestorationAdmin(admin.ModelAdmin):
     list_filter = ('tenant', )
-    list_display = ('uuid', 'backup', 'instance', 'get_tenant')
+    list_display = ('uuid', 'backup', 'instance', 'get_tenant', 'created')
 
     def get_tenant(self, obj):
         tenant = obj.tenant

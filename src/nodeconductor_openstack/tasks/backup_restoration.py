@@ -22,3 +22,10 @@ class SetBackupRestorationErredTask(tasks.ErrorStateTransitionTask):
             else:
                 volume.set_erred()
                 volume.save(update_fields=['state'])
+
+        # XXX: This should be moved to itacloud assembly:
+        crm = instance.get_crm()
+        if crm:
+            crm.error_message = 'OpenStack Instance restoration failed.'
+            crm.set_erred()
+            crm.save()
