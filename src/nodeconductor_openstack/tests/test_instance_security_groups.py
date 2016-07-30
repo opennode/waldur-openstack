@@ -34,14 +34,11 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
         self.client.force_authenticate(self.user)
 
         self.instance = factories.InstanceFactory(state=models.Instance.States.OFFLINE)
-        spl = self.instance.service_project_link
-        spl.project.add_user(self.user, structure_models.ProjectRole.ADMINISTRATOR)
+        self.spl = self.instance.service_project_link
+        self.spl.project.add_user(self.user, structure_models.ProjectRole.ADMINISTRATOR)
 
-        self.instance_security_groups = factories.InstanceSecurityGroupFactory.create_batch(2, instance=self.instance)
-        self.service_security_groups = [g.security_group for g in self.instance_security_groups]
-        for security_group in self.service_security_groups:
-            security_group.service_project_link = spl
-            security_group.save()
+        self.security_groups = factories.SecurityGroupFactory.create_batch(2, service_project_link=self.spl)
+        self.instance.security_groups.add(*self.security_groups)
 
     def test_groups_list_in_instance_response(self):
         response = self.client.get(factories.InstanceFactory.get_url(self.instance))
@@ -49,35 +46,30 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
 
         fields = ('name',)
         for field in fields:
-            expected_security_groups = [getattr(g, field) for g in self.service_security_groups]
+            expected_security_groups = [getattr(g, field) for g in self.security_groups]
             self.assertItemsEqual([g[field] for g in response.data['security_groups']], expected_security_groups)
 
     def test_add_instance_with_security_groups(self):
         data = _instance_data(self.user, self.instance)
-        data['security_groups'] = [self._get_valid_security_group_payload(sg)
-                                   for sg in self.service_security_groups]
+        data['security_groups'] = [factories.SecurityGroupFactory.get_url(sg)
+                                   for sg in self.security_groups]
 
         response = self.client.post(factories.InstanceFactory.get_list_url(), data=data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
         reread_instance = models.Instance.objects.get(pk=self.instance.pk)
-        reread_security_groups = [
-            isg.security_group
-            for isg in reread_instance.security_groups.all()
-        ]
-
-        self.assertEquals(reread_security_groups, self.service_security_groups)
+        reread_security_groups = list(reread_instance.security_groups.all())
+        self.assertEquals(reread_security_groups, self.security_groups)
 
     def test_change_instance_security_groups_single_field(self):
-        membership = self.instance.service_project_link
         new_security_group = factories.SecurityGroupFactory(
             name='test-group',
-            service_project_link=membership,
+            service_project_link=self.spl,
         )
 
         data = {
             'security_groups': [
-                self._get_valid_security_group_payload(new_security_group),
+                factories.SecurityGroupFactory.get_url(new_security_group),
             ]
         }
 
@@ -85,10 +77,7 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         reread_instance = models.Instance.objects.get(pk=self.instance.pk)
-        reread_security_groups = [
-            isg.security_group
-            for isg in reread_instance.security_groups.all()
-        ]
+        reread_security_groups = list(reread_instance.security_groups.all())
 
         self.assertEquals(reread_security_groups, [new_security_group],
                           'Security groups should have changed')
@@ -97,27 +86,20 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
         response = self.client.get(factories.InstanceFactory.get_url(self.instance))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        isg = factories.InstanceSecurityGroupFactory(instance=self.instance)
+        security_group = factories.SecurityGroupFactory(service_project_link=self.spl)
         data = _instance_data(self.user, self.instance)
-        data['security_groups'] = [self._get_valid_security_group_payload(isg.security_group)]
+        data['security_groups'] = [factories.SecurityGroupFactory.get_url(security_group)]
 
         response = self.client.put(factories.InstanceFactory.get_url(self.instance), data=data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         reread_instance = models.Instance.objects.get(pk=self.instance.pk)
-        reread_security_groups = [
-            isg.security_group
-            for isg in reread_instance.security_groups.all()
-        ]
+        reread_security_groups = list(reread_instance.security_groups.all())
 
-        self.assertEquals(reread_security_groups, [isg.security_group])
+        self.assertEquals(reread_security_groups, [security_group])
 
     def test_security_groups_is_not_required(self):
         data = _instance_data(self.user, self.instance)
         self.assertNotIn('security_groups', data)
         response = self.client.post(factories.InstanceFactory.get_list_url(), data=data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    # Helper methods
-    def _get_valid_security_group_payload(self, security_group=None):
-        return {'url': factories.SecurityGroupFactory.get_url(security_group)}
