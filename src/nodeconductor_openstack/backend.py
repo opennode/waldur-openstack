@@ -925,8 +925,7 @@ class OpenStackBackend(ServiceBackend):
             if save:
                 instance.save()
                 instance.volumes.add(*volumes)
-                for security_group in security_groups:
-                    models.InstanceSecurityGroup.objects.create(instance=instance, security_group=security_group)
+                instance.security_groups.add(*security_groups)
 
         return instance
 
@@ -1036,7 +1035,7 @@ class OpenStackBackend(ServiceBackend):
                 raise OpenStackBackendError(
                     'Current installation can create only instance with 1 system volume and 1 data volume.')
 
-            security_group_ids = instance.security_groups.values_list('security_group__backend_id', flat=True)
+            security_group_ids = instance.security_groups.values_list('backend_id', flat=True)
 
             server_create_parameters = dict(
                 name=instance.name,
@@ -1103,7 +1102,7 @@ class OpenStackBackend(ServiceBackend):
 
             backend_security_groups = server.list_security_group()
             for bsg in backend_security_groups:
-                if instance.security_groups.filter(security_group__name=bsg.name).exists():
+                if instance.security_groups.filter(name=bsg.name).exists():
                     continue
                 try:
                     security_group = tenant.security_groups.get(name=bsg.name)
@@ -1113,7 +1112,7 @@ class OpenStackBackend(ServiceBackend):
                         (tenant, tenant.pk, bsg.name, instance, instance.pk)
                     )
                 else:
-                    instance.security_groups.create(security_group=security_group)
+                    instance.security_groups.add(security_group)
 
         except nova_exceptions.ClientException as e:
             logger.exception("Failed to provision instance %s", instance.uuid)

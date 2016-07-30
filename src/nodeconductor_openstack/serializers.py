@@ -9,7 +9,7 @@ from django.db import transaction
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 from netaddr import IPNetwork
-from rest_framework import serializers, reverse
+from rest_framework import serializers, reverse, permissions
 from taggit.models import Tag
 
 from nodeconductor.core import (utils as core_utils, models as core_models, serializers as core_serializers,
@@ -353,29 +353,6 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
         return security_group
 
 
-class InstanceSecurityGroupSerializer(serializers.ModelSerializer):
-
-    name = serializers.ReadOnlyField(source='security_group.name')
-    rules = NestedSecurityGroupRuleSerializer(
-        source='security_group.rules',
-        many=True,
-        read_only=True,
-    )
-    url = serializers.HyperlinkedRelatedField(
-        source='security_group',
-        lookup_field='uuid',
-        view_name='openstack-sgp-detail',
-        queryset=models.SecurityGroup.objects.all(),
-    )
-    state = serializers.ReadOnlyField(source='security_group.human_readable_state')
-    description = serializers.ReadOnlyField(source='security_group.description')
-
-    class Meta(object):
-        model = models.InstanceSecurityGroup
-        fields = ('url', 'name', 'rules', 'description', 'state')
-        view_name = 'openstack-sgp-detail'
-
-
 class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
     instance_name = serializers.ReadOnlyField(source='instance.name')
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
@@ -611,8 +588,12 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset=models.Image.objects.all().select_related('settings'),
         write_only=True)
 
-    security_groups = InstanceSecurityGroupSerializer(
-        many=True, required=False, read_only=False)
+    security_groups = serializers.HyperlinkedRelatedField(
+        many=True,
+        view_name='openstack-sgp-detail',
+        lookup_field='uuid',
+        queryset=models.SecurityGroup.objects.all(),
+        required=False)
 
     backups = BackupSerializer(many=True, read_only=True)
     backup_schedules = BackupScheduleSerializer(many=True, read_only=True)
@@ -653,6 +634,15 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             field.query_params = {'status': 'DOWN'}
             field.value_field = 'url'
             field.display_name_field = 'address'
+
+        try:
+            request = self.context['request']
+        except (KeyError, AttributeError):
+            return fields
+
+        if request.method in permissions.SAFE_METHODS:
+            fields['security_groups'] = SecurityGroupSerializer(many=True, read_only=True)
+
         return fields
 
     @staticmethod
@@ -660,8 +650,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset = structure_serializers.VirtualMachineSerializer.eager_load(queryset)
         queryset = queryset.select_related('tenant')
         return queryset.prefetch_related(
-            'security_groups__security_group',
-            'security_groups__security_group__rules',
+            'security_groups',
+            'security_groups__rules',
             'backups',
             'backup_schedules',
             'volumes',
@@ -698,8 +688,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             raise serializers.ValidationError(
                 {'system_volume_size': "System volume size has to be greater than %s" % image.min_disk})
 
-        for security_group_data in attrs.get('security_groups', []):
-            security_group = security_group_data['security_group']
+        for security_group in attrs.get('security_groups', []):
             if security_group.service_project_link != attrs['service_project_link']:
                 raise serializers.ValidationError(
                     "Security group {} has wrong service or project. New instance and its "
@@ -765,7 +754,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         """ Store flavor, ssh_key and image details into instance model.
             Create volumes and security groups for instance.
         """
-        security_groups = [data['security_group'] for data in validated_data.pop('security_groups', [])]
+        security_groups = validated_data.pop('security_groups', [])
         tenant = validated_data['tenant']
         spl = tenant.service_project_link
         ssh_key = validated_data.get('ssh_public_key')
@@ -794,8 +783,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         instance = super(InstanceSerializer, self).create(validated_data)
 
-        for sg in security_groups:
-            instance.security_groups.create(security_group=sg)
+        instance.security_groups.add(*security_groups)
 
         system_volume = models.Volume.objects.create(
             name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
@@ -822,12 +810,10 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         # This field is protected, so it should not be used for update.
         del validated_data['data_volume_size']
         security_groups = validated_data.pop('security_groups', [])
-        security_groups = [data['security_group'] for data in security_groups]
         instance = super(InstanceSerializer, self).update(instance, validated_data)
 
         instance.security_groups.all().delete()
-        for sg in security_groups:
-            instance.security_groups.create(security_group=sg)
+        instance.security_groups.add(*security_groups)
 
         return instance
 

@@ -207,6 +207,8 @@ class Instance(structure_models.VirtualMachineMixin,
     flavor_name = models.CharField(max_length=255, blank=True)
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
 
+    security_groups = models.ManyToManyField(SecurityGroup, related_name='instances')
+
     tracker = FieldTracker()
     tenant = models.ForeignKey('Tenant', related_name='instances')
 
@@ -326,16 +328,6 @@ class Instance(structure_models.VirtualMachineMixin,
             except CRM.DoesNotExist:
                 pass
         return
-
-
-class InstanceSecurityGroup(models.Model):
-
-    class Permissions(object):
-        project_path = 'instance__project'
-        project_group_path = 'instance__project__project_groups'
-
-    instance = models.ForeignKey(Instance, related_name='security_groups')
-    security_group = models.ForeignKey(SecurityGroup, related_name='instance_groups')
 
 
 class BackupSchedule(core_models.UuidMixin,
