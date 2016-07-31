@@ -29,7 +29,10 @@ class Command(BaseCommand):
                 if tenant.security_groups.filter(name=group['name']).exists():
                     self.stdout.write('Tenant %s already has security group %s' % (tenant, group['name']))
                     continue
-                tenant.security_groups.create(name=group['name'], description=group['description'])
+                tenant.security_groups.create(name=group['name'],
+                                              description=group['description'],
+                                              service_project_link=tenant.service_project_link,
+                                              )
                 try:
                     db_security_group = handlers.create_security_group(tenant, group)
                 except handlers.SecurityGroupCreateException as e:
