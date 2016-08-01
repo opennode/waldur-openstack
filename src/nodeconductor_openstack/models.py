@@ -14,7 +14,7 @@ from urlparse import urlparse
 from nodeconductor.core import models as core_models, NodeConductorExtension
 from nodeconductor.cost_tracking.models import PayableMixin
 from nodeconductor.logging.loggers import LoggableMixin
-from nodeconductor.quotas.fields import QuotaField, UsageAggregatorQuotaField
+from nodeconductor.quotas.fields import QuotaField, UsageAggregatorQuotaField, CounterQuotaField
 from nodeconductor.quotas.models import QuotaModelMixin
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.utils import get_coordinates_by_ip, Coordinates
@@ -40,6 +40,10 @@ class OpenStackService(structure_models.Service):
         verbose_name_plural = 'OpenStack services'
 
     class Quotas(QuotaModelMixin.Quotas):
+        tenant_count = CounterQuotaField(
+            target_models=lambda: [Tenant],
+            path_to_scope='service_project_link.service'
+        )
         vcpu = ServiceUsageAggregatorQuotaField()
         ram = ServiceUsageAggregatorQuotaField()
         storage = ServiceUsageAggregatorQuotaField()
