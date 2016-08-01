@@ -7,14 +7,6 @@ from nodeconductor.structure import SupportedServices, models as structure_model
 from .. import models
 
 
-# TODO: move this signal to itacloud assembly application
-@shared_task
-def register_instance_in_zabbix(instance_uuid):
-    from nodeconductor.template.zabbix import register_instance
-    instance = models.Instance.objects.get(uuid=instance_uuid)
-    register_instance(instance)
-
-
 class RuntimeStateException(Exception):
     pass
 
