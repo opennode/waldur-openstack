@@ -14,12 +14,20 @@ from urlparse import urlparse
 from nodeconductor.core import models as core_models, NodeConductorExtension
 from nodeconductor.cost_tracking.models import PayableMixin
 from nodeconductor.logging.loggers import LoggableMixin
-from nodeconductor.quotas.fields import QuotaField
+from nodeconductor.quotas.fields import QuotaField, UsageAggregatorQuotaField
 from nodeconductor.quotas.models import QuotaModelMixin
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.utils import get_coordinates_by_ip, Coordinates
 
 from .backup import BackupScheduleBackend
+
+
+class ServiceUsageAggregatorQuotaField(UsageAggregatorQuotaField):
+    def __init__(self, **kwargs):
+        super(ServiceUsageAggregatorQuotaField, self).__init__(
+            get_children=lambda service: Tenant.objects.filter(
+                service_project_link__service=service
+            ), **kwargs)
 
 
 class OpenStackService(structure_models.Service):
@@ -30,6 +38,18 @@ class OpenStackService(structure_models.Service):
         unique_together = ('customer', 'settings')
         verbose_name = 'OpenStack service'
         verbose_name_plural = 'OpenStack services'
+
+    class Quotas(QuotaModelMixin.Quotas):
+        vcpu = ServiceUsageAggregatorQuotaField()
+        ram = ServiceUsageAggregatorQuotaField()
+        storage = ServiceUsageAggregatorQuotaField()
+        backup_storage = ServiceUsageAggregatorQuotaField()
+        instances = ServiceUsageAggregatorQuotaField()
+        security_group_count = ServiceUsageAggregatorQuotaField()
+        security_group_rule_count = ServiceUsageAggregatorQuotaField()
+        floating_ip_count = ServiceUsageAggregatorQuotaField()
+        volumes = ServiceUsageAggregatorQuotaField()
+        snapshots = ServiceUsageAggregatorQuotaField()
 
     @classmethod
     def get_url_name(cls):
