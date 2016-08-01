@@ -353,6 +353,21 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
         return security_group
 
 
+class NestedSecurityGroupSerializer(core_serializers.HyperlinkedRelatedModelSerializer):
+    rules = NestedSecurityGroupRuleSerializer(
+        many=True,
+        read_only=True,
+    )
+    state = serializers.ReadOnlyField(source='human_readable_state')
+
+    class Meta(object):
+        model = models.SecurityGroup
+        fields = ('url', 'name', 'rules', 'description', 'state')
+        read_only_fields = ('name', 'rules', 'description', 'state')
+        view_name = 'openstack-sgp-detail'
+        lookup_field = 'uuid'
+
+
 class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
     instance_name = serializers.ReadOnlyField(source='instance.name')
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
@@ -588,12 +603,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset=models.Image.objects.all().select_related('settings'),
         write_only=True)
 
-    security_groups = serializers.HyperlinkedRelatedField(
-        many=True,
-        view_name='openstack-sgp-detail',
-        lookup_field='uuid',
-        queryset=models.SecurityGroup.objects.all(),
-        required=False)
+    security_groups = NestedSecurityGroupSerializer(
+        queryset=models.SecurityGroup.objects.all(), many=True, required=False)
 
     backups = BackupSerializer(many=True, read_only=True)
     backup_schedules = BackupScheduleSerializer(many=True, read_only=True)
@@ -634,14 +645,6 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             field.query_params = {'status': 'DOWN'}
             field.value_field = 'url'
             field.display_name_field = 'address'
-
-        try:
-            request = self.context['request']
-        except (KeyError, AttributeError):
-            return fields
-
-        if request.method in permissions.SAFE_METHODS:
-            fields['security_groups'] = SecurityGroupSerializer(many=True, read_only=True)
 
         return fields
 

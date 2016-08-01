@@ -51,7 +51,7 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
 
     def test_add_instance_with_security_groups(self):
         data = _instance_data(self.user, self.instance)
-        data['security_groups'] = [factories.SecurityGroupFactory.get_url(sg)
+        data['security_groups'] = [self._get_valid_security_group_payload(sg)
                                    for sg in self.security_groups]
 
         response = self.client.post(factories.InstanceFactory.get_list_url(), data=data)
@@ -69,7 +69,7 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
 
         data = {
             'security_groups': [
-                factories.SecurityGroupFactory.get_url(new_security_group),
+                self._get_valid_security_group_payload(new_security_group),
             ]
         }
 
@@ -88,7 +88,7 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
 
         security_group = factories.SecurityGroupFactory(service_project_link=self.spl)
         data = _instance_data(self.user, self.instance)
-        data['security_groups'] = [factories.SecurityGroupFactory.get_url(security_group)]
+        data['security_groups'] = [self._get_valid_security_group_payload(security_group)]
 
         response = self.client.put(factories.InstanceFactory.get_url(self.instance), data=data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -103,3 +103,7 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
         self.assertNotIn('security_groups', data)
         response = self.client.post(factories.InstanceFactory.get_list_url(), data=data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    # Helper methods
+    def _get_valid_security_group_payload(self, security_group=None):
+        return {'url': factories.SecurityGroupFactory.get_url(security_group)}
