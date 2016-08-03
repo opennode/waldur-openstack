@@ -1003,6 +1003,11 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
 
+    def validate(self, attrs):
+        if self.instance.backups.exists():
+            raise serializers.ValidationError('Cannot delete instance that has backups.')
+        return attrs
+
 
 class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
