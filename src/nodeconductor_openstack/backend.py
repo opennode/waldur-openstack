@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import six, dateparse, timezone
@@ -43,6 +44,10 @@ class OpenStackBackendError(ServiceBackendError):
     pass
 
 
+class OpenStackSessionExpired(OpenStackBackendError):
+    pass
+
+
 class OpenStackSession(dict):
     """ Serializable session """
 
@@ -70,7 +75,7 @@ class OpenStackSession(dict):
         if not isinstance(session, dict) or not session.get('auth_ref'):
             raise OpenStackBackendError('Invalid OpenStack session')
 
-        args = {'auth_url': session['auth_url'], 'token': session['auth_ref']['token']['id']}
+        args = {'auth_url': session['auth_url'], 'token': session['auth_ref'].auth_token}
         if session['tenant_id']:
             args['tenant_id'] = session['tenant_id']
         elif session['tenant_name']:
@@ -83,14 +88,13 @@ class OpenStackSession(dict):
             tenant_name=session['tenant_name'])
 
     def validate(self):
-        expiresat = dateutil.parser.parse(self.auth.auth_ref['token']['expires'])
-        if expiresat > timezone.now() + datetime.timedelta(minutes=10):
+        if self.auth.auth_ref.expires > timezone.now() + datetime.timedelta(minutes=10):
             return True
 
-        raise OpenStackBackendError('OpenStack session is expired')
+        raise OpenStackSessionExpired('OpenStack session is expired')
 
     def __str__(self):
-        return str({k: v if k != 'password' else '***' for k, v in self})
+        return str({k: v if k != 'password' else '***' for k, v in self.items()})
 
 
 class OpenStackClient(object):
@@ -200,6 +204,9 @@ class OpenStackBackend(ServiceBackend):
         self.settings = settings
         self.tenant_id = tenant_id
 
+    def _get_cached_session_key(self, admin):
+        return 'OPENSTACK_ADMIN_SESSION' if admin else 'OPENSTACK_SESSION_%s' % self.tenant_id
+
     def get_client(self, name=None, admin=False):
         credentials = {
             'auth_url': self.settings.backend_url,
@@ -216,13 +223,22 @@ class OpenStackBackend(ServiceBackend):
         else:
             credentials['tenant_name'] = self.settings.get_option('tenant_name')
 
-        # Cache session in the object
+        client = None
         attr_name = 'admin_session' if admin else 'session'
-        if hasattr(self, attr_name):
+        key = self._get_cached_session_key(admin)
+        if hasattr(self, attr_name):  # try to get client from object
             client = getattr(self, attr_name)
-        else:
+        elif key in cache:  # try to get session from cache
+            session = cache.get(key)
+            try:
+                client = OpenStackClient(session=session)
+            except OpenStackSessionExpired:
+                pass
+
+        if client is None:  # create new token if session is not cached or expired
             client = OpenStackClient(**credentials)
-            setattr(self, attr_name, client)
+            setattr(self, attr_name, client)  # Cache session in the object
+            cache.set(key, dict(client.session))  # Add session to cache
 
         if name:
             return getattr(client, name)
