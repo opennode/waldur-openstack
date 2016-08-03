@@ -4,7 +4,7 @@ import urllib
 from cinderclient import exceptions as cinder_exceptions
 from django.test import override_settings
 from novaclient import exceptions as nova_exceptions
-from rest_framework import status
+from rest_framework import status, test
 
 from nodeconductor.structure.tests import factories as structure_factories
 
@@ -138,3 +138,22 @@ class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
 
         self.assert_quota_usage(quotas, 'volumes', 1)
         self.assert_quota_usage(quotas, 'storage', self.data_volume.size)
+
+
+class InstanceDeletedWithBackupsTest(test.APITransactionTestCase):
+
+    def setUp(self):
+        self.instance = factories.InstanceFactory(
+            state=models.Instance.States.OFFLINE,
+            backend_id='VALID_ID'
+        )
+        staff = structure_factories.UserFactory(is_staff=True)
+        self.client.force_authenticate(user=staff)
+
+    def test_instance_cannot_be_deleted_if_it_has_backups(self):
+        factories.BackupFactory(instance=self.instance, state=models.Backup.States.OK)
+        url = factories.InstanceFactory.get_url(self.instance)
+
+        response = self.client.delete(url)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
