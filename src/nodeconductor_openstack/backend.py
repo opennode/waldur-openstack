@@ -1,6 +1,6 @@
 import base64
 import datetime
-import dateutil.parser
+import hashlib
 import json
 import logging
 import time
@@ -205,7 +205,9 @@ class OpenStackBackend(ServiceBackend):
 
     def _get_cached_session_key(self, admin):
         key = 'OPENSTACK_ADMIN_SESSION' if admin else 'OPENSTACK_SESSION_%s' % self.tenant_id
-        return '%s_%s' % (self.settings.uuid.hex, key)
+        settings_key = str(self.settings.backend_url) + str(self.settings.password) + str(self.settings.username)
+        hashed_settings_key = hashlib.md5(settings_key).hexdigest()
+        return '%s_%s_%s' % (self.settings.uuid.hex, hashed_settings_key, key)
 
     def get_client(self, name=None, admin=False):
         credentials = {
