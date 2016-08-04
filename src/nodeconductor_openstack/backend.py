@@ -53,7 +53,6 @@ class OpenStackSession(dict):
 
     def __init__(self, ks_session=None, verify_ssl=False, **credentials):
         self.keystone_session = ks_session
-
         if not self.keystone_session:
             auth_plugin = v2.Password(**credentials)
             self.keystone_session = keystone_session.Session(auth=auth_plugin, verify=verify_ssl)
@@ -205,7 +204,8 @@ class OpenStackBackend(ServiceBackend):
         self.tenant_id = tenant_id
 
     def _get_cached_session_key(self, admin):
-        return 'OPENSTACK_ADMIN_SESSION' if admin else 'OPENSTACK_SESSION_%s' % self.tenant_id
+        key = 'OPENSTACK_ADMIN_SESSION' if admin else 'OPENSTACK_SESSION_%s' % self.tenant_id
+        return '%s_%s' % (self.settings.uuid.hex, key)
 
     def get_client(self, name=None, admin=False):
         credentials = {
