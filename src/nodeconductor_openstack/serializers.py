@@ -630,13 +630,15 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'backups', 'backup_schedules', 'flavor_disk',
-            'tenant', 'tenant_name', 'floating_ip', 'volumes',
+            'tenant', 'tenant_name', 'floating_ip', 'volumes', 'runtime_state'
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'tenant', 'floating_ip'
         )
-        read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + ('flavor_disk',)
+        read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
+            'flavor_disk', 'runtime_state'
+        )
 
     def get_fields(self):
         fields = super(InstanceSerializer, self).get_fields()
@@ -1029,10 +1031,10 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas'
+            'user_username', 'user_password', 'quotas', 'runtime_state'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'internal_network_id', 'external_network_id', 'user_password',
+            'internal_network_id', 'external_network_id', 'user_password', 'runtime_state'
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'user_username',
@@ -1108,10 +1110,11 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Volume
         view_name = 'openstack-volume-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'tenant', 'source_snapshot', 'size', 'bootable', 'metadata', 'image', 'image_metadata', 'type'
+            'tenant', 'source_snapshot', 'size', 'bootable', 'metadata',
+            'image', 'image_metadata', 'type', 'runtime_state'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'image_metadata', 'bootable', 'source_snapshot'
+            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state'
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'tenant', 'size', 'type', 'image'
