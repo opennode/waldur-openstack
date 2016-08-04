@@ -237,7 +237,7 @@ class OpenStackBackend(ServiceBackend):
 
         if client is None:  # create new token if session is not cached or expired
             client = OpenStackClient(**credentials)
-            setattr(self, attr_name, client)  # Cache session in the object
+            setattr(self, attr_name, client)  # Cache client in the object
             cache.set(key, dict(client.session))  # Add session to cache
 
         if name:
