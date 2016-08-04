@@ -71,10 +71,11 @@ class Command(BaseCommand):
 
         instances = self.choose_objects(instances, 1, many=True)
         project_url = self.get_obj_url('project-detail', project)
+        tenant_url = self.get_obj_url('openstack-tenant-detail', tenant)
         for instance in instances:
             # import instance
             serializer = serializers.InstanceImportSerializer(
-                data={'project': project_url, 'backend_id': instance['id']},
+                data={'project': project_url, 'backend_id': instance['id'], 'tenant': tenant_url},
                 context={'service': tenant.service_project_link.service})
             serializer.is_valid(raise_exception=True)
             try:

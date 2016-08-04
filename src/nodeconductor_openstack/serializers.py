@@ -864,10 +864,11 @@ class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSeriali
 
     def get_fields(self):
         fields = super(BaseTenantImportSerializer, self).get_fields()
-        request = self.context['request']
-        fields['tenant'].queryset = filter_queryset_for_user(
-            models.Tenant.objects.all(), request.user
-        )
+        if 'request' in self.context:
+            request = self.context['request']
+            fields['tenant'].queryset = filter_queryset_for_user(
+                models.Tenant.objects.all(), request.user
+            )
         return fields
 
     def validate(self, attrs):
