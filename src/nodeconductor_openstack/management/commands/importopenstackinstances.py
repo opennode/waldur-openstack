@@ -64,7 +64,7 @@ class Command(BaseCommand):
         backend = tenant.get_backend()
 
         self.stdout.write(self.style.MIGRATE_HEADING('\nStep 3: Select instances'))
-        instances = backend.get_resources_for_import()
+        instances = backend.get_resources_for_import(resource_type='OpenStack.Instance', tenant=tenant)
         if not instances:
             self.stdout.write(self.style.MIGRATE_HEADING('\nTenant has no instances for import.'))
             return
