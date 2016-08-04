@@ -170,6 +170,15 @@ class InstanceFactory(TenantMixin, factory.DjangoModelFactory):
             state=models.Volume.States.OK
         )
 
+    @factory.post_generation
+    def security_groups(self, create, extracted, **kwargs):
+        if not create:
+            return
+
+        if extracted:
+            for group in extracted:
+                self.security_groups.add(group)
+
 
 class SecurityGroupFactory(TenantMixin, factory.DjangoModelFactory):
     class Meta(object):
@@ -198,14 +207,6 @@ class SecurityGroupRuleFactory(factory.DjangoModelFactory):
     from_port = factory.fuzzy.FuzzyInteger(1, 30000)
     to_port = factory.fuzzy.FuzzyInteger(30000, 65535)
     cidr = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(1, 255) for i in range(4)) + '/24')
-
-
-class InstanceSecurityGroupFactory(factory.DjangoModelFactory):
-    class Meta(object):
-        model = models.InstanceSecurityGroup
-
-    instance = factory.SubFactory(InstanceFactory)
-    security_group = factory.SubFactory(SecurityGroupFactory)
 
 
 class FloatingIPFactory(TenantMixin, factory.DjangoModelFactory):

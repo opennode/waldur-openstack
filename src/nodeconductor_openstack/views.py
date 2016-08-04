@@ -320,8 +320,8 @@ class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullM
             Host: example.com
 
         """
-        serializer = self.get_serializer(data=request.query_params)
-        serializer.is_valid()
+        serializer = self.get_serializer(data=request.query_params, instance=self.get_object())
+        serializer.is_valid(raise_exception=True)
         delete_volumes = serializer.validated_data['delete_volumes']
 
         force = resource.state == models.Instance.States.ERRED

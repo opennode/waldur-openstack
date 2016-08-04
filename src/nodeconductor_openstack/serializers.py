@@ -9,7 +9,7 @@ from django.db import transaction
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 from netaddr import IPNetwork
-from rest_framework import serializers, reverse
+from rest_framework import serializers, reverse, permissions
 from taggit.models import Tag
 
 from nodeconductor.core import (utils as core_utils, models as core_models, serializers as core_serializers,
@@ -353,27 +353,19 @@ class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
         return security_group
 
 
-class InstanceSecurityGroupSerializer(serializers.ModelSerializer):
-
-    name = serializers.ReadOnlyField(source='security_group.name')
+class NestedSecurityGroupSerializer(core_serializers.HyperlinkedRelatedModelSerializer):
     rules = NestedSecurityGroupRuleSerializer(
-        source='security_group.rules',
         many=True,
         read_only=True,
     )
-    url = serializers.HyperlinkedRelatedField(
-        source='security_group',
-        lookup_field='uuid',
-        view_name='openstack-sgp-detail',
-        queryset=models.SecurityGroup.objects.all(),
-    )
-    state = serializers.ReadOnlyField(source='security_group.human_readable_state')
-    description = serializers.ReadOnlyField(source='security_group.description')
+    state = serializers.ReadOnlyField(source='human_readable_state')
 
     class Meta(object):
-        model = models.InstanceSecurityGroup
+        model = models.SecurityGroup
         fields = ('url', 'name', 'rules', 'description', 'state')
+        read_only_fields = ('name', 'rules', 'description', 'state')
         view_name = 'openstack-sgp-detail'
+        lookup_field = 'uuid'
 
 
 class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
@@ -611,8 +603,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset=models.Image.objects.all().select_related('settings'),
         write_only=True)
 
-    security_groups = InstanceSecurityGroupSerializer(
-        many=True, required=False, read_only=False)
+    security_groups = NestedSecurityGroupSerializer(
+        queryset=models.SecurityGroup.objects.all(), many=True, required=False)
 
     backups = BackupSerializer(many=True, read_only=True)
     backup_schedules = BackupScheduleSerializer(many=True, read_only=True)
@@ -638,13 +630,15 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'backups', 'backup_schedules', 'flavor_disk',
-            'tenant', 'tenant_name', 'floating_ip', 'volumes',
+            'tenant', 'tenant_name', 'floating_ip', 'volumes', 'runtime_state'
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'tenant', 'floating_ip'
         )
-        read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + ('flavor_disk',)
+        read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
+            'flavor_disk', 'runtime_state'
+        )
 
     def get_fields(self):
         fields = super(InstanceSerializer, self).get_fields()
@@ -653,6 +647,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             field.query_params = {'status': 'DOWN'}
             field.value_field = 'url'
             field.display_name_field = 'address'
+
         return fields
 
     @staticmethod
@@ -660,8 +655,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset = structure_serializers.VirtualMachineSerializer.eager_load(queryset)
         queryset = queryset.select_related('tenant')
         return queryset.prefetch_related(
-            'security_groups__security_group',
-            'security_groups__security_group__rules',
+            'security_groups',
+            'security_groups__rules',
             'backups',
             'backup_schedules',
             'volumes',
@@ -698,8 +693,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             raise serializers.ValidationError(
                 {'system_volume_size': "System volume size has to be greater than %s" % image.min_disk})
 
-        for security_group_data in attrs.get('security_groups', []):
-            security_group = security_group_data['security_group']
+        for security_group in attrs.get('security_groups', []):
             if security_group.service_project_link != attrs['service_project_link']:
                 raise serializers.ValidationError(
                     "Security group {} has wrong service or project. New instance and its "
@@ -765,7 +759,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         """ Store flavor, ssh_key and image details into instance model.
             Create volumes and security groups for instance.
         """
-        security_groups = [data['security_group'] for data in validated_data.pop('security_groups', [])]
+        security_groups = validated_data.pop('security_groups', [])
         tenant = validated_data['tenant']
         spl = tenant.service_project_link
         ssh_key = validated_data.get('ssh_public_key')
@@ -794,8 +788,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         instance = super(InstanceSerializer, self).create(validated_data)
 
-        for sg in security_groups:
-            instance.security_groups.create(security_group=sg)
+        instance.security_groups.add(*security_groups)
 
         system_volume = models.Volume.objects.create(
             name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
@@ -822,12 +815,10 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         # This field is protected, so it should not be used for update.
         del validated_data['data_volume_size']
         security_groups = validated_data.pop('security_groups', [])
-        security_groups = [data['security_group'] for data in security_groups]
         instance = super(InstanceSerializer, self).update(instance, validated_data)
 
         instance.security_groups.all().delete()
-        for sg in security_groups:
-            instance.security_groups.create(security_group=sg)
+        instance.security_groups.add(*security_groups)
 
         return instance
 
@@ -873,10 +864,11 @@ class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSeriali
 
     def get_fields(self):
         fields = super(BaseTenantImportSerializer, self).get_fields()
-        request = self.context['request']
-        fields['tenant'].queryset = filter_queryset_for_user(
-            models.Tenant.objects.all(), request.user
-        )
+        if 'request' in self.context:
+            request = self.context['request']
+            fields['tenant'].queryset = filter_queryset_for_user(
+                models.Tenant.objects.all(), request.user
+            )
         return fields
 
     def validate(self, attrs):
@@ -1014,6 +1006,11 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
 
+    def validate(self, attrs):
+        if self.instance.backups.exists():
+            raise serializers.ValidationError('Cannot delete instance that has backups.')
+        return attrs
+
 
 class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
@@ -1035,10 +1032,10 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas'
+            'user_username', 'user_password', 'quotas', 'runtime_state'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'internal_network_id', 'external_network_id', 'user_password',
+            'internal_network_id', 'external_network_id', 'user_password', 'runtime_state'
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'user_username',
@@ -1114,10 +1111,11 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Volume
         view_name = 'openstack-volume-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'tenant', 'source_snapshot', 'size', 'bootable', 'metadata', 'image', 'image_metadata', 'type'
+            'tenant', 'source_snapshot', 'size', 'bootable', 'metadata',
+            'image', 'image_metadata', 'type', 'runtime_state'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'image_metadata', 'bootable', 'source_snapshot'
+            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state'
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'tenant', 'size', 'type', 'image'
