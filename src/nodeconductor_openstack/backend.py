@@ -206,7 +206,7 @@ class OpenStackBackend(ServiceBackend):
     def _get_cached_session_key(self, admin):
         key = 'OPENSTACK_ADMIN_SESSION' if admin else 'OPENSTACK_SESSION_%s' % self.tenant_id
         settings_key = str(self.settings.backend_url) + str(self.settings.password) + str(self.settings.username)
-        hashed_settings_key = hashlib.md5(settings_key).hexdigest()
+        hashed_settings_key = hashlib.sha256(settings_key).hexdigest()
         return '%s_%s_%s' % (self.settings.uuid.hex, hashed_settings_key, key)
 
     def get_client(self, name=None, admin=False):
@@ -240,7 +240,7 @@ class OpenStackBackend(ServiceBackend):
         if client is None:  # create new token if session is not cached or expired
             client = OpenStackClient(**credentials)
             setattr(self, attr_name, client)  # Cache client in the object
-            cache.set(key, dict(client.session))  # Add session to cache
+            cache.set(key, dict(client.session), 24 * 60 * 60)  # Add session to cache
 
         if name:
             return getattr(client, name)
