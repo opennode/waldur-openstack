@@ -1,7 +1,5 @@
 from django.apps import AppConfig
-from django.conf import settings
 from django.db.models import signals
-from django_fsm import signals as fsm_signals
 
 
 class OpenStackConfig(AppConfig):
@@ -18,10 +16,8 @@ class OpenStackConfig(AppConfig):
         from nodeconductor.core import models as core_models
         from nodeconductor.cost_tracking import CostTrackingRegister
         from nodeconductor.structure import SupportedServices, signals as structure_signals, models as structure_models
-        from nodeconductor.quotas.models import Quota
         from . import handlers
 
-        Instance = self.get_model('Instance')
         FloatingIP = self.get_model('FloatingIP')
         BackupSchedule = self.get_model('BackupSchedule')
         Tenant = self.get_model('Tenant')
@@ -74,20 +70,6 @@ class OpenStackConfig(AppConfig):
             sender=BackupSchedule,
             dispatch_uid='nodeconductor_openstack.handlers.log_backup_schedule_delete',
         )
-
-        # TODO: this should be moved to itacloud assembly application
-        if getattr(settings, 'NODECONDUCTOR', {}).get('IS_ITACLOUD', False):
-            fsm_signals.post_transition.connect(
-                handlers.create_host_for_instance,
-                sender=Instance,
-                dispatch_uid='nodeconductor_openstack.handlers.create_host_for_instance',
-            )
-
-            signals.post_save.connect(
-                handlers.check_quota_threshold_breach,
-                sender=Quota,
-                dispatch_uid='nodeconductor_openstack.handlers.check_quota_threshold_breach',
-            )
 
         for model in (structure_models.Project, structure_models.Customer):
             structure_signals.structure_role_revoked.connect(
