@@ -48,6 +48,10 @@ class OpenStackSessionExpired(OpenStackBackendError):
     pass
 
 
+class OpenStackAuthorizationFailed(OpenStackBackendError):
+    pass
+
+
 class OpenStackSession(dict):
     """ Serializable session """
 
@@ -61,7 +65,7 @@ class OpenStackSession(dict):
             # This will eagerly sign in throwing AuthorizationFailure on bad credentials
             self.keystone_session.get_auth_headers()
         except keystone_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
+            six.reraise(OpenStackAuthorizationFailed, e)
 
         for opt in ('auth_ref', 'auth_url', 'tenant_id', 'tenant_name'):
             self[opt] = getattr(self.auth, opt)
@@ -234,7 +238,7 @@ class OpenStackBackend(ServiceBackend):
             session = cache.get(key)
             try:
                 client = OpenStackClient(session=session)
-            except OpenStackSessionExpired:
+            except (OpenStackSessionExpired, OpenStackAuthorizationFailed):
                 pass
 
         if client is None:  # create new token if session is not cached or expired
