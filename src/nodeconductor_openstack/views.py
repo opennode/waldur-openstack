@@ -48,6 +48,77 @@ class GenericImportMixin(object):
         return super(GenericImportMixin, self).get_serializer_class()
 
 
+class TelemetryMixin(object):
+    """
+    This mixin adds /meters endpoint to the resource.
+
+    List of available resource meters must be added to the "meters.py". In addition, mapping between
+    resource model name and available meters must be specified in "get_meters" function in "meters.py".
+    """
+    def _prepare_filters(self, request, resource_id):
+        _filters = [dict(field='resource_id', op='eq', value=resource_id)]
+
+        serializer = serializers.MeterTimestampIntervalSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        start = serializer.validated_data['start']
+        end = serializer.validated_data['end']
+
+        _filters.append(dict(field='timestamp', op='ge', value=start.strftime('%Y-%m-%dT%H:%M:%S')))
+        _filters.append(dict(field='timestamp', op='le', value=end.strftime('%Y-%m-%dT%H:%M:%S')))
+
+        return _filters
+
+    @decorators.detail_route(methods=['options', 'get'], url_path='meters(?:/(?P<name>[a-zA-Z0-9_.]+))?')
+    def meters(self, request, uuid=None, name=None):
+        """
+        To list available meters for the resource, make **OPTIONS** or **GET** request to
+        */api/<resource_type>/<uuid>/meters/*.
+
+        To get resource meter samples make **GET** request to */api/<resource_type>/<uuid>/meters/<meter_name>/*.
+        Note that *<meter_name>* must be from meters list.
+
+        In order to get a list of samples for the specific period of time, *start* timestamp and *end* timestamp query
+        parameters must be provided. Otherwise, samples will be listed for the last hour.
+
+        Example of a valid request:
+
+        .. code-block:: http
+
+            GET /api/openstack-instances/1143357799fc4cb99636c767136bef86/meters/memory/?start=1470009600&end=1470843282
+            Content-Type: application/json
+            Accept: application/json
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+        """
+        resource = self.get_object()
+        backend = resource.get_backend()
+
+        meters = backend.list_meters(resource.__class__.__name__)
+
+        if name is None:
+            page = self.paginate_queryset(meters)
+            if page is not None:
+                return self.get_paginated_response(page)
+
+            return response.Response(meters)
+
+        names = [meter['name'] for meter in meters]
+        if name not in names:
+            raise ValidationError('Meter must be from meters list.')
+        if not resource.backend_id:
+            raise ValidationError('%s must have backend_id.' % resource.__class__.__name__)
+
+        query = self._prepare_filters(request, resource.backend_id)
+
+        samples = backend.get_meter_samples(name, query)
+        serializer = serializers.MeterSampleSerializer(samples, many=True)
+        page = self.paginate_queryset(serializer.data)
+        if page is not None:
+            return self.get_paginated_response(page)
+
+        return response.Response(serializer.data)
+
+
 class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceViewSet):
     queryset = models.OpenStackService.objects.all()
     serializer_class = serializers.ServiceSerializer
@@ -184,7 +255,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullMixin):
+class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullMixin, TelemetryMixin):
     """
     OpenStack instance permissions
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1062,6 +1133,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
                                        structure_views.PullMixin,
+                                       TelemetryMixin,
                                        StateExecutorViewSet)):
     queryset = models.Volume.objects.all()
     serializer_class = serializers.VolumeSerializer
@@ -1090,6 +1162,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewMixin,
                                          structure_views.PullMixin,
+                                         TelemetryMixin,
                                          StateExecutorViewSet)):
     queryset = models.Snapshot.objects.all()
     serializer_class = serializers.SnapshotSerializer

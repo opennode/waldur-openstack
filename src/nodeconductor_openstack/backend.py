@@ -24,6 +24,7 @@ from keystoneclient.v2_0 import client as keystone_client
 from neutronclient.v2_0 import client as neutron_client
 from novaclient.v2 import client as nova_client
 
+from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
 from glanceclient import exc as glance_exceptions
 from keystoneclient import exceptions as keystone_exceptions
@@ -165,18 +166,11 @@ class OpenStackClient(object):
 
     @property
     def ceilometer(self):
-        catalog = ServiceCatalog.factory(self.session.auth.auth_ref)
-        endpoint = catalog.url_for(service_type='metering')
-
-        kwargs = {
-            'token': lambda: self.session.get_token(),
-            'endpoint': endpoint,
-            'insecure': not self.verify_ssl,
-            'timeout': 600,
-            'ssl_compression': True,
-        }
-
-        return ceilometer_client.Client('2', **kwargs)
+        try:
+            return ceilometer_client.Client('2', session=self.session.keystone_session)
+        except ceilometer_exceptions.BaseException as e:
+            logger.exception('Failed to create ceilometer client: %s', e)
+            six.reraise(OpenStackBackendError, e)
 
 
 def _update_pulled_fields(instance, imported_instance, fields):
@@ -2066,6 +2060,23 @@ class OpenStackBackend(ServiceBackend):
         except (cinder_exceptions.ClientException, KeyError) as e:
             six.reraise(OpenStackBackendError, e)
         return volume_backup
+
+    def list_meters(self, model_name):
+        from .meters import get_meters
+
+        try:
+            return get_meters(model_name)
+        except KeyError:
+            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % model_name)
+
+    def get_meter_samples(self, name, query=None):
+        ceilometer = self.ceilometer_client
+        try:
+            samples = ceilometer.samples.list(meter_name=name, q=query)
+        except ceilometer_exceptions.BaseException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return samples
 
     def _pull_service_settings_quotas(self):
         nova = self.nova_admin_client

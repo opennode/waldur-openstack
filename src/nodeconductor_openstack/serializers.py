@@ -3,6 +3,7 @@ import pytz
 import re
 import urlparse
 
+from datetime import datetime
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -14,7 +15,7 @@ from taggit.models import Tag
 
 from nodeconductor.core import (utils as core_utils, models as core_models, serializers as core_serializers,
                                 NodeConductorExtension)
-from nodeconductor.core.fields import JsonField, MappedChoiceField
+from nodeconductor.core.fields import JsonField, MappedChoiceField, TimestampField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
 from nodeconductor.structure.managers import filter_queryset_for_user
@@ -1407,3 +1408,37 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
         # XXX: This should be moved to itacloud assembly
         self.create_instance_crm(instance, dr_backup)
         return dr_backup_restoration
+
+
+class MeterSampleSerializer(serializers.Serializer):
+    name = serializers.CharField(source='counter_name')
+    value = serializers.FloatField(source='counter_volume')
+    type = serializers.CharField(source='counter_type')
+    unit = serializers.CharField(source='counter_unit')
+    timestamp = TimestampField()
+    recorded_at = TimestampField()
+
+    def to_representation(self, instance):
+        for field in ('recorded_at', 'timestamp'):
+            stamp_str = getattr(instance, field)
+            if '.' in stamp_str:
+                timestamp = datetime.strptime(stamp_str, '%Y-%m-%dT%H:%M:%S.%f')
+            else:
+                timestamp = datetime.strptime(stamp_str, '%Y-%m-%dT%H:%M:%S')
+            setattr(instance, field, timestamp)
+
+        return super(MeterSampleSerializer, self).to_representation(instance)
+
+
+class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSerializer):
+    def validate(self, data):
+        super(MeterTimestampIntervalSerializer, self).validate(data)
+        if 'start' in data and 'end' not in data:
+            raise serializers.ValidationError("'end' timestamp must be provided.")
+        elif 'end' in data and 'start' not in data:
+            raise serializers.ValidationError("'start' timestamp must be provided.")
+        elif 'start' not in data and 'end' not in data:
+            data['start'] = core_utils.timeshift(hours=-1)
+            data['end'] = core_utils.timeshift()
+
+        return data
