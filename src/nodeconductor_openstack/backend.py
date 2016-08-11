@@ -1,8 +1,9 @@
 import base64
 import datetime
-import hashlib
 import json
+import hashlib
 import logging
+import os
 import time
 import uuid
 
@@ -2061,13 +2062,23 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         return volume_backup
 
-    def list_meters(self, model_class):
-        from .meters import get_meters
+    def _get_meters_file_name(self, model_class):
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'meters')
+        return {
+            models.Instance: os.path.join(base, 'instance.json'),
+            models.Volume: os.path.join(base, 'volume.json'),
+            models.Snapshot: os.path.join(base, 'snapshot.json'),
+        }[model_class]
 
+    def list_meters(self, model_class):
         try:
-            return get_meters(model_class)
-        except KeyError:
+            file_name = self._get_meters_file_name(model_class)
+            with open(file_name) as meters_file:
+                meters = json.load(meters_file)
+        except (KeyError, IOError):
             raise OpenStackBackendError("Cannot find meters for the '%s' resources" % model_class.__name__)
+
+        return meters
 
     def get_meter_samples(self, name, query=None):
         ceilometer = self.ceilometer_client

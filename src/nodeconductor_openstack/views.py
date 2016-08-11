@@ -52,8 +52,9 @@ class TelemetryMixin(object):
     """
     This mixin adds /meters endpoint to the resource.
 
-    List of available resource meters must be added to the "meters.py". In addition, mapping between
-    resource model and available meters must be specified in "get_meters" function in "meters.py".
+    List of available resource meters must be specified in separate JSON file in meters folder. In addition,
+    mapping between resource model and meters file path must be specified
+    in "_get_meters_file_name" method in "backend.py" file.
     """
     def _prepare_filters(self, request, resource_id):
         _filters = [dict(field='resource_id', op='eq', value=resource_id)]
