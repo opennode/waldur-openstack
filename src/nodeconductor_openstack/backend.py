@@ -2061,13 +2061,13 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         return volume_backup
 
-    def list_meters(self, model_name):
+    def list_meters(self, model_class):
         from .meters import get_meters
 
         try:
-            return get_meters(model_name)
+            return get_meters(model_class)
         except KeyError:
-            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % model_name)
+            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % model_class.__name__)
 
     def get_meter_samples(self, name, query=None):
         ceilometer = self.ceilometer_client

@@ -285,7 +285,7 @@ SNAPSHOT_METERS = [
 
 def get_meters(model_name):
     return {
-        models.Instance.__name__: INSTANCE_METERS,
-        models.Volume.__name__: VOLUME_METERS,
-        models.Snapshot.__name__: SNAPSHOT_METERS
+        models.Instance: INSTANCE_METERS,
+        models.Volume: VOLUME_METERS,
+        models.Snapshot: SNAPSHOT_METERS
     }[model_name]

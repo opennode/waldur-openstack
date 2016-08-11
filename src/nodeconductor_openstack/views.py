@@ -53,7 +53,7 @@ class TelemetryMixin(object):
     This mixin adds /meters endpoint to the resource.
 
     List of available resource meters must be added to the "meters.py". In addition, mapping between
-    resource model name and available meters must be specified in "get_meters" function in "meters.py".
+    resource model and available meters must be specified in "get_meters" function in "meters.py".
     """
     def _prepare_filters(self, request, resource_id):
         _filters = [dict(field='resource_id', op='eq', value=resource_id)]
@@ -93,7 +93,7 @@ class TelemetryMixin(object):
         resource = self.get_object()
         backend = resource.get_backend()
 
-        meters = backend.list_meters(resource.__class__.__name__)
+        meters = backend.list_meters(resource.__class__)
 
         if name is None:
             page = self.paginate_queryset(meters)
