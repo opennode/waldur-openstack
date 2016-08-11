@@ -57,13 +57,31 @@ class TelemetryMixin(object):
     in "_get_meters_file_name" method in "backend.py" file.
     """
 
-    @decorators.detail_route(methods=['options', 'get'], url_path='meters(?:/(?P<name>[a-zA-Z0-9_.]+))?')
-    def meters(self, request, uuid=None, name=None):
-        """
-        To list available meters for the resource, make **OPTIONS** or **GET** request to
-        */api/<resource_type>/<uuid>/meters/*.
+    telemetry_serializers = {
+        'meter_samples': serializers.MeterSampleSerializer
+    }
 
-        To get resource meter samples make **GET** request to */api/<resource_type>/<uuid>/meters/<meter_name>/*.
+    @decorators.detail_route(methods=['get'])
+    def meters(self, request, uuid=None):
+        """
+        To list available meters for the resource, make **GET** request to
+        */api/<resource_type>/<uuid>/meters/*.
+        """
+        resource = self.get_object()
+        backend = resource.get_backend()
+
+        meters = backend.list_meters(resource)
+
+        page = self.paginate_queryset(meters)
+        if page is not None:
+            return self.get_paginated_response(page)
+
+        return response.Response(meters)
+
+    @decorators.detail_route(methods=['get'], url_path='meter-samples/(?P<name>[a-z0-9_.]+)')
+    def meter_samples(self, request, name, uuid=None):
+        """
+        To get resource meter samples make **GET** request to */api/<resource_type>/<uuid>/meter-samples/<meter_name>/*.
         Note that *<meter_name>* must be from meters list.
 
         In order to get a list of samples for the specific period of time, *start* timestamp and *end* timestamp query
@@ -76,7 +94,7 @@ class TelemetryMixin(object):
 
         .. code-block:: http
 
-            GET /api/openstack-instances/1143357799fc4cb99636c767136bef86/meters/memory/?start=1470009600&end=1470843282
+            GET /api/openstack-instances/1143357799fc4cb99636c767136bef86/meter-samples/memory/?start=1470009600&end=1470843282
             Content-Type: application/json
             Accept: application/json
             Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
@@ -86,14 +104,6 @@ class TelemetryMixin(object):
         backend = resource.get_backend()
 
         meters = backend.list_meters(resource)
-
-        if name is None:
-            page = self.paginate_queryset(meters)
-            if page is not None:
-                return self.get_paginated_response(page)
-
-            return response.Response(meters)
-
         names = [meter['name'] for meter in meters]
         if name not in names:
             raise ValidationError('Meter must be from meters list.')
@@ -106,9 +116,13 @@ class TelemetryMixin(object):
         end = serializer.validated_data['end']
 
         samples = backend.get_meter_samples(resource, name, start=start, end=end)
-        serializer = serializers.MeterSampleSerializer(samples, many=True)
+        serializer = self.get_serializer(samples, many=True)
 
         return response.Response(serializer.data)
+
+    def get_serializer_class(self):
+        serializer = self.telemetry_serializers.get(self.action)
+        return serializer or super(TelemetryMixin, self).get_serializer_class()
 
 
 class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceViewSet):
@@ -247,7 +261,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class InstanceViewSet(structure_views.BaseResourceViewSet, structure_views.PullMixin, TelemetryMixin):
+class InstanceViewSet(TelemetryMixin, structure_views.PullMixin, structure_views.BaseResourceViewSet):
     """
     OpenStack instance permissions
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
