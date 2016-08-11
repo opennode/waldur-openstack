@@ -2070,20 +2070,29 @@ class OpenStackBackend(ServiceBackend):
             models.Snapshot: os.path.join(base, 'snapshot.json'),
         }[model_class]
 
-    def list_meters(self, model_class):
+    @log_backend_action()
+    def list_meters(self, resource):
         try:
-            file_name = self._get_meters_file_name(model_class)
+            file_name = self._get_meters_file_name(resource.__class__)
             with open(file_name) as meters_file:
                 meters = json.load(meters_file)
         except (KeyError, IOError):
-            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % model_class.__name__)
+            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % resource.__class__.__name__)
 
         return meters
 
-    def get_meter_samples(self, name, query=None):
+    @log_backend_action()
+    def get_meter_samples(self, resource, meter_name, start=None, end=None):
+        query = [dict(field='resource_id', op='eq', value=resource.backend_id)]
+
+        if start is not None:
+            query.append(dict(field='timestamp', op='ge', value=start.strftime('%Y-%m-%dT%H:%M:%S')))
+        if end is not None:
+            query.append(dict(field='timestamp', op='le', value=end.strftime('%Y-%m-%dT%H:%M:%S')))
+
         ceilometer = self.ceilometer_client
         try:
-            samples = ceilometer.samples.list(meter_name=name, q=query)
+            samples = ceilometer.samples.list(meter_name=meter_name, q=query)
         except ceilometer_exceptions.BaseException as e:
             six.reraise(OpenStackBackendError, e)
 

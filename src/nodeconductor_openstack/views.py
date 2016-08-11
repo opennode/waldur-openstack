@@ -56,18 +56,6 @@ class TelemetryMixin(object):
     mapping between resource model and meters file path must be specified
     in "_get_meters_file_name" method in "backend.py" file.
     """
-    def _prepare_filters(self, request, resource_id):
-        _filters = [dict(field='resource_id', op='eq', value=resource_id)]
-
-        serializer = serializers.MeterTimestampIntervalSerializer(data=request.query_params)
-        serializer.is_valid(raise_exception=True)
-        start = serializer.validated_data['start']
-        end = serializer.validated_data['end']
-
-        _filters.append(dict(field='timestamp', op='ge', value=start.strftime('%Y-%m-%dT%H:%M:%S')))
-        _filters.append(dict(field='timestamp', op='le', value=end.strftime('%Y-%m-%dT%H:%M:%S')))
-
-        return _filters
 
     @decorators.detail_route(methods=['options', 'get'], url_path='meters(?:/(?P<name>[a-zA-Z0-9_.]+))?')
     def meters(self, request, uuid=None, name=None):
@@ -97,7 +85,7 @@ class TelemetryMixin(object):
         resource = self.get_object()
         backend = resource.get_backend()
 
-        meters = backend.list_meters(resource.__class__)
+        meters = backend.list_meters(resource)
 
         if name is None:
             page = self.paginate_queryset(meters)
@@ -112,13 +100,13 @@ class TelemetryMixin(object):
         if not resource.backend_id:
             raise ValidationError('%s must have backend_id.' % resource.__class__.__name__)
 
-        query = self._prepare_filters(request, resource.backend_id)
+        serializer = serializers.MeterTimestampIntervalSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        start = serializer.validated_data['start']
+        end = serializer.validated_data['end']
 
-        samples = backend.get_meter_samples(name, query)
+        samples = backend.get_meter_samples(resource, name, start=start, end=end)
         serializer = serializers.MeterSampleSerializer(samples, many=True)
-        page = self.paginate_queryset(serializer.data)
-        if page is not None:
-            return self.get_paginated_response(page)
 
         return response.Response(serializer.data)
 
