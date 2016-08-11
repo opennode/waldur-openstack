@@ -2,9 +2,63 @@ from mock import patch
 
 from rest_framework import test, status
 from nodeconductor.structure.tests import factories as structure_factories
-from nodeconductor_openstack.models import Tenant
+from nodeconductor_openstack.models import Tenant, OpenStackService
+from nodeconductor_openstack.views import TenantViewSet
 
 from . import factories
+
+
+class CreateTenantTest(test.APISimpleTestCase):
+    def setUp(self):
+        super(CreateTenantTest, self).setUp()
+        staff = structure_factories.UserFactory(is_staff=True)
+        self.client.force_authenticate(user=staff)
+
+    def test_can_create_tenant_for_admin_provider(self):
+        response = self.create_tenant(factories.OpenStackServiceProjectLinkFactory())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_unable_create_tenant_for_non_admin_provider(self):
+        link = factories.OpenStackServiceProjectLinkFactory()
+        settings = link.service.settings
+        settings.options['is_admin'] = False
+        settings.save()
+
+        response = self.create_tenant(link)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['non_field_errors'],
+                         'Tenant provisioning is only possible for admin provider.')
+
+    @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
+    def test_can_create_tenant_and_non_admin_provider(self, mocked_backend):
+        link = factories.OpenStackServiceProjectLinkFactory()
+        customer = link.project.customer
+        settings = link.service.settings
+        settings.backend_url = 'http://example.com'
+        settings.save()
+
+        TenantViewSet.async_executor = False
+        response = self.client.post(factories.TenantFactory.get_list_url(), {
+            'name': 'Valid tenant name',
+            'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(link),
+            'configure_as_provider': True
+        })
+        TenantViewSet.async_executor = True
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        tenant = Tenant.objects.get(uuid=response.data['uuid'])
+        self.assertTrue(OpenStackService.objects.filter(
+            customer=customer,
+            settings__backend_url=settings.backend_url,
+            settings__username=tenant.user_username,
+            settings__password=tenant.user_password
+        ).exists())
+
+    def create_tenant(self, link):
+        return self.client.post(factories.TenantFactory.get_list_url(), {
+            'name': 'Valid tenant name',
+            'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(link)
+        })
 
 
 class TenantActionsTest(test.APISimpleTestCase):

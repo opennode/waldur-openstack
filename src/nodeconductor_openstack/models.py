@@ -477,6 +477,27 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
     def get_backend(self):
         return self.service_project_link.service.get_backend(tenant_id=self.backend_id)
 
+    def create_provider(self):
+        """
+        Create non-admin provider from this tenant.
+        """
+        admin_settings = self.service_project_link.service.settings
+        customer = self.service_project_link.project.customer
+        new_settings = structure_models.ServiceSettings.objects.create(
+            customer=customer,
+            type=admin_settings.type,
+            backend_url=admin_settings.backend_url,
+            username=self.user_username,
+            password=self.user_password,
+            options={
+                'tenant_name': self.name,
+                'is_admin': False,
+                'availability_zone': self.availability_zone,
+                'external_network_id': self.external_network_id
+            }
+        )
+        return OpenStackService.objects.create(settings=new_settings, customer=customer)
+
 
 class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(

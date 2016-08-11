@@ -201,6 +201,7 @@ class OpenStackBackend(ServiceBackend):
 
     DEFAULTS = {
         'tenant_name': 'admin',
+        'is_admin': True
     }
 
     def __init__(self, settings, tenant_id=None):
@@ -278,6 +279,17 @@ class OpenStackBackend(ServiceBackend):
             self.nova_client.servers.get(instance.backend_id)
         except (ConnectionError, nova_exceptions.ClientException):
             return False
+        else:
+            return True
+
+    def check_admin_tenant(self):
+        keystone = self.keystone_admin_client
+        try:
+            keystone.tenants.list()
+        except keystone_exceptions.AuthorizationFailure:
+            return False
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
         else:
             return True
 

@@ -1,10 +1,7 @@
-from celery import shared_task
 from django.conf import settings
 
 from nodeconductor.core import tasks as core_tasks
 from nodeconductor.structure import SupportedServices, models as structure_models
-
-from .. import models
 
 
 class RuntimeStateException(Exception):
@@ -109,3 +106,8 @@ class ThrottleProvisionTask(BaseThrottleProvisionTask, core_tasks.BackendMethodT
 
 class ThrottleProvisionStateTask(BaseThrottleProvisionTask, core_tasks.StateTransitionTask):
     pass
+
+
+class ConfigureTenantProvider(core_tasks.Task):
+    def execute(self, tenant):
+        tenant.create_provider()

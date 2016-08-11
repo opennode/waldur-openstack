@@ -7,7 +7,7 @@ from .. import models
 from . import factories
 
 
-class ServicePermissionTest(test.APITransactionTestCase):
+class BaseServiceTest(test.APITransactionTestCase):
     def setUp(self):
         self.customers = {
             'owned': structure_factories.CustomerFactory(),
@@ -55,7 +55,8 @@ class ServicePermissionTest(test.APITransactionTestCase):
         factories.OpenStackServiceProjectLinkFactory(
             service=self.services['managed_by_group_manager'], project=self.projects['managed_by_group_manager'])
 
-    # List filtration tests
+
+class ListServiceTest(BaseServiceTest):
     def test_anonymous_user_cannot_list_services(self):
         response = self.client.get(factories.OpenStackServiceFactory.get_list_url())
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -110,7 +111,8 @@ class ServicePermissionTest(test.APITransactionTestCase):
                 'User (role=none) should not see service (type=' + service_type + ')',
             )
 
-    # Direct instance access tests
+
+class GetServiceTest(BaseServiceTest):
     def test_anonymous_user_cannot_access_service(self):
         for service_type in 'admined', 'managed', 'not_in_project':
             response = self.client.get(factories.OpenStackServiceFactory.get_url(self.services[service_type]))
@@ -171,29 +173,33 @@ class ServicePermissionTest(test.APITransactionTestCase):
                 'User (role=' + user_role + ') should not see service (type=not_in_project)',
             )
 
-    # Creation tests
+
+class CreateServiceTest(BaseServiceTest):
+    @patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute')
     @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
-    def test_user_can_add_service_to_the_customer_he_owns(self, mocked_backend):
+    def test_user_can_add_service_to_the_customer_he_owns(self, mocked_backend, mocked_task):
         self.client.force_authenticate(user=self.users['customer_owner'])
 
-        payload = {
-            'name': factories.OpenStackServiceFactory().name,
-            'customer': structure_factories.CustomerFactory.get_url(self.customers['owned']),
-            "backend_url": "http://example.com",
-            "username": "user",
-            "password": "secret",
-            "tenant_name": "admin",
-        }
+        payload = self._get_owned_payload()
+        response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
-        with patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute') as mocked:
-            response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), payload)
-            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        settings = ServiceSettings.objects.get(name=payload['name'])
+        self.assertFalse(settings.shared)
 
-            settings = ServiceSettings.objects.get(name=payload['name'])
-            self.assertFalse(settings.shared)
+        mocked_task.assert_any_call(settings)
+        mocked_backend().ping.assert_called_once()
 
-            mocked.assert_any_call(settings)
-            mocked_backend().ping.assert_called_once()
+    @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
+    def test_admin_provider_credentials_are_validated(self, mocked_backend):
+        mocked_backend().check_admin_tenant.return_value = False
+        self.client.force_authenticate(user=self.users['customer_owner'])
+
+        payload = self._get_owned_payload()
+        response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), payload)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['non_field_errors'],
+                         ['Provided credentials are not for admin tenant.'])
 
     def test_user_cannot_add_service_to_the_customer_he_sees_but_doesnt_own(self):
         choices = {
@@ -205,16 +211,37 @@ class ServicePermissionTest(test.APITransactionTestCase):
 
             new_service = factories.OpenStackServiceFactory.build(
                 settings=self.settings, customer=self.customers[customer_type])
-            response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), self._get_valid_payload(new_service))
+            response = self.client.post(factories.OpenStackServiceFactory.get_list_url(),
+                                        self._get_valid_payload(new_service))
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_user_cannot_add_service_to_the_customer_he_has_no_role_in(self):
         self.client.force_authenticate(user=self.users['no_role'])
 
         new_service = factories.OpenStackServiceFactory(customer=self.customers['owned'])
-        response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), self._get_valid_payload(new_service))
+        response = self.client.post(factories.OpenStackServiceFactory.get_list_url(),
+                                    self._get_valid_payload(new_service))
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def _get_owned_payload(self):
+        return {
+            'name': factories.OpenStackServiceFactory().name,
+            'customer': structure_factories.CustomerFactory.get_url(self.customers['owned']),
+            'backend_url': 'http://example.com',
+            'username': 'user',
+            'password': 'secret',
+            'tenant_name': 'admin',
+        }
+
+    def _get_valid_payload(self, resource):
+        return {
+            'name': resource.name,
+            'settings': structure_factories.ServiceSettingsFactory.get_url(resource.settings),
+            'customer': structure_factories.CustomerFactory.get_url(resource.customer),
+        }
+
+
+class UpdateServiceTest(BaseServiceTest):
     def test_user_cannot_change_customer_of_service_he_owns(self):
         user = self.users['customer_owner']
 
@@ -243,10 +270,3 @@ class ServicePermissionTest(test.APITransactionTestCase):
 
         reread_service = models.OpenStackService.objects.get(pk=service.pk)
         self.assertEqual(reread_service.name, 'new name')
-
-    def _get_valid_payload(self, resource):
-        return {
-            'name': resource.name,
-            'settings': structure_factories.ServiceSettingsFactory.get_url(resource.settings),
-            'customer': structure_factories.CustomerFactory.get_url(resource.customer),
-        }

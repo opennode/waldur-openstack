@@ -904,6 +904,13 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         'external_network': serializers.ExternalNetworkSerializer,
     }
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        configure_as_provider = serializer.validated_data['configure_as_provider']
+        self.create_executor.execute(instance, async=self.async_executor,
+                                     configure_as_provider=configure_as_provider)
+        instance.refresh_from_db()
+
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)
         return serializer or super(TenantViewSet, self).get_serializer_class()

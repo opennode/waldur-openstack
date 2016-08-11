@@ -41,7 +41,8 @@ class SecurityGroupDeleteExecutor(core_executors.DeleteExecutor):
 class TenantCreateExecutor(core_executors.CreateExecutor):
 
     @classmethod
-    def get_task_signature(cls, tenant, serialized_tenant, pull_security_groups=True, **kwargs):
+    def get_task_signature(cls, tenant, serialized_tenant,
+                           pull_security_groups=True, configure_as_provider=False, **kwargs):
         # create tenant, add user to it, create internal network, pull quotas
         creation_tasks = [
             core_tasks.BackendMethodTask().si(
@@ -89,6 +90,9 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
                 runtime_state='connecting tenant to external network',
                 success_runtime_state='online')
             )
+
+        if configure_as_provider:
+            creation_tasks.append(tasks.ConfigureTenantProvider().si(serialized_tenant))
 
         return chain(*creation_tasks)
 

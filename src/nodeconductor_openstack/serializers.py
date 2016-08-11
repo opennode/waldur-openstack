@@ -9,7 +9,7 @@ from django.db import transaction
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 from netaddr import IPNetwork
-from rest_framework import serializers, reverse, permissions
+from rest_framework import serializers, reverse
 from taggit.models import Tag
 
 from nodeconductor.core import (utils as core_utils, models as core_models, serializers as core_serializers,
@@ -36,36 +36,64 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'password': '',
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
-        'tenant_name': 'Administrative tenant',
-        'availability_zone': 'Default availability zone for provisioned Instances',
+        'tenant_name': '',
+        'is_admin': '',
+        'availability_zone': 'Default availability zone for provisioned instances',
         'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
     }
 
+    is_admin = serializers.SerializerMethodField('get_admin')
+
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
         view_name = 'openstack-detail'
         required_fields = 'backend_url', 'username', 'password', 'tenant_name'
+        fields = structure_serializers.BaseServiceSerializer.Meta.fields + ('is_admin',)
         extra_field_options = {
-          'backend_url': {
-            'label': 'API URL',
-            'default_value': 'http://keystone.example.com:5000/v2.0',
-          },
-          'username': {
-            'default_value': 'admin',
-          },
-          'tenant_name': {
-            'label': 'Admin tenant name',
-            'default_value': 'admin',
-          },
-          'external_network_id': {
-            'label': 'Public/gateway network UUID',
-          },
-          'availability_zone': {
-            'placeholder': 'default',
-          }
+            'backend_url': {
+                'label': 'API URL',
+                'default_value': 'http://keystone.example.com:5000/v2.0',
+            },
+            'is_admin': {
+                'label': 'Configure admin provider',
+                'default_value': True
+            },
+            'username': {
+                'default_value': 'admin',
+            },
+            'tenant_name': {
+                'label': 'Tenant name',
+                'default_value': 'admin',
+            },
+            'external_network_id': {
+                'label': 'Public/gateway network UUID',
+            },
+            'availability_zone': {
+                'placeholder': 'default',
+            }
         }
+
+    def get_admin(self, service):
+        return service.settings.get_option('is_admin')
+
+    def _validate_settings(self, settings):
+        if settings.get_option('is_admin'):
+            backend = settings.get_backend()
+            try:
+                if not backend.check_admin_tenant():
+                    raise serializers.ValidationError({
+                        'non_field_errors': 'Provided credentials are not for admin tenant.'
+                    })
+            except OpenStackBackendError:
+                raise serializers.ValidationError({
+                    'non_field_errors': 'Unable to validate credentials.'
+                })
+        elif settings.options['tenant_name'] == 'admin':
+            raise serializers.ValidationError({
+                'tenant_name': 'Invalid tenant name for non-admin provider.'
+            })
 
 
 class FlavorSerializer(structure_serializers.BasePropertySerializer):
@@ -1027,12 +1055,15 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
 
+    configure_as_provider = serializers.BooleanField(
+        write_only=True, help_text='Create non-admin provider from this tenant.', default=False)
+
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas', 'runtime_state'
+            'user_username', 'user_password', 'quotas', 'runtime_state', 'configure_as_provider'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password', 'runtime_state'
@@ -1042,11 +1073,17 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
         )
 
     def get_access_url(self, tenant):
-        parsed = urlparse.urlparse(tenant.service_project_link.service.settings.backend_url)
-        return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
+        backend_url = tenant.service_project_link.service.settings.backend_url
+        if backend_url:
+            parsed = urlparse.urlparse(backend_url)
+            return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
 
     def create(self, validated_data):
         spl = validated_data['service_project_link']
+        if not spl.service.settings.get_option('is_admin'):
+            raise serializers.ValidationError({
+                'non_field_errors': 'Tenant provisioning is only possible for admin provider.'
+            })
         # get availability zone from service settings if it is not defined
         if not validated_data.get('availability_zone'):
             validated_data['availability_zone'] = spl.service.settings.get_option('availability_zone') or ''
