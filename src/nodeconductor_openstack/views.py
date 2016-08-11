@@ -79,7 +79,10 @@ class TelemetryMixin(object):
         Note that *<meter_name>* must be from meters list.
 
         In order to get a list of samples for the specific period of time, *start* timestamp and *end* timestamp query
-        parameters must be provided. Otherwise, samples will be listed for the last hour.
+        parameters can be provided:
+
+            - start - timestamp (default: one hour ago)
+            - end - timestamp (default: current datetime)
 
         Example of a valid request:
 
