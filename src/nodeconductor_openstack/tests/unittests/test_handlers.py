@@ -75,21 +75,3 @@ class SshKeysHandlersTest(TestCase):
         serialized_tenant = core_utils.serialize_instance(self.tenant)
         mocked_task_call.assert_called_once_with(
             serialized_tenant, 'remove_ssh_key_from_tenant', self.ssh_key.name, self.ssh_key.fingerprint)
-
-
-# TODO: Move this test to assembly.
-@patch('nodeconductor_openstack.log.event_logger.openstack_tenant_quota.warning')
-class QuotaThresholdBreachHandlerTest(TestCase):
-
-    def setUp(self):
-        self.tenant = factories.TenantFactory()
-        self.quota = self.tenant.quotas.get(name='instances')
-
-    def test_tenant_quota_warning_is_raised_on_threshold_breach(self, mocked_log_method):
-        self.tenant.set_quota_usage(self.quota.name, self.quota.limit)
-        mocked_log_method.assert_called_once()
-
-    def test_tenant_quota_warning_is_raised_only_once(self, mocked_log_method):
-        self.tenant.set_quota_usage(self.quota.name, self.quota.limit)
-        self.tenant.set_quota_usage(self.quota.name, self.quota.limit + 1)
-        mocked_log_method.assert_called_once()
