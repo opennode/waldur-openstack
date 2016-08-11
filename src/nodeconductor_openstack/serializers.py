@@ -44,13 +44,13 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
     }
 
-    is_admin = serializers.SerializerMethodField('get_admin')
+    is_admin_provider = serializers.SerializerMethodField('get_admin')
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
         view_name = 'openstack-detail'
         required_fields = 'backend_url', 'username', 'password', 'tenant_name'
-        fields = structure_serializers.BaseServiceSerializer.Meta.fields + ('is_admin',)
+        fields = structure_serializers.BaseServiceSerializer.Meta.fields + ('is_admin_provider',)
         extra_field_options = {
             'backend_url': {
                 'label': 'API URL',
@@ -90,7 +90,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                 raise serializers.ValidationError({
                     'non_field_errors': 'Unable to validate credentials.'
                 })
-        elif settings.options['tenant_name'] == 'admin':
+        elif settings.get_option('tenant_name') == 'admin':
             raise serializers.ValidationError({
                 'tenant_name': 'Invalid tenant name for non-admin provider.'
             })

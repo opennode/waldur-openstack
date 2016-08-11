@@ -175,20 +175,22 @@ class GetServiceTest(BaseServiceTest):
 
 
 class CreateServiceTest(BaseServiceTest):
-    @patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute')
     @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
-    def test_user_can_add_service_to_the_customer_he_owns(self, mocked_backend, mocked_task):
+    def test_user_can_add_service_to_the_customer_he_owns(self, mocked_backend):
+        mocked_backend().check_admin_tenant.return_value = True
         self.client.force_authenticate(user=self.users['customer_owner'])
 
         payload = self._get_owned_payload()
-        response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), payload)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
-        settings = ServiceSettings.objects.get(name=payload['name'])
-        self.assertFalse(settings.shared)
+        with patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute') as mocked:
+            response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), payload)
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
-        mocked_task.assert_any_call(settings)
-        mocked_backend().ping.assert_called_once()
+            settings = ServiceSettings.objects.get(name=payload['name'])
+            self.assertFalse(settings.shared)
+
+            mocked.assert_any_call(settings)
+            mocked_backend().ping.assert_called_once()
 
     @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
     def test_admin_provider_credentials_are_validated(self, mocked_backend):
@@ -231,6 +233,7 @@ class CreateServiceTest(BaseServiceTest):
             'username': 'user',
             'password': 'secret',
             'tenant_name': 'admin',
+            'is_admin': True
         }
 
     def _get_valid_payload(self, resource):
