@@ -37,27 +37,24 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
         'tenant_name': '',
-        'is_admin': '',
+        'is_admin': 'Configure admin provider',
         'availability_zone': 'Default availability zone for provisioned instances',
         'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
     }
 
-    is_admin_provider = serializers.SerializerMethodField('is_admin')
-
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
         view_name = 'openstack-detail'
         required_fields = 'backend_url', 'username', 'password', 'tenant_name'
-        fields = structure_serializers.BaseServiceSerializer.Meta.fields + ('is_admin_provider',)
+        fields = structure_serializers.BaseServiceSerializer.Meta.fields + ('is_admin_tenant',)
         extra_field_options = {
             'backend_url': {
                 'label': 'API URL',
                 'default_value': 'http://keystone.example.com:5000/v2.0',
             },
             'is_admin': {
-                'label': 'Configure admin provider',
                 'default_value': True
             },
             'username': {
@@ -856,7 +853,7 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
 
     def create(self, validated_data):
         service_project_link = validated_data['service_project_link']
-        if not service_project_link.service.is_admin():
+        if not service_project_link.service.is_admin_tenant():
             raise serializers.ValidationError({
                 'non_field_errors': 'Tenant import is only possible for admin provider.'
             })
@@ -1073,7 +1070,7 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
     def create(self, validated_data):
         spl = validated_data['service_project_link']
-        if not spl.service.is_admin():
+        if not spl.service.is_admin_tenant():
             raise serializers.ValidationError({
                 'non_field_errors': 'Tenant provisioning is only possible for admin provider.'
             })

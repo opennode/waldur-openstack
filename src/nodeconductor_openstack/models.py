@@ -59,7 +59,7 @@ class OpenStackService(structure_models.Service):
     def get_url_name(cls):
         return 'openstack'
 
-    def is_admin(self):
+    def is_admin_tenant(self):
         return self.settings.get_option('is_admin')
 
 

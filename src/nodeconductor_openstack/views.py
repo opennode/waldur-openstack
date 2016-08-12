@@ -910,7 +910,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return super(TenantViewSet, self).initial(request, *args, **kwargs)
 
     def check_operation(self, request, resource, action):
-        if action in ('pull', 'destroy') and not resource.service_project_link.service.is_admin():
+        if action in ('pull', 'destroy') and not resource.service_project_link.service.is_admin_tenant():
             raise ValidationError({
                 'non_field_errors': 'Tenant %s is only possible for admin provider.' % action
             })
