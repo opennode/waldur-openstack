@@ -1,11 +1,13 @@
 import base64
 import datetime
-import dateutil.parser
 import json
+import hashlib
 import logging
+import os
 import time
 import uuid
 
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import six, dateparse, timezone
@@ -23,6 +25,7 @@ from keystoneclient.v2_0 import client as keystone_client
 from neutronclient.v2_0 import client as neutron_client
 from novaclient.v2 import client as nova_client
 
+from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
 from glanceclient import exc as glance_exceptions
 from keystoneclient import exceptions as keystone_exceptions
@@ -43,12 +46,19 @@ class OpenStackBackendError(ServiceBackendError):
     pass
 
 
+class OpenStackSessionExpired(OpenStackBackendError):
+    pass
+
+
+class OpenStackAuthorizationFailed(OpenStackBackendError):
+    pass
+
+
 class OpenStackSession(dict):
     """ Serializable session """
 
     def __init__(self, ks_session=None, verify_ssl=False, **credentials):
         self.keystone_session = ks_session
-
         if not self.keystone_session:
             auth_plugin = v2.Password(**credentials)
             self.keystone_session = keystone_session.Session(auth=auth_plugin, verify=verify_ssl)
@@ -57,7 +67,7 @@ class OpenStackSession(dict):
             # This will eagerly sign in throwing AuthorizationFailure on bad credentials
             self.keystone_session.get_auth_headers()
         except keystone_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
+            six.reraise(OpenStackAuthorizationFailed, e)
 
         for opt in ('auth_ref', 'auth_url', 'tenant_id', 'tenant_name'):
             self[opt] = getattr(self.auth, opt)
@@ -70,7 +80,7 @@ class OpenStackSession(dict):
         if not isinstance(session, dict) or not session.get('auth_ref'):
             raise OpenStackBackendError('Invalid OpenStack session')
 
-        args = {'auth_url': session['auth_url'], 'token': session['auth_ref']['token']['id']}
+        args = {'auth_url': session['auth_url'], 'token': session['auth_ref'].auth_token}
         if session['tenant_id']:
             args['tenant_id'] = session['tenant_id']
         elif session['tenant_name']:
@@ -83,14 +93,13 @@ class OpenStackSession(dict):
             tenant_name=session['tenant_name'])
 
     def validate(self):
-        expiresat = dateutil.parser.parse(self.auth.auth_ref['token']['expires'])
-        if expiresat > timezone.now() + datetime.timedelta(minutes=10):
+        if self.auth.auth_ref.expires > timezone.now() + datetime.timedelta(minutes=10):
             return True
 
-        raise OpenStackBackendError('OpenStack session is expired')
+        raise OpenStackSessionExpired('OpenStack session is expired')
 
     def __str__(self):
-        return str({k: v if k != 'password' else '***' for k, v in self})
+        return str({k: v if k != 'password' else '***' for k, v in self.items()})
 
 
 class OpenStackClient(object):
@@ -158,18 +167,11 @@ class OpenStackClient(object):
 
     @property
     def ceilometer(self):
-        catalog = ServiceCatalog.factory(self.session.auth.auth_ref)
-        endpoint = catalog.url_for(service_type='metering')
-
-        kwargs = {
-            'token': lambda: self.session.get_token(),
-            'endpoint': endpoint,
-            'insecure': not self.verify_ssl,
-            'timeout': 600,
-            'ssl_compression': True,
-        }
-
-        return ceilometer_client.Client('2', **kwargs)
+        try:
+            return ceilometer_client.Client('2', session=self.session.keystone_session)
+        except ceilometer_exceptions.BaseException as e:
+            logger.exception('Failed to create ceilometer client: %s', e)
+            six.reraise(OpenStackBackendError, e)
 
 
 def _update_pulled_fields(instance, imported_instance, fields):
@@ -200,6 +202,12 @@ class OpenStackBackend(ServiceBackend):
         self.settings = settings
         self.tenant_id = tenant_id
 
+    def _get_cached_session_key(self, admin):
+        key = 'OPENSTACK_ADMIN_SESSION' if admin else 'OPENSTACK_SESSION_%s' % self.tenant_id
+        settings_key = str(self.settings.backend_url) + str(self.settings.password) + str(self.settings.username)
+        hashed_settings_key = hashlib.sha256(settings_key).hexdigest()
+        return '%s_%s_%s' % (self.settings.uuid.hex, hashed_settings_key, key)
+
     def get_client(self, name=None, admin=False):
         credentials = {
             'auth_url': self.settings.backend_url,
@@ -216,13 +224,22 @@ class OpenStackBackend(ServiceBackend):
         else:
             credentials['tenant_name'] = self.settings.get_option('tenant_name')
 
-        # Cache session in the object
+        client = None
         attr_name = 'admin_session' if admin else 'session'
-        if hasattr(self, attr_name):
+        key = self._get_cached_session_key(admin)
+        if hasattr(self, attr_name):  # try to get client from object
             client = getattr(self, attr_name)
-        else:
+        elif key in cache:  # try to get session from cache
+            session = cache.get(key)
+            try:
+                client = OpenStackClient(session=session)
+            except (OpenStackSessionExpired, OpenStackAuthorizationFailed):
+                pass
+
+        if client is None:  # create new token if session is not cached or expired
             client = OpenStackClient(**credentials)
-            setattr(self, attr_name, client)
+            setattr(self, attr_name, client)  # Cache client in the object
+            cache.set(key, dict(client.session), 24 * 60 * 60)  # Add session to cache
 
         if name:
             return getattr(client, name)
@@ -2044,6 +2061,42 @@ class OpenStackBackend(ServiceBackend):
         except (cinder_exceptions.ClientException, KeyError) as e:
             six.reraise(OpenStackBackendError, e)
         return volume_backup
+
+    def _get_meters_file_name(self, model_class):
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'meters')
+        return {
+            models.Instance: os.path.join(base, 'instance.json'),
+            models.Volume: os.path.join(base, 'volume.json'),
+            models.Snapshot: os.path.join(base, 'snapshot.json'),
+        }[model_class]
+
+    @log_backend_action()
+    def list_meters(self, resource):
+        try:
+            file_name = self._get_meters_file_name(resource.__class__)
+            with open(file_name) as meters_file:
+                meters = json.load(meters_file)
+        except (KeyError, IOError):
+            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % resource.__class__.__name__)
+
+        return meters
+
+    @log_backend_action()
+    def get_meter_samples(self, resource, meter_name, start=None, end=None):
+        query = [dict(field='resource_id', op='eq', value=resource.backend_id)]
+
+        if start is not None:
+            query.append(dict(field='timestamp', op='ge', value=start.strftime('%Y-%m-%dT%H:%M:%S')))
+        if end is not None:
+            query.append(dict(field='timestamp', op='le', value=end.strftime('%Y-%m-%dT%H:%M:%S')))
+
+        ceilometer = self.ceilometer_client
+        try:
+            samples = ceilometer.samples.list(meter_name=meter_name, q=query)
+        except ceilometer_exceptions.BaseException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return samples
 
     def _pull_service_settings_quotas(self):
         nova = self.nova_admin_client
