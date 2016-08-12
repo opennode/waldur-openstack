@@ -2081,6 +2081,8 @@ class OpenStackBackend(ServiceBackend):
         return volume_backup
 
     def _pull_service_settings_quotas(self):
+        if not self.settings.get_option('is_admin'):
+            return
         nova = self.nova_admin_client
 
         try:
