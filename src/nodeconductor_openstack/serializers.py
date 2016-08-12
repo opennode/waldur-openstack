@@ -44,7 +44,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
     }
 
-    is_admin_provider = serializers.SerializerMethodField('get_admin')
+    is_admin_provider = serializers.SerializerMethodField('is_admin')
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
@@ -74,9 +74,6 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                 'placeholder': 'default',
             }
         }
-
-    def get_admin(self, service):
-        return service.settings.get_option('is_admin')
 
     def _validate_settings(self, settings):
         if settings.get_option('is_admin'):
@@ -858,15 +855,11 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
         view_name = 'openstack-tenant-detail'
 
     def create(self, validated_data):
-        try:
-            service_project_link = models.OpenStackServiceProjectLink.objects.get(
-                service=self.context['service'],
-                project=validated_data['project']
-            )
-        except models.OpenStackServiceProjectLink.DoesNotExist:
-            raise serializers.ValidationError(
-                'Service project link for selected project does not exist.'
-            )
+        service_project_link = validated_data['service_project_link']
+        if not service_project_link.service.is_admin():
+            raise serializers.ValidationError({
+                'non_field_errors': 'Tenant import is only possible for admin provider.'
+            })
 
         backend = self.context['service'].get_backend()
         backend_id = validated_data['backend_id']
@@ -1080,7 +1073,7 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
     def create(self, validated_data):
         spl = validated_data['service_project_link']
-        if not spl.service.settings.get_option('is_admin'):
+        if not spl.service.is_admin():
             raise serializers.ValidationError({
                 'non_field_errors': 'Tenant provisioning is only possible for admin provider.'
             })

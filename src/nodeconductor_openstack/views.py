@@ -904,6 +904,18 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         'external_network': serializers.ExternalNetworkSerializer,
     }
 
+    def initial(self, request, *args, **kwargs):
+        if self.action in ('pull', 'destroy'):
+            self.check_operation(request, self.get_object(), self.action)
+        return super(TenantViewSet, self).initial(request, *args, **kwargs)
+
+    def check_operation(self, request, resource, action):
+        if action in ('pull', 'destroy') and not resource.service_project_link.service.is_admin():
+            raise ValidationError({
+                'non_field_errors': 'Tenant %s is only possible for admin provider.' % action
+            })
+        return super(TenantViewSet, self).check_operation(request, resource, action)
+
     def perform_create(self, serializer):
         instance = serializer.save()
         configure_as_provider = serializer.validated_data['configure_as_provider']

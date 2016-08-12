@@ -266,7 +266,7 @@ class OpenStackBackend(ServiceBackend):
 
     def ping(self, raise_exception=False):
         try:
-            self.keystone_admin_client
+            self.keystone_client
         except keystone_exceptions.ClientException as e:
             if raise_exception:
                 six.reraise(OpenStackBackendError, e)
@@ -283,9 +283,8 @@ class OpenStackBackend(ServiceBackend):
             return True
 
     def check_admin_tenant(self):
-        keystone = self.keystone_admin_client
         try:
-            keystone.tenants.list()
+            self.keystone_admin_client
         except keystone_exceptions.AuthorizationFailure:
             return False
         except keystone_exceptions.ClientException as e:
@@ -477,7 +476,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
 
     def _pull_flavors(self):
-        nova = self.nova_admin_client
+        nova = self.nova_client
         try:
             flavors = nova.flavors.findall(is_public=True)
         except nova_exceptions.ClientException as e:
@@ -500,7 +499,7 @@ class OpenStackBackend(ServiceBackend):
             models.Flavor.objects.filter(backend_id__in=cur_flavors.keys()).delete()
 
     def _pull_images(self):
-        glance = self.glance_admin_client
+        glance = self.glance_client
         try:
             images = glance.images.list()
         except glance_exceptions.ClientException as e:
@@ -969,8 +968,10 @@ class OpenStackBackend(ServiceBackend):
                 return self.get_instances_for_import(tenant)
             elif resource_type == SupportedServices.get_name_for_model(models.Volume):
                 return self.get_volumes_for_import(tenant)
-        else:
+        elif self.settings.get_option('is_admin'):
             return self.get_tenants_for_import()
+        else:
+            return []
 
     def get_instances_for_import(self, tenant):
         cur_instances = set(tenant.instances.values_list('backend_id', flat=True))
