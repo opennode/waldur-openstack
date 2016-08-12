@@ -30,11 +30,6 @@ class OpenStackConfig(AppConfig):
         from .cost_tracking import OpenStackCostTrackingBackend
         CostTrackingRegister.register(self.label, OpenStackCostTrackingBackend)
 
-        # template
-        from nodeconductor.template import TemplateRegistry
-        from .template import InstanceProvisionTemplateForm
-        TemplateRegistry.register(InstanceProvisionTemplateForm)
-
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
 
