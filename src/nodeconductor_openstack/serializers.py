@@ -1419,5 +1419,8 @@ class MeterSampleSerializer(serializers.Serializer):
 
 
 class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSerializer):
-    start = TimestampField(default=core_utils.timeshift(hours=-1))
-    end = TimestampField(default=core_utils.timeshift())
+    def get_fields(self):
+        fields = super(MeterTimestampIntervalSerializer, self).get_fields()
+        fields['start'].default = core_utils.timeshift(hours=-1)
+        fields['end'].default = core_utils.timeshift()
+        return fields
