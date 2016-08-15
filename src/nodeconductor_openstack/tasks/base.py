@@ -108,6 +108,6 @@ class ThrottleProvisionStateTask(BaseThrottleProvisionTask, core_tasks.StateTran
     pass
 
 
-class ConfigureTenantProvider(core_tasks.Task):
+class ConfigureTenantService(core_tasks.Task):
     def execute(self, tenant):
-        tenant.create_provider()
+        tenant.create_service()

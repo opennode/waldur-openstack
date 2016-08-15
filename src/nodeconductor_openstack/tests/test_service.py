@@ -193,7 +193,7 @@ class CreateServiceTest(BaseServiceTest):
             mocked_backend().ping.assert_called_once()
 
     @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
-    def test_admin_provider_credentials_are_validated(self, mocked_backend):
+    def test_admin_service_credentials_are_validated(self, mocked_backend):
         mocked_backend().check_admin_tenant.return_value = False
         self.client.force_authenticate(user=self.users['customer_owner'])
 

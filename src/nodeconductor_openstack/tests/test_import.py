@@ -32,14 +32,14 @@ class TenantImportTestCase(BaseImportTestCase):
         self.mocked_keystone().tenants.list.return_value = [self.mocked_tenant]
         self.mocked_keystone().tenants.get.return_value = self.mocked_tenant
 
-    def test_user_can_not_list_importable_tenants_from_non_admin_provider(self):
+    def test_user_can_not_list_importable_tenants_from_non_admin_service(self):
         self.service.settings.options['is_admin'] = False
         self.service.settings.save()
 
         response = self.client.get(self.url)
         self.assertEqual(response.data, [])
 
-    def test_user_can_not_import_tenants_from_non_admin_provider(self):
+    def test_user_can_not_import_tenants_from_non_admin_service(self):
         self.service.settings.options['is_admin'] = False
         self.service.settings.save()
 

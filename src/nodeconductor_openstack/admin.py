@@ -125,7 +125,7 @@ class TenantAdmin(structure_admin.ResourceAdmin):
             if tenant.state not in (models.Tenant.States.OK, models.Tenant.States.ERRED):
                 raise ValidationError('Tenant has to be OK or erred.')
             if not tenant.service_project_link.service.is_admin_tenant():
-                raise ValidationError('Tenant pull is only possible for admin provider.')
+                raise ValidationError('Tenant pull is only possible for admin service.')
 
     pull = Pull()
 

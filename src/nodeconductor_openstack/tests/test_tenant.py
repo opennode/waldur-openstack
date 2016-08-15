@@ -14,11 +14,11 @@ class TenantCreateTest(test.APISimpleTestCase):
         staff = structure_factories.UserFactory(is_staff=True)
         self.client.force_authenticate(user=staff)
 
-    def test_can_create_tenant_for_admin_provider(self):
+    def test_can_create_tenant_for_admin_service(self):
         response = self.create_tenant(factories.OpenStackServiceProjectLinkFactory())
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_unable_create_tenant_for_non_admin_provider(self):
+    def test_unable_create_tenant_for_non_admin_service(self):
         link = factories.OpenStackServiceProjectLinkFactory()
         settings = link.service.settings
         settings.options['is_admin'] = False
@@ -27,10 +27,10 @@ class TenantCreateTest(test.APISimpleTestCase):
         response = self.create_tenant(link)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['non_field_errors'],
-                         'Tenant provisioning is only possible for admin provider.')
+                         'Tenant provisioning is only possible for admin service.')
 
     @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
-    def test_can_create_tenant_and_non_admin_provider(self, mocked_backend):
+    def test_can_create_tenant_and_non_admin_service(self, mocked_backend):
         link = factories.OpenStackServiceProjectLinkFactory()
         customer = link.project.customer
         settings = link.service.settings
@@ -41,7 +41,7 @@ class TenantCreateTest(test.APISimpleTestCase):
         response = self.client.post(factories.TenantFactory.get_list_url(), {
             'name': 'Valid tenant name',
             'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(link),
-            'configure_as_provider': True
+            'configure_as_service': True
         })
         TenantViewSet.async_executor = True
 
@@ -166,7 +166,7 @@ class TenantPullTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         mocked_task.assert_called_once_with(self.tenant)
 
-    def test_staff_can_not_pull_tenant_from_non_admin_provider(self, mocked_task):
+    def test_staff_can_not_pull_tenant_from_non_admin_service(self, mocked_task):
         settings = self.tenant.service_project_link.service.settings
         settings.options['is_admin'] = False
         settings.save()
@@ -186,7 +186,7 @@ class TenantDeleteTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         mocked_task.assert_called_once_with(self.tenant, async=True, force=False)
 
-    def test_staff_can_not_delete_tenant_from_non_admin_provider(self, mocked_task):
+    def test_staff_can_not_delete_tenant_from_non_admin_service(self, mocked_task):
         settings = self.tenant.service_project_link.service.settings
         settings.options['is_admin'] = False
         settings.save()

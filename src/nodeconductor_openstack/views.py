@@ -994,14 +994,14 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if self.action in admin_actions and \
             not self.get_object().service_project_link.service.is_admin_tenant():
             raise ValidationError({
-                'non_field_errors': 'Tenant %s is only possible for admin provider.' % self.action
+                'non_field_errors': 'Tenant %s is only possible for admin service.' % self.action
             })
 
     def perform_create(self, serializer):
         instance = serializer.save()
-        configure_as_provider = serializer.validated_data['configure_as_provider']
+        configure_as_service = serializer.validated_data['configure_as_service']
         self.create_executor.execute(instance, async=self.async_executor,
-                                     configure_as_provider=configure_as_provider)
+                                     configure_as_service=configure_as_service)
         instance.refresh_from_db()
 
     def get_serializer_class(self):

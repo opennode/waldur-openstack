@@ -37,7 +37,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
         'tenant_name': '',
-        'is_admin': 'Configure admin provider',
+        'is_admin': 'Configure admin service',
         'availability_zone': 'Default availability zone for provisioned instances',
         'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
@@ -86,7 +86,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                 })
         elif settings.get_option('tenant_name') == 'admin':
             raise serializers.ValidationError({
-                'tenant_name': 'Invalid tenant name for non-admin provider.'
+                'tenant_name': 'Invalid tenant name for non-admin service.'
             })
 
 
@@ -855,7 +855,7 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
         service_project_link = validated_data['service_project_link']
         if not service_project_link.service.is_admin_tenant():
             raise serializers.ValidationError({
-                'non_field_errors': 'Tenant import is only possible for admin provider.'
+                'non_field_errors': 'Tenant import is only possible for admin service.'
             })
 
         backend = self.context['service'].get_backend()
@@ -1045,15 +1045,15 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
 
-    configure_as_provider = serializers.BooleanField(
-        write_only=True, help_text='Create non-admin provider from this tenant.', default=False)
+    configure_as_service = serializers.BooleanField(
+        write_only=True, help_text='Create non-admin service from this tenant.', default=False)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas', 'runtime_state', 'configure_as_provider'
+            'user_username', 'user_password', 'quotas', 'runtime_state', 'configure_as_service'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password', 'runtime_state'
@@ -1072,7 +1072,7 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
         spl = validated_data['service_project_link']
         if not spl.service.is_admin_tenant():
             raise serializers.ValidationError({
-                'non_field_errors': 'Tenant provisioning is only possible for admin provider.'
+                'non_field_errors': 'Tenant provisioning is only possible for admin service.'
             })
         # get availability zone from service settings if it is not defined
         if not validated_data.get('availability_zone'):

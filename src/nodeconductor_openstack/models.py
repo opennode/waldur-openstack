@@ -480,9 +480,9 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
     def get_backend(self):
         return self.service_project_link.service.get_backend(tenant_id=self.backend_id)
 
-    def create_provider(self):
+    def create_service(self):
         """
-        Create non-admin provider from this tenant.
+        Create non-admin service from this tenant.
         """
         admin_settings = self.service_project_link.service.settings
         customer = self.service_project_link.project.customer
