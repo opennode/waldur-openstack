@@ -14,12 +14,12 @@ from taggit.models import Tag
 
 from nodeconductor.core import (utils as core_utils, models as core_models, serializers as core_serializers,
                                 NodeConductorExtension)
-from nodeconductor.core.fields import JsonField, MappedChoiceField
+from nodeconductor.core.fields import JsonField, MappedChoiceField, TimestampField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
 from nodeconductor.structure.managers import filter_queryset_for_user
 
-from . import models
+from . import models, fields
 from .backend import OpenStackBackendError
 
 
@@ -1434,3 +1434,20 @@ class DRBackupRestorationSerializer(core_serializers.AugmentedSerializerMixin, B
         # XXX: This should be moved to itacloud assembly
         self.create_instance_crm(instance, dr_backup)
         return dr_backup_restoration
+
+
+class MeterSampleSerializer(serializers.Serializer):
+    name = serializers.CharField(source='counter_name')
+    value = serializers.FloatField(source='counter_volume')
+    type = serializers.CharField(source='counter_type')
+    unit = serializers.CharField(source='counter_unit')
+    timestamp = fields.StringTimestampField(formats=('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'))
+    recorded_at = fields.StringTimestampField(formats=('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'))
+
+
+class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSerializer):
+    def get_fields(self):
+        fields = super(MeterTimestampIntervalSerializer, self).get_fields()
+        fields['start'].default = core_utils.timeshift(hours=-1)
+        fields['end'].default = core_utils.timeshift()
+        return fields
