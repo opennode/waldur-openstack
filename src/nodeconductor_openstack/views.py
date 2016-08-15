@@ -982,18 +982,19 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     }
 
     def initial(self, request, *args, **kwargs):
-        self.check_admin_action(self.get_object(), self.action)
+        self.check_admin_action()
         return super(TenantViewSet, self).initial(request, *args, **kwargs)
 
     def check_operation(self, request, resource, action):
-        self.check_admin_action(resource, action)
+        self.check_admin_action()
         return super(TenantViewSet, self).check_operation(request, resource, action)
 
-    def check_admin_action(self, resource, action):
+    def check_admin_action(self):
         admin_actions = ('pull', 'destroy', 'update', 'external_network')
-        if action in admin_actions and not resource.service_project_link.service.is_admin_tenant():
+        if self.action in admin_actions and \
+            not self.get_object().service_project_link.service.is_admin_tenant():
             raise ValidationError({
-                'non_field_errors': 'Tenant %s is only possible for admin provider.' % action
+                'non_field_errors': 'Tenant %s is only possible for admin provider.' % self.action
             })
 
     def perform_create(self, serializer):
