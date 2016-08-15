@@ -1507,7 +1507,7 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action()
     def detect_external_network(self, tenant):
-        neutron = self.neutron_admin_client
+        neutron = self.neutron_client
         try:
             routers = neutron.list_routers(tenant_id=tenant.backend_id)['routers']
         except neutron_exceptions.NeutronClientException as e:
@@ -1618,7 +1618,7 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action('allocate floating IP for tenant')
     def allocate_floating_ip_address(self, tenant):
-        neutron = self.neutron_admin_client
+        neutron = self.neutron_client
         try:
             ip_address = neutron.create_floatingip({
                 'floatingip': {
@@ -1642,7 +1642,7 @@ class OpenStackBackend(ServiceBackend):
         logger.debug('About to assign floating IP %s to the instance with id %s',
                      floating_ip.address, instance.uuid)
 
-        nova = self.nova_admin_client
+        nova = self.nova_client
         try:
             nova.servers.add_floating_ip(
                 server=instance.backend_id,
