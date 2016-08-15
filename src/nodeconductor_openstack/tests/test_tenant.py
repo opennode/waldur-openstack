@@ -31,24 +31,14 @@ class TenantCreateTest(test.APISimpleTestCase):
 
     @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
     def test_can_create_tenant_and_non_admin_service(self, mocked_backend):
-        link = factories.OpenStackServiceProjectLinkFactory()
-        customer = link.project.customer
-        settings = link.service.settings
-        settings.backend_url = 'http://example.com'
-        settings.save()
+        tenant = factories.TenantFactory()
+        settings = tenant.service_project_link.service.settings
 
-        TenantViewSet.async_executor = False
-        response = self.client.post(factories.TenantFactory.get_list_url(), {
-            'name': 'Valid tenant name',
-            'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(link),
-            'configure_as_service': True
-        })
-        TenantViewSet.async_executor = True
-
+        response = self.client.post(factories.TenantFactory.get_url(tenant, 'create_service'))
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        tenant = Tenant.objects.get(uuid=response.data['uuid'])
+
         self.assertTrue(OpenStackService.objects.filter(
-            customer=customer,
+            customer=tenant.customer,
             settings__backend_url=settings.backend_url,
             settings__username=tenant.user_username,
             settings__password=tenant.user_password

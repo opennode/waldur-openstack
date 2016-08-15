@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.encoding import python_2_unicode_compatible, force_text
+from django.utils.text import slugify
 from jsonfield import JSONField
 from iptools.ipv4 import validate_cidr
 from model_utils import FieldTracker
@@ -487,6 +488,7 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
         admin_settings = self.service_project_link.service.settings
         customer = self.service_project_link.project.customer
         new_settings = structure_models.ServiceSettings.objects.create(
+            name=slugify(self.name)[:30] + '-settings',
             customer=customer,
             type=admin_settings.type,
             backend_url=admin_settings.backend_url,
@@ -499,7 +501,11 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
                 'external_network_id': self.external_network_id
             }
         )
-        return OpenStackService.objects.create(settings=new_settings, customer=customer)
+        return OpenStackService.objects.create(
+            name=slugify(self.name)[:30] + '-service',
+            settings=new_settings,
+            customer=customer
+        )
 
 
 class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):

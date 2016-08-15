@@ -1045,15 +1045,12 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
 
-    configure_as_service = serializers.BooleanField(
-        write_only=True, help_text='Create non-admin service from this tenant.', default=False)
-
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas', 'runtime_state', 'configure_as_service'
+            'user_username', 'user_password', 'quotas', 'runtime_state',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password', 'runtime_state'

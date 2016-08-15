@@ -997,16 +997,25 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                 'non_field_errors': 'Tenant %s is only possible for admin service.' % self.action
             })
 
-    def perform_create(self, serializer):
-        instance = serializer.save()
-        configure_as_service = serializer.validated_data['configure_as_service']
-        self.create_executor.execute(instance, async=self.async_executor,
-                                     configure_as_service=configure_as_service)
-        instance.refresh_from_db()
-
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)
         return serializer or super(TenantViewSet, self).get_serializer_class()
+
+    @decorators.detail_route(methods=['post'])
+    def create_service(self, request, uuid=None):
+        """Create non-admin service with credentials from the tenant"""
+        tenant = self.get_object()
+
+        if tenant.state != models.Tenant.States.OK:
+            raise IncorrectStateException()
+
+        if not request.user.is_staff and \
+            not tenant.customer.has_user(request.user, models.CustomerRole.OWNER):
+            raise exceptions.PermissionDenied()
+
+        service = tenant.create_service()
+        serializer = serializers.ServiceSerializer(service, context={'request': request})
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @decorators.detail_route(methods=['post'])
     def set_quotas(self, request, uuid=None):
