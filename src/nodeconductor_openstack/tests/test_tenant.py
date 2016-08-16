@@ -3,7 +3,6 @@ from mock import patch
 from rest_framework import test, status
 from nodeconductor.structure.tests import factories as structure_factories
 from nodeconductor_openstack.models import Tenant, OpenStackService
-from nodeconductor_openstack.views import TenantViewSet
 
 from . import factories
 
@@ -29,21 +28,6 @@ class TenantCreateTest(test.APISimpleTestCase):
         self.assertEqual(response.data['non_field_errors'],
                          'Tenant provisioning is only possible for admin service.')
 
-    @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
-    def test_can_create_tenant_and_non_admin_service(self, mocked_backend):
-        tenant = factories.TenantFactory()
-        settings = tenant.service_project_link.service.settings
-
-        response = self.client.post(factories.TenantFactory.get_url(tenant, 'create_service'))
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        self.assertTrue(OpenStackService.objects.filter(
-            customer=tenant.customer,
-            settings__backend_url=settings.backend_url,
-            settings__username=tenant.user_username,
-            settings__password=tenant.user_password
-        ).exists())
-
     def create_tenant(self, link):
         return self.client.post(factories.TenantFactory.get_list_url(), {
             'name': 'Valid tenant name',
@@ -54,6 +38,7 @@ class TenantCreateTest(test.APISimpleTestCase):
 class BaseTenantActionsTest(test.APISimpleTestCase):
 
     def setUp(self):
+        super(BaseTenantActionsTest, self).setUp()
         self.tenant = factories.TenantFactory()
         staff = structure_factories.UserFactory(is_staff=True)
         self.client.force_authenticate(user=staff)
@@ -187,3 +172,25 @@ class TenantDeleteTest(BaseTenantActionsTest):
 
     def get_url(self):
         return factories.TenantFactory.get_url(self.tenant)
+
+
+class ServiceTenantCreateTest(BaseTenantActionsTest):
+
+    def setUp(self):
+        super(ServiceTenantCreateTest, self).setUp()
+        self.settings = self.tenant.service_project_link.service.settings
+        self.url = factories.TenantFactory.get_url(self.tenant, 'create_service')
+
+    @patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute')
+    def test_can_create_tenant_and_non_admin_service(self, mocked_execute):
+        response = self.client.post(self.url, {'name': 'Valid service'})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(mocked_execute.called)
+
+        self.assertTrue(OpenStackService.objects.filter(
+            customer=self.tenant.customer,
+            name='Valid service',
+            settings__backend_url=self.settings.backend_url,
+            settings__username=self.tenant.user_username,
+            settings__password=self.tenant.user_password
+        ).exists())

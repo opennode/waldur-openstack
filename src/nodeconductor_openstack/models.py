@@ -481,14 +481,15 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
     def get_backend(self):
         return self.service_project_link.service.get_backend(tenant_id=self.backend_id)
 
-    def create_service(self):
+    def create_service(self, name):
         """
         Create non-admin service from this tenant.
         """
         admin_settings = self.service_project_link.service.settings
         customer = self.service_project_link.project.customer
         new_settings = structure_models.ServiceSettings.objects.create(
-            name=slugify(self.name)[:30] + '-settings',
+            name=name,
+            scope=self,
             customer=customer,
             type=admin_settings.type,
             backend_url=admin_settings.backend_url,
@@ -502,7 +503,7 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
             }
         )
         return OpenStackService.objects.create(
-            name=slugify(self.name)[:30] + '-service',
+            name=name,
             settings=new_settings,
             customer=customer
         )

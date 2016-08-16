@@ -106,8 +106,3 @@ class ThrottleProvisionTask(BaseThrottleProvisionTask, core_tasks.BackendMethodT
 
 class ThrottleProvisionStateTask(BaseThrottleProvisionTask, core_tasks.StateTransitionTask):
     pass
-
-
-class ConfigureTenantService(core_tasks.Task):
-    def execute(self, tenant):
-        tenant.create_service()

@@ -13,6 +13,7 @@ from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
 from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import views as structure_views, SupportedServices
+from nodeconductor.structure import executors as structure_executors
 from nodeconductor.structure import filters as structure_filters
 from nodeconductor.structure.managers import filter_queryset_for_user
 from nodeconductor.structure.views import safe_operation
@@ -979,6 +980,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     serializers = {
         'set_quotas': serializers.TenantQuotaSerializer,
         'external_network': serializers.ExternalNetworkSerializer,
+        'create_service': serializers.ServiceNameSerializer
     }
 
     def initial(self, request, *args, **kwargs):
@@ -1004,6 +1006,11 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @decorators.detail_route(methods=['post'])
     def create_service(self, request, uuid=None):
         """Create non-admin service with credentials from the tenant"""
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data['name']
+
         tenant = self.get_object()
 
         if tenant.state != models.Tenant.States.OK:
@@ -1013,7 +1020,9 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             not tenant.customer.has_user(request.user, models.CustomerRole.OWNER):
             raise exceptions.PermissionDenied()
 
-        service = tenant.create_service()
+        service = tenant.create_service(name)
+        structure_executors.ServiceSettingsCreateExecutor.execute(service.settings, async=self.async_executor)
+
         serializer = serializers.ServiceSerializer(service, context={'request': request})
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 

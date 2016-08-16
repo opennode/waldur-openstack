@@ -216,11 +216,7 @@ class OpenStackBackend(ServiceBackend):
             'password': self.settings.password,
         }
 
-        if not admin:
-            if not self.tenant_id:
-                raise OpenStackBackendError(
-                    "Can't create tenant session, please provide tenant ID")
-
+        if self.tenant_id:
             credentials['tenant_id'] = self.tenant_id
         else:
             credentials['tenant_name'] = self.settings.get_option('tenant_name')
@@ -2112,7 +2108,10 @@ class OpenStackBackend(ServiceBackend):
         return samples
 
     def _pull_service_settings_quotas(self):
-        if not self.settings.get_option('is_admin'):
+        if isinstance(self.settings.scope, models.Tenant):
+            tenant = self.settings.scope
+            self.pull_tenant_quotas(tenant)
+            self._copy_tenant_quota_to_settings(tenant)
             return
         nova = self.nova_admin_client
 
@@ -2140,6 +2139,16 @@ class OpenStackBackend(ServiceBackend):
 
         storage = sum(self.gb2mb(v.size) for v in volumes + snapshots)
         return storage
+
+    def _copy_tenant_quota_to_settings(self, tenant):
+        quotas = tenant.quotas.values('name', 'limit', 'usage')
+        limits = {quota['name']: quota['limit'] for quota in quotas}
+        usages = {quota['name']: quota['usage'] for quota in quotas}
+
+        for resource in ('vcpu', 'ram', 'storage'):
+            quota_name = 'openstack_%s' % resource
+            self.settings.set_quota_limit(quota_name, limits[resource])
+            self.settings.set_quota_usage(quota_name, usages[resource])
 
     def get_stats(self):
         tenants = models.Tenant.objects.filter(service_project_link__service__settings=self.settings)

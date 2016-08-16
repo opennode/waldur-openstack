@@ -14,7 +14,7 @@ from taggit.models import Tag
 
 from nodeconductor.core import (utils as core_utils, models as core_models, serializers as core_serializers,
                                 NodeConductorExtension)
-from nodeconductor.core.fields import JsonField, MappedChoiceField, TimestampField
+from nodeconductor.core.fields import JsonField, MappedChoiceField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
 from nodeconductor.structure.managers import filter_queryset_for_user
@@ -37,7 +37,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
         'tenant_name': '',
-        'is_admin': 'Configure admin service',
+        'is_admin': 'Configure service with admin privileges',
         'availability_zone': 'Default availability zone for provisioned instances',
         'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
@@ -55,7 +55,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                 'default_value': 'http://keystone.example.com:5000/v2.0',
             },
             'is_admin': {
-                'default_value': True
+                'default_value': True,
             },
             'username': {
                 'default_value': 'admin',
@@ -88,6 +88,10 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
             raise serializers.ValidationError({
                 'tenant_name': 'Invalid tenant name for non-admin service.'
             })
+
+
+class ServiceNameSerializer(serializers.Serializer):
+    name = serializers.CharField(required=True)
 
 
 class FlavorSerializer(structure_serializers.BasePropertySerializer):
