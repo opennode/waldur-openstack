@@ -5,7 +5,6 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.encoding import python_2_unicode_compatible, force_text
-from django.utils.text import slugify
 from jsonfield import JSONField
 from iptools.ipv4 import validate_cidr
 from model_utils import FieldTracker
