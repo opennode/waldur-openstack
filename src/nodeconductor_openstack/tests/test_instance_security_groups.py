@@ -1,3 +1,4 @@
+from mock import patch
 from rest_framework import test, status
 
 from nodeconductor.structure import models as structure_models
@@ -61,7 +62,8 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
         reread_security_groups = list(reread_instance.security_groups.all())
         self.assertEquals(reread_security_groups, self.security_groups)
 
-    def test_change_instance_security_groups_single_field(self):
+    @patch('nodeconductor_openstack.executors.InstanceUpdateExecutor.execute')
+    def test_change_instance_security_groups_single_field(self, mocked_execute_method):
         new_security_group = factories.SecurityGroupFactory(
             name='test-group',
             service_project_link=self.spl,
@@ -81,8 +83,10 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
 
         self.assertEquals(reread_security_groups, [new_security_group],
                           'Security groups should have changed')
+        mocked_execute_method.assert_called_once()
 
-    def test_change_instance_security_groups(self):
+    @patch('nodeconductor_openstack.executors.InstanceUpdateExecutor.execute')
+    def test_change_instance_security_groups(self, mocked_execute_method):
         response = self.client.get(factories.InstanceFactory.get_url(self.instance))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -97,6 +101,7 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
         reread_security_groups = list(reread_instance.security_groups.all())
 
         self.assertEquals(reread_security_groups, [security_group])
+        mocked_execute_method.assert_called_once()
 
     def test_security_groups_is_not_required(self):
         data = _instance_data(self.user, self.instance)
