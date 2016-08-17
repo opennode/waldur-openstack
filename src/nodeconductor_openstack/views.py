@@ -262,7 +262,10 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class InstanceViewSet(TelemetryMixin, structure_views.PullMixin, structure_views.BaseResourceViewSet):
+class InstanceViewSet(TelemetryMixin,
+                      structure_views.PullMixin,
+                      core_mixins.UpdateExecutorMixin,
+                      structure_views.BaseResourceViewSet):
     """
     OpenStack instance permissions
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -290,6 +293,7 @@ class InstanceViewSet(TelemetryMixin, structure_views.PullMixin, structure_views
     serializer_class = serializers.InstanceSerializer
     filter_class = filters.InstanceFilter
     pull_executor = executors.InstancePullExecutor
+    update_executor = executors.InstanceUpdateExecutor
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
@@ -352,10 +356,6 @@ class InstanceViewSet(TelemetryMixin, structure_views.PullMixin, structure_views
         If instance is in the state that does not allow this transition, error code will be returned.
         """
         return super(InstanceViewSet, self).retrieve(request, *args, **kwargs)
-
-    def perform_update(self, serializer):
-        super(InstanceViewSet, self).perform_update(serializer)
-        send_task('openstack', 'sync_instance_security_groups')(self.get_object().uuid.hex)
 
     def perform_provision(self, serializer):
         instance = serializer.save()
@@ -994,7 +994,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     def check_admin_action(self):
         admin_actions = ('pull', 'destroy', 'update', 'external_network')
         if self.action in admin_actions and \
-            not self.get_object().service_project_link.service.is_admin_tenant():
+                not self.get_object().service_project_link.service.is_admin_tenant():
             raise ValidationError({
                 'non_field_errors': 'Tenant %s is only possible for admin service.' % self.action
             })
@@ -1017,7 +1017,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             raise IncorrectStateException()
 
         if not request.user.is_staff and \
-            not tenant.customer.has_user(request.user, models.CustomerRole.OWNER):
+                not tenant.customer.has_user(request.user, models.CustomerRole.OWNER):
             raise exceptions.PermissionDenied()
 
         service = tenant.create_service(name)
