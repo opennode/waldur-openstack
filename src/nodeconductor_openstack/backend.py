@@ -15,7 +15,6 @@ from requests import ConnectionError
 
 from keystoneauth1.identity import v2
 from keystoneauth1 import session as keystone_session
-from keystoneclient.service_catalog import ServiceCatalog
 
 from ceilometerclient import client as ceilometer_client
 from cinderclient.v1 import client as cinder_client
@@ -762,7 +761,7 @@ class OpenStackBackend(ServiceBackend):
                 logger.info('Created new security group rule %s in database', rule.id)
 
     @log_backend_action()
-    def sync_instance_security_groups(self, instance):
+    def push_instance_security_groups(self, instance):
         nova = self.nova_client
         server_id = instance.backend_id
         try:
@@ -772,7 +771,7 @@ class OpenStackBackend(ServiceBackend):
 
         nc_ids = set(
             models.SecurityGroup.objects
-            .filter(instance_groups__instance__backend_id=server_id)
+            .filter(instances=instance)
             .exclude(backend_id='')
             .values_list('backend_id', flat=True)
         )
@@ -798,6 +797,38 @@ class OpenStackBackend(ServiceBackend):
             else:
                 logger.info('Added security group %s to instance %s',
                             group_id, server_id)
+
+    @log_backend_action()
+    def pull_instance_security_groups(self, instance):
+        nova = self.nova_client
+        server_id = instance.backend_id
+        try:
+            backend_groups = nova.servers.list_security_group(server_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        backend_ids = set(g.id for g in backend_groups)
+        nc_ids = set(
+            models.SecurityGroup.objects
+            .filter(instances=instance)
+            .exclude(backend_id='')
+            .values_list('backend_id', flat=True)
+        )
+
+        # remove stale groups
+        stale_groups = models.SecurityGroup.objects.filter(backend_id__in=(nc_ids - backend_ids))
+        instance.security_groups.remove(*stale_groups)
+
+        # add missing groups
+        for group_id in backend_ids - nc_ids:
+            try:
+                security_group = models.SecurityGroup.objects.filter(tenant=instance.tenant).get(
+                    backend_id=group_id)
+            except models.SecurityGroup.DoesNotExist:
+                logger.exception(
+                    'Security group with id %s does not exist at NC. Tenant : %s' % (group_id, instance.tenant))
+            else:
+                instance.security_groups.add(security_group)
 
     @log_backend_action()
     def create_tenant(self, tenant):
@@ -1145,6 +1176,15 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         else:
             logger.info("Successfully provisioned instance %s", instance.uuid)
+
+    @log_backend_action()
+    def update_instance(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.update(instance.backend_id, name=instance.name)
+        except keystone_exceptions.NotFound as e:
+            logger.error('Instance with id %s does not exist', instance.backend_id)
+            six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
     def pull_instance(self, instance):

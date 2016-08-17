@@ -76,9 +76,16 @@ class InstanceBackgroundPullTask(BackgroundPullTask):
         # Should be rewritten in NC-1207. Pull operation should update only
         # runtime state.
         if instance.state != self.model.States.ERRED and instance.error_message:
-            # for instance state should be updated during pull
+            # instance state should be updated during pull
             instance.error_message = ''
             instance.save(update_fields=['error_message'])
+        backend = instance.get_backend()
+        try:
+            backend.pull_instance_security_groups(instance)
+        except ServiceBackendError as e:
+            error_message = six.text_type(e)
+            logger.warning('Failed to pull instance security groups: %s (PK: %s). Error: %s' % (
+                instance, instance.pk, error_message))
 
 
 class TenantBackgroundPullTask(BackgroundPullTask):
