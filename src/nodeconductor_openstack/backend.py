@@ -222,7 +222,7 @@ class OpenStackBackend(ServiceBackend):
 
         client = None
         attr_name = 'admin_session' if admin else 'session'
-        key = self._get_cached_session_key(admin)
+        key = self.settings.uuid and self._get_cached_session_key(admin)
         if hasattr(self, attr_name):  # try to get client from object
             client = getattr(self, attr_name)
         elif key in cache:  # try to get session from cache
