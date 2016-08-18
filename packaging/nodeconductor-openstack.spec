@@ -3,7 +3,7 @@ Summary: OpenStack plugin for NodeConductor
 Group: Development/Libraries
 Version: 0.5.5
 Release: 1.el7
-License: Copyright 2016 OpenNode LLC. All rights reserved.
+License: MIT
 Url: http://nodeconductor.com
 Source0: %{name}-%{version}.tar.gz
 
