@@ -13,5 +13,4 @@ from .dr_backup_restoration import *
 from .flavor import *
 from .floating_ip import *
 from .instance import *
-from .security_group import *
 from .volume import *

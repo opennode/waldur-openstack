@@ -99,11 +99,11 @@ class TenantAdmin(structure_admin.ResourceAdmin):
 
     allocate_floating_ip = AllocateFloatingIP()
 
-    class DetectExternalNetwrorks(OKTenantAction):
+    class DetectExternalNetworks(OKTenantAction):
         executor = executors.TenantDetectExternalNetworkExecutor
         short_description = 'Attempt to lookup and set external network id of the connected router'
 
-    detect_external_networks = DetectExternalNetwrorks()
+    detect_external_networks = DetectExternalNetworks()
 
     class PullFloatingIPs(OKTenantAction):
         executor = executors.TenantPullFloatingIPsExecutor
@@ -124,6 +124,8 @@ class TenantAdmin(structure_admin.ResourceAdmin):
         def validate(self, tenant):
             if tenant.state not in (models.Tenant.States.OK, models.Tenant.States.ERRED):
                 raise ValidationError('Tenant has to be OK or erred.')
+            if not tenant.service_project_link.service.is_admin_tenant():
+                raise ValidationError('Tenant pull is only possible for admin service.')
 
     pull = Pull()
 

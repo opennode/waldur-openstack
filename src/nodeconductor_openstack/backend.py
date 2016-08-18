@@ -15,7 +15,6 @@ from requests import ConnectionError
 
 from keystoneauth1.identity import v2
 from keystoneauth1 import session as keystone_session
-from keystoneclient.service_catalog import ServiceCatalog
 
 from ceilometerclient import client as ceilometer_client
 from cinderclient.v1 import client as cinder_client
@@ -196,6 +195,7 @@ class OpenStackBackend(ServiceBackend):
 
     DEFAULTS = {
         'tenant_name': 'admin',
+        'is_admin': True
     }
 
     def __init__(self, settings, tenant_id=None):
@@ -215,11 +215,7 @@ class OpenStackBackend(ServiceBackend):
             'password': self.settings.password,
         }
 
-        if not admin:
-            if not self.tenant_id:
-                raise OpenStackBackendError(
-                    "Can't create tenant session, please provide tenant ID")
-
+        if self.tenant_id:
             credentials['tenant_id'] = self.tenant_id
         else:
             credentials['tenant_name'] = self.settings.get_option('tenant_name')
@@ -260,7 +256,7 @@ class OpenStackBackend(ServiceBackend):
 
     def ping(self, raise_exception=False):
         try:
-            self.keystone_admin_client
+            self.keystone_client
         except keystone_exceptions.ClientException as e:
             if raise_exception:
                 six.reraise(OpenStackBackendError, e)
@@ -273,6 +269,16 @@ class OpenStackBackend(ServiceBackend):
             self.nova_client.servers.get(instance.backend_id)
         except (ConnectionError, nova_exceptions.ClientException):
             return False
+        else:
+            return True
+
+    def check_admin_tenant(self):
+        try:
+            self.keystone_admin_client
+        except keystone_exceptions.AuthorizationFailure:
+            return False
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
         else:
             return True
 
@@ -460,7 +466,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
 
     def _pull_flavors(self):
-        nova = self.nova_admin_client
+        nova = self.nova_client
         try:
             flavors = nova.flavors.findall(is_public=True)
         except nova_exceptions.ClientException as e:
@@ -483,7 +489,7 @@ class OpenStackBackend(ServiceBackend):
             models.Flavor.objects.filter(backend_id__in=cur_flavors.keys()).delete()
 
     def _pull_images(self):
-        glance = self.glance_admin_client
+        glance = self.glance_client
         try:
             images = glance.images.list()
         except glance_exceptions.ClientException as e:
@@ -755,7 +761,7 @@ class OpenStackBackend(ServiceBackend):
                 logger.info('Created new security group rule %s in database', rule.id)
 
     @log_backend_action()
-    def sync_instance_security_groups(self, instance):
+    def push_instance_security_groups(self, instance):
         nova = self.nova_client
         server_id = instance.backend_id
         try:
@@ -765,7 +771,7 @@ class OpenStackBackend(ServiceBackend):
 
         nc_ids = set(
             models.SecurityGroup.objects
-            .filter(instance_groups__instance__backend_id=server_id)
+            .filter(instances=instance)
             .exclude(backend_id='')
             .values_list('backend_id', flat=True)
         )
@@ -791,6 +797,38 @@ class OpenStackBackend(ServiceBackend):
             else:
                 logger.info('Added security group %s to instance %s',
                             group_id, server_id)
+
+    @log_backend_action()
+    def pull_instance_security_groups(self, instance):
+        nova = self.nova_client
+        server_id = instance.backend_id
+        try:
+            backend_groups = nova.servers.list_security_group(server_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        backend_ids = set(g.id for g in backend_groups)
+        nc_ids = set(
+            models.SecurityGroup.objects
+            .filter(instances=instance)
+            .exclude(backend_id='')
+            .values_list('backend_id', flat=True)
+        )
+
+        # remove stale groups
+        stale_groups = models.SecurityGroup.objects.filter(backend_id__in=(nc_ids - backend_ids))
+        instance.security_groups.remove(*stale_groups)
+
+        # add missing groups
+        for group_id in backend_ids - nc_ids:
+            try:
+                security_group = models.SecurityGroup.objects.filter(tenant=instance.tenant).get(
+                    backend_id=group_id)
+            except models.SecurityGroup.DoesNotExist:
+                logger.exception(
+                    'Security group with id %s does not exist at NC. Tenant : %s' % (group_id, instance.tenant))
+            else:
+                instance.security_groups.add(security_group)
 
     @log_backend_action()
     def create_tenant(self, tenant):
@@ -952,8 +990,10 @@ class OpenStackBackend(ServiceBackend):
                 return self.get_instances_for_import(tenant)
             elif resource_type == SupportedServices.get_name_for_model(models.Volume):
                 return self.get_volumes_for_import(tenant)
-        else:
+        elif self.settings.get_option('is_admin'):
             return self.get_tenants_for_import()
+        else:
+            return []
 
     def get_instances_for_import(self, tenant):
         cur_instances = set(tenant.instances.values_list('backend_id', flat=True))
@@ -1136,6 +1176,15 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         else:
             logger.info("Successfully provisioned instance %s", instance.uuid)
+
+    @log_backend_action()
+    def update_instance(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.update(instance.backend_id, name=instance.name)
+        except keystone_exceptions.NotFound as e:
+            logger.error('Instance with id %s does not exist', instance.backend_id)
+            six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
     def pull_instance(self, instance):
@@ -1489,7 +1538,7 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action()
     def detect_external_network(self, tenant):
-        neutron = self.neutron_admin_client
+        neutron = self.neutron_client
         try:
             routers = neutron.list_routers(tenant_id=tenant.backend_id)['routers']
         except neutron_exceptions.NeutronClientException as e:
@@ -1600,7 +1649,7 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action('allocate floating IP for tenant')
     def allocate_floating_ip_address(self, tenant):
-        neutron = self.neutron_admin_client
+        neutron = self.neutron_client
         try:
             ip_address = neutron.create_floatingip({
                 'floatingip': {
@@ -1624,7 +1673,7 @@ class OpenStackBackend(ServiceBackend):
         logger.debug('About to assign floating IP %s to the instance with id %s',
                      floating_ip.address, instance.uuid)
 
-        nova = self.nova_admin_client
+        nova = self.nova_client
         try:
             nova.servers.add_floating_ip(
                 server=instance.backend_id,
@@ -2099,6 +2148,11 @@ class OpenStackBackend(ServiceBackend):
         return samples
 
     def _pull_service_settings_quotas(self):
+        if isinstance(self.settings.scope, models.Tenant):
+            tenant = self.settings.scope
+            self.pull_tenant_quotas(tenant)
+            self._copy_tenant_quota_to_settings(tenant)
+            return
         nova = self.nova_admin_client
 
         try:
@@ -2125,6 +2179,16 @@ class OpenStackBackend(ServiceBackend):
 
         storage = sum(self.gb2mb(v.size) for v in volumes + snapshots)
         return storage
+
+    def _copy_tenant_quota_to_settings(self, tenant):
+        quotas = tenant.quotas.values('name', 'limit', 'usage')
+        limits = {quota['name']: quota['limit'] for quota in quotas}
+        usages = {quota['name']: quota['usage'] for quota in quotas}
+
+        for resource in ('vcpu', 'ram', 'storage'):
+            quota_name = 'openstack_%s' % resource
+            self.settings.set_quota_limit(quota_name, limits[resource])
+            self.settings.set_quota_usage(quota_name, usages[resource])
 
     def get_stats(self):
         tenants = models.Tenant.objects.filter(service_project_link__service__settings=self.settings)

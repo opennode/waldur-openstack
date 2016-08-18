@@ -1,10 +1,7 @@
-from celery import shared_task
 from django.conf import settings
 
 from nodeconductor.core import tasks as core_tasks
 from nodeconductor.structure import SupportedServices, models as structure_models
-
-from .. import models
 
 
 class RuntimeStateException(Exception):

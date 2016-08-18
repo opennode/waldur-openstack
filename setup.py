@@ -20,7 +20,7 @@ install_requires = [
 
 setup(
     name='nodeconductor-openstack',
-    version='0.5.4',
+    version='0.5.5',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://nodeconductor.com',

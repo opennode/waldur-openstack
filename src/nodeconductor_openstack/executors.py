@@ -592,6 +592,20 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         return tasks.SetInstanceErredTask().s(serialized_instance)
 
 
+class InstanceUpdateExecutor(core_executors.BaseExecutor):
+    # TODO: After instance state refactoring:
+    #        - update security groups only if they were changed
+    #        - change instance state on update (inherit this executor from UpdateExecutor)
+
+    @classmethod
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+        updated_fields = kwargs['updated_fields']
+        _tasks = [core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_security_groups')]
+        if 'name' in updated_fields and instance.backend_id:
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'update_instance'))
+        return chain(*_tasks)
+
+
 class InstanceDeleteExecutor(core_executors.DeleteExecutor):
 
     @classmethod

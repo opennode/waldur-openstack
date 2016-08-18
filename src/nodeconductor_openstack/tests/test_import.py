@@ -32,6 +32,20 @@ class TenantImportTestCase(BaseImportTestCase):
         self.mocked_keystone().tenants.list.return_value = [self.mocked_tenant]
         self.mocked_keystone().tenants.get.return_value = self.mocked_tenant
 
+    def test_user_can_not_list_importable_tenants_from_non_admin_service(self):
+        self.service.settings.options['is_admin'] = False
+        self.service.settings.save()
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.data, [])
+
+    def test_user_can_not_import_tenants_from_non_admin_service(self):
+        self.service.settings.options['is_admin'] = False
+        self.service.settings.save()
+
+        response = self.client.post(self.url, self.get_valid_data())
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_user_can_list_importable_tenants(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -43,11 +57,7 @@ class TenantImportTestCase(BaseImportTestCase):
         }])
 
     def test_user_can_import_tenant(self):
-        response = self.client.post(self.url, {
-            'backend_id': self.mocked_tenant.id,
-            'resource_type': 'OpenStack.Tenant',
-            'project': structure_factories.ProjectFactory.get_url(self.project)
-        })
+        response = self.client.post(self.url, self.get_valid_data())
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         tenant = models.Tenant.objects.get(uuid=response.data['uuid'])
@@ -55,6 +65,13 @@ class TenantImportTestCase(BaseImportTestCase):
         self.assertEqual(tenant.name, self.mocked_tenant.name)
         self.assertEqual(tenant.backend_id, self.mocked_tenant.id)
         self.assertEqual(tenant.state, models.Tenant.States.OK)
+
+    def get_valid_data(self):
+        return {
+            'backend_id': self.mocked_tenant.id,
+            'resource_type': 'OpenStack.Tenant',
+            'project': structure_factories.ProjectFactory.get_url(self.project)
+        }
 
 
 class InstanceImportTestCase(BaseImportTestCase):

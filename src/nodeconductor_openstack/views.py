@@ -13,6 +13,7 @@ from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
 from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import views as structure_views, SupportedServices
+from nodeconductor.structure import executors as structure_executors
 from nodeconductor.structure import filters as structure_filters
 from nodeconductor.structure.managers import filter_queryset_for_user
 from nodeconductor.structure.views import safe_operation
@@ -261,7 +262,10 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class InstanceViewSet(TelemetryMixin, structure_views.PullMixin, structure_views.BaseResourceViewSet):
+class InstanceViewSet(TelemetryMixin,
+                      structure_views.PullMixin,
+                      core_mixins.UpdateExecutorMixin,
+                      structure_views.BaseResourceViewSet):
     """
     OpenStack instance permissions
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -289,6 +293,7 @@ class InstanceViewSet(TelemetryMixin, structure_views.PullMixin, structure_views
     serializer_class = serializers.InstanceSerializer
     filter_class = filters.InstanceFilter
     pull_executor = executors.InstancePullExecutor
+    update_executor = executors.InstanceUpdateExecutor
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
@@ -351,10 +356,6 @@ class InstanceViewSet(TelemetryMixin, structure_views.PullMixin, structure_views
         If instance is in the state that does not allow this transition, error code will be returned.
         """
         return super(InstanceViewSet, self).retrieve(request, *args, **kwargs)
-
-    def perform_update(self, serializer):
-        super(InstanceViewSet, self).perform_update(serializer)
-        send_task('openstack', 'sync_instance_security_groups')(self.get_object().uuid.hex)
 
     def perform_provision(self, serializer):
         instance = serializer.save()
@@ -979,11 +980,51 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     serializers = {
         'set_quotas': serializers.TenantQuotaSerializer,
         'external_network': serializers.ExternalNetworkSerializer,
+        'create_service': serializers.ServiceNameSerializer
     }
+
+    def initial(self, request, *args, **kwargs):
+        self.check_admin_action()
+        return super(TenantViewSet, self).initial(request, *args, **kwargs)
+
+    def check_operation(self, request, resource, action):
+        self.check_admin_action()
+        return super(TenantViewSet, self).check_operation(request, resource, action)
+
+    def check_admin_action(self):
+        admin_actions = ('pull', 'destroy', 'update', 'external_network')
+        if self.action in admin_actions and \
+                not self.get_object().service_project_link.service.is_admin_tenant():
+            raise ValidationError({
+                'non_field_errors': 'Tenant %s is only possible for admin service.' % self.action
+            })
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)
         return serializer or super(TenantViewSet, self).get_serializer_class()
+
+    @decorators.detail_route(methods=['post'])
+    def create_service(self, request, uuid=None):
+        """Create non-admin service with credentials from the tenant"""
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data['name']
+
+        tenant = self.get_object()
+
+        if tenant.state != models.Tenant.States.OK:
+            raise IncorrectStateException()
+
+        if not request.user.is_staff and \
+                not tenant.customer.has_user(request.user, models.CustomerRole.OWNER):
+            raise exceptions.PermissionDenied()
+
+        service = tenant.create_service(name)
+        structure_executors.ServiceSettingsCreateExecutor.execute(service.settings, async=self.async_executor)
+
+        serializer = serializers.ServiceSerializer(service, context={'request': request})
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @decorators.detail_route(methods=['post'])
     def set_quotas(self, request, uuid=None):
