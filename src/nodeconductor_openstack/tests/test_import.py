@@ -141,7 +141,7 @@ class VolumeImportTestCase(BaseImportTestCase):
         self.mocked_volume = mock.Mock()
         self.mocked_volume.id = '1'
         self.mocked_volume.size = 10
-        self.mocked_volume.display_name = 'Webserver data volume'
+        self.mocked_volume.name = 'Webserver data volume'
         self.mocked_volume.status = 'AVAILABLE'
         self.mocked_volume.metadata = {}
         del self.mocked_volume.volume_image_metadata
@@ -157,7 +157,7 @@ class VolumeImportTestCase(BaseImportTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data, [{
             'id': self.mocked_volume.id,
-            'name': self.mocked_volume.display_name,
+            'name': self.mocked_volume.name,
             'size': self.mocked_volume.size * 1024,
             'runtime_state': self.mocked_volume.status,
             'type': 'OpenStack.Volume'
@@ -175,7 +175,7 @@ class VolumeImportTestCase(BaseImportTestCase):
         volume = models.Volume.objects.get(uuid=response.data['uuid'])
         self.assertEqual(volume.tenant, self.tenant)
         self.assertEqual(volume.service_project_link, self.link)
-        self.assertEqual(volume.name, self.mocked_volume.display_name)
+        self.assertEqual(volume.name, self.mocked_volume.name)
         self.assertEqual(volume.size, self.mocked_volume.size * 1024)
         self.assertEqual(volume.backend_id, self.mocked_volume.id)
         self.assertEqual(volume.state, models.Volume.States.OK)

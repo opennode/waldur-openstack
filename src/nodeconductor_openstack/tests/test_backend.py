@@ -20,7 +20,7 @@ class BaseBackendTestCase(test.APITransactionTestCase):
         self.nova_patcher = mock.patch('novaclient.v2.client.Client')
         self.mocked_nova = self.nova_patcher.start()
 
-        self.cinder_patcher = mock.patch('cinderclient.v1.client.Client')
+        self.cinder_patcher = mock.patch('cinderclient.v2.client.Client')
         self.mocked_cinder = self.cinder_patcher.start()
 
     def tearDown(self):
