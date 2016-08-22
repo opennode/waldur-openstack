@@ -2,6 +2,10 @@
 from setuptools import setup, find_packages
 
 
+test_requires = [
+    'ddt>=1.0.0'
+]
+
 dev_requires = [
     'Sphinx==1.2.2',
 ]
@@ -32,6 +36,7 @@ setup(
     zip_safe=False,
     extras_require={
         'dev': dev_requires,
+        'test': test_requires,
     },
     entry_points={
         'nodeconductor_extensions': (
