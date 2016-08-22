@@ -731,7 +731,7 @@ class OpenStackBackend(ServiceBackend):
                     nonexistent_rules.append(backend_rule)
 
             # deleting extra rules
-            # XXX: This should be changed after migration to Django >= 1.9
+            # XXX: In Django >= 1.9 delete method returns number of deleted objects, so this could be optimized
             if extra_rules:
                 extra_rules.delete()
                 logger.info('Deleted stale security group rules in database')
