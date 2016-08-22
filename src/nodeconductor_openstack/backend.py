@@ -718,7 +718,7 @@ class OpenStackBackend(ServiceBackend):
         nonexistent_rules = []
         # list of openstack rules, that have wrong parameters in in nc
         unsynchronized_rules = []
-        # list of nc rules, that have do not exist in openstack
+        # list of nc rules, that do not exist in openstack
         extra_rules = security_group.rules.exclude(backend_id__in=[r['id'] for r in backend_rules])
 
         with transaction.atomic():
@@ -731,8 +731,10 @@ class OpenStackBackend(ServiceBackend):
                     nonexistent_rules.append(backend_rule)
 
             # deleting extra rules
-            extra_rules.delete()
-            logger.info('Deleted stale security group rules in database')
+            # XXX: This should be changed after migration to Django >= 1.9
+            if extra_rules:
+                extra_rules.delete()
+                logger.info('Deleted stale security group rules in database')
 
             # synchronizing unsynchronized rules
             for backend_rule in unsynchronized_rules:
@@ -742,7 +744,8 @@ class OpenStackBackend(ServiceBackend):
                     protocol=backend_rule['ip_protocol'],
                     cidr=backend_rule['ip_range']['cidr'],
                 )
-            logger.debug('Updated existing security group rules in database')
+            if unsynchronized_rules:
+                logger.debug('Updated existing security group rules in database')
 
             # creating non-existed rules
             for backend_rule in nonexistent_rules:
