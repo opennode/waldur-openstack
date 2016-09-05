@@ -1910,7 +1910,7 @@ class OpenStackBackend(ServiceBackend):
         spl = tenant.service_project_link
         volume = models.Volume(
             name=backend_volume.name,
-            description=backend_volume.description,
+            description=backend_volume.description or '',
             size=self.gb2mb(backend_volume.size),
             metadata=backend_volume.metadata,
             backend_id=backend_volume_id,
@@ -1972,7 +1972,7 @@ class OpenStackBackend(ServiceBackend):
         spl = tenant.service_project_link
         snapshot = models.Snapshot(
             name=backend_snapshot.name,
-            description=backend_snapshot.description,
+            description=backend_snapshot.description or '',
             size=self.gb2mb(backend_snapshot.size),
             metadata=backend_snapshot.metadata,
             backend_id=backend_snapshot_id,
