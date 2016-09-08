@@ -25,9 +25,6 @@ class OpenStackConfig(AppConfig):
         from .backend import OpenStackBackend
         SupportedServices.register_backend(OpenStackBackend)
 
-        # cost tracking
-        from . import cost_tracking  # for auto-discovery
-
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
 
