@@ -54,13 +54,16 @@ class VolumeStrategy(CostTrackingStrategy):
     class Types(object):
         STORAGE = PriceItemTypes.STORAGE
 
+    class Keys(object):
+        STORAGE = '1 GB'
+
     @classmethod
     def get_consumable_items(cls):
-        return [ConsumableItem(item_type=cls.Types.STORAGE, key='1 GB', name='1 GB of storage', units='GB')]
+        return [ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE, name='1 GB of storage', units='GB')]
 
     @classmethod
     def get_configuration(cls, volume):
-        return {ConsumableItem(item_type=cls.Types.STORAGE, key='1 GB'): float(volume.size) / 1024}
+        return {ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE): float(volume.size) / 1024}
 
 
 CostTrackingRegister.register_strategy(VolumeStrategy)
@@ -72,13 +75,16 @@ class SnapshotStrategy(CostTrackingStrategy):
     class Types(object):
         STORAGE = PriceItemTypes.STORAGE
 
+    class Keys(object):
+        STORAGE = '1 GB'
+
     @classmethod
     def get_consumable_items(cls):
-        return [ConsumableItem(item_type=cls.Types.STORAGE, key='1 GB', name='1 GB of storage', units='GB')]
+        return [ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE, name='1 GB of storage', units='GB')]
 
     @classmethod
     def get_configuration(cls, snapshot):
-        return {ConsumableItem(item_type=cls.Types.STORAGE, key='1 GB'): float(snapshot.size) / 1024}
+        return {ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE): float(snapshot.size) / 1024}
 
 
 CostTrackingRegister.register_strategy(SnapshotStrategy)
