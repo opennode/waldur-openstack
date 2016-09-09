@@ -3,9 +3,6 @@ from nodeconductor.cost_tracking import CostTrackingRegister, CostTrackingStrate
 from . import models, ApplicationTypes, OsTypes, SupportTypes, PriceItemTypes
 
 
-# TODO:
-# 1. Test instance deletion.
-
 class InstanceStrategy(CostTrackingStrategy):
     resource_class = models.Instance
 
