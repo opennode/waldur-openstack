@@ -1,6 +1,7 @@
 import django_filters
 
 from nodeconductor.core import filters as core_filters
+from nodeconductor.core.filters import UUIDFilter
 from nodeconductor.structure import filters as structure_filters
 
 from . import models
@@ -14,9 +15,7 @@ class OpenStackServiceProjectLinkFilter(structure_filters.BaseServiceProjectLink
 
 
 class InstanceFilter(structure_filters.BaseResourceFilter):
-    tenant_uuid = django_filters.CharFilter(
-        name='tenant__uuid',
-    )
+    tenant_uuid = UUIDFilter(name='tenant__uuid')
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Instance
@@ -50,13 +49,13 @@ class SecurityGroupFilter(django_filters.FilterSet):
         name='description',
         lookup_type='icontains',
     )
-    service = django_filters.CharFilter(
+    service = UUIDFilter(
         name='service_project_link__service__uuid',
     )
-    project = django_filters.CharFilter(
+    project = UUIDFilter(
         name='service_project_link__project__uuid',
     )
-    settings_uuid = django_filters.CharFilter(
+    settings_uuid = UUIDFilter(
         name='service_project_link__service__settings__uuid'
     )
     service_project_link = core_filters.URLFilter(
@@ -64,7 +63,7 @@ class SecurityGroupFilter(django_filters.FilterSet):
         name='service_project_link__pk',
         lookup_field='pk',
     )
-    tenant_uuid = django_filters.CharFilter(
+    tenant_uuid = UUIDFilter(
         name='tenant__uuid'
     )
     state = core_filters.StateFilter()
@@ -84,7 +83,7 @@ class SecurityGroupFilter(django_filters.FilterSet):
 
 
 class IpMappingFilter(django_filters.FilterSet):
-    project = django_filters.CharFilter(name='project__uuid')
+    project = UUIDFilter(name='project__uuid')
 
     # XXX: remove after upgrading to django-filter 0.12
     #      which is still unavailable at https://pypi.python.org/simple/django-filter/
@@ -101,20 +100,14 @@ class IpMappingFilter(django_filters.FilterSet):
 
 
 class FloatingIPFilter(django_filters.FilterSet):
-    project = django_filters.CharFilter(
-        name='service_project_link__project__uuid',
-    )
-    service = django_filters.CharFilter(
-        name='service_project_link__service__uuid',
-    )
+    project = UUIDFilter(name='service_project_link__project__uuid')
+    service = UUIDFilter(name='service_project_link__service__uuid')
     service_project_link = core_filters.URLFilter(
         view_name='openstack-spl-detail',
         name='service_project_link__pk',
         lookup_field='pk',
     )
-    tenant_uuid = django_filters.CharFilter(
-        name='tenant__uuid',
-    )
+    tenant_uuid = UUIDFilter(name='tenant__uuid')
 
     class Meta(object):
         model = models.FloatingIP
@@ -154,9 +147,7 @@ class BackupScheduleFilter(django_filters.FilterSet):
         view_name='openstack-instance-detail',
         name='instance__uuid',
     )
-    instance_uuid = django_filters.CharFilter(
-        name='instance__uuid',
-    )
+    instance_uuid = UUIDFilter(name='instance__uuid')
     backup_type = django_filters.ChoiceFilter(choices=models.BackupSchedule.BackupTypes.CHOICES)
 
     class Meta(object):
@@ -170,12 +161,8 @@ class BackupFilter(django_filters.FilterSet):
     description = django_filters.CharFilter(
         lookup_type='icontains',
     )
-    instance = django_filters.CharFilter(
-        name='instance__uuid',
-    )
-    project = django_filters.CharFilter(
-        name='instance__service_project_link__project__uuid',
-    )
+    instance = UUIDFilter(name='instance__uuid')
+    project = UUIDFilter(name='instance__service_project_link__project__uuid')
 
     class Meta(object):
         model = models.Backup
@@ -187,7 +174,7 @@ class BackupFilter(django_filters.FilterSet):
 
 
 class DRBackupFilter(structure_filters.BaseResourceFilter):
-    source_instance_uuid = django_filters.CharFilter(name='source_instance__uuid')
+    source_instance_uuid = UUIDFilter(name='source_instance__uuid')
     source_instance = core_filters.URLFilter(view_name='openstack-instance-detail', name='source_instance__uuid')
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
