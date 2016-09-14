@@ -207,6 +207,10 @@ class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceVie
         context = {'resource_type': self.request.query_params.get('resource_type')}
         tenant_uuid = self.request.query_params.get('tenant_uuid')
         if tenant_uuid:
+            try:
+                uuid.UUID(tenant_uuid)
+            except ValueError:
+                raise ValidationError('Invalid tenant UUID')
             queryset = filter_queryset_for_user(models.Tenant.objects.all(), self.request.user)
             tenant = queryset.filter(service_project_link__service=self.get_object(),
                                      uuid=tenant_uuid).first()
