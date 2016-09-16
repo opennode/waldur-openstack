@@ -25,7 +25,7 @@ Endpoints
 License
 -------
 
-NodeConductor OpenStack plugin is open-source under Apache v2 license.
+NodeConductor OpenStack plugin is open-source under MIT license.
 
 
 Indices and tables

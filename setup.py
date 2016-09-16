@@ -2,13 +2,17 @@
 from setuptools import setup, find_packages
 
 
+test_requires = [
+    'ddt>=1.0.0'
+]
+
 dev_requires = [
     'Sphinx==1.2.2',
 ]
 
 install_requires = [
     'iptools>=0.6.1',
-    'nodeconductor>0.102.5',
+    'nodeconductor>=0.107.0',
     'python-ceilometerclient==2.3.0',
     'python-cinderclient==1.6.0',
     'python-glanceclient==2.0.0',
@@ -20,7 +24,7 @@ install_requires = [
 
 setup(
     name='nodeconductor-openstack',
-    version='0.5.5',
+    version='0.6.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://nodeconductor.com',
@@ -32,6 +36,7 @@ setup(
     zip_safe=False,
     extras_require={
         'dev': dev_requires,
+        'test': test_requires,
     },
     entry_points={
         'nodeconductor_extensions': (
@@ -44,6 +49,6 @@ setup(
         'Intended Audience :: Developers',
         'Intended Audience :: System Administrators',
         'Operating System :: OS Independent',
-        'License :: OSI Approved :: Apache Software License',
+        'License :: OSI Approved :: MIT License',
     ],
 )

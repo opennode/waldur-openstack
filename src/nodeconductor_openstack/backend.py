@@ -17,8 +17,7 @@ from keystoneauth1.identity import v2
 from keystoneauth1 import session as keystone_session
 
 from ceilometerclient import client as ceilometer_client
-from cinderclient.v1 import client as cinder_client
-from cinderclient.v2 import client as cinder_v2_client
+from cinderclient.v2 import client as cinder_client
 from glanceclient.v1 import client as glance_client
 from keystoneclient.v2_0 import client as keystone_client
 from neutronclient.v2_0 import client as neutron_client
@@ -149,14 +148,6 @@ class OpenStackClient(object):
             six.reraise(OpenStackBackendError, e)
 
     @property
-    def cinder_v2(self):
-        try:
-            return cinder_v2_client.Client(session=self.session.keystone_session)
-        except cinder_exceptions.ClientException as e:
-            logger.exception('Failed to create cinder client: %s', e)
-            six.reraise(OpenStackBackendError, e)
-
-    @property
     def glance(self):
         try:
             return glance_client.Client(session=self.session.keystone_session)
@@ -220,6 +211,10 @@ class OpenStackBackend(ServiceBackend):
         else:
             credentials['tenant_name'] = self.settings.get_option('tenant_name')
 
+        # Skip cache if service settings do no exist
+        if not self.settings.uuid:
+            return OpenStackClient(**credentials)
+
         client = None
         attr_name = 'admin_session' if admin else 'session'
         key = self._get_cached_session_key(admin)
@@ -243,7 +238,7 @@ class OpenStackBackend(ServiceBackend):
             return client
 
     def __getattr__(self, name):
-        clients = 'keystone', 'nova', 'neutron', 'cinder', 'cinder_v2', 'glance', 'ceilometer'
+        clients = 'keystone', 'nova', 'neutron', 'cinder', 'glance', 'ceilometer'
         for client in clients:
             if name == '{}_client'.format(client):
                 return self.get_client(client, admin=False)
@@ -445,9 +440,9 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action('check is volume backup deleted')
     def is_volume_backup_deleted(self, volume_backup):
-        cinder_v2 = self.cinder_v2_client
+        cinder = self.cinder_client
         try:
-            cinder_v2.backups.get(volume_backup.backend_id)
+            cinder.backups.get(volume_backup.backend_id)
             return False
         except cinder_exceptions.NotFound:
             return True
@@ -723,7 +718,7 @@ class OpenStackBackend(ServiceBackend):
         nonexistent_rules = []
         # list of openstack rules, that have wrong parameters in in nc
         unsynchronized_rules = []
-        # list of nc rules, that have do not exist in openstack
+        # list of nc rules, that do not exist in openstack
         extra_rules = security_group.rules.exclude(backend_id__in=[r['id'] for r in backend_rules])
 
         with transaction.atomic():
@@ -736,8 +731,10 @@ class OpenStackBackend(ServiceBackend):
                     nonexistent_rules.append(backend_rule)
 
             # deleting extra rules
-            extra_rules.delete()
-            logger.info('Deleted stale security group rules in database')
+            # XXX: In Django >= 1.9 delete method returns number of deleted objects, so this could be optimized
+            if extra_rules:
+                extra_rules.delete()
+                logger.info('Deleted stale security group rules in database')
 
             # synchronizing unsynchronized rules
             for backend_rule in unsynchronized_rules:
@@ -747,7 +744,8 @@ class OpenStackBackend(ServiceBackend):
                     protocol=backend_rule['ip_protocol'],
                     cidr=backend_rule['ip_range']['cidr'],
                 )
-            logger.debug('Updated existing security group rules in database')
+            if unsynchronized_rules:
+                logger.debug('Updated existing security group rules in database')
 
             # creating non-existed rules
             for backend_rule in nonexistent_rules:
@@ -1020,7 +1018,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         return [{
             'id': volume.id,
-            'name': volume.display_name,
+            'name': volume.name,
             'size': self.gb2mb(volume.size),
             'runtime_state': volume.status,
             'type': SupportedServices.get_name_for_model(models.Volume)
@@ -1849,13 +1847,13 @@ class OpenStackBackend(ServiceBackend):
     def create_volume(self, volume):
         kwargs = {
             'size': self.mb2gb(volume.size),
-            'display_name': volume.name,
-            'display_description': volume.description,
+            'name': volume.name,
+            'description': volume.description,
         }
         if volume.source_snapshot:
             kwargs['snapshot_id'] = volume.source_snapshot.backend_id
         if volume.type:
-            kwargs['type'] = volume.type
+            kwargs['volume_type'] = volume.type
         if volume.image:
             kwargs['imageRef'] = volume.image.backend_id
         # TODO: set backend volume metadata if it is defined in NC.
@@ -1888,7 +1886,7 @@ class OpenStackBackend(ServiceBackend):
         # TODO: add metadata update
         cinder = self.cinder_client
         try:
-            cinder.volumes.update(volume.backend_id, display_name=volume.name, display_description=volume.description)
+            cinder.volumes.update(volume.backend_id, name=volume.name, description=volume.description)
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -1911,8 +1909,8 @@ class OpenStackBackend(ServiceBackend):
         tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
         spl = tenant.service_project_link
         volume = models.Volume(
-            name=backend_volume.display_name,
-            description=backend_volume.display_description,
+            name=backend_volume.name,
+            description=backend_volume.description or '',
             size=self.gb2mb(backend_volume.size),
             metadata=backend_volume.metadata,
             backend_id=backend_volume_id,
@@ -1947,8 +1945,8 @@ class OpenStackBackend(ServiceBackend):
     @log_backend_action()
     def create_snapshot(self, snapshot, force=False):
         kwargs = {
-            'display_name': snapshot.name,
-            'display_description': snapshot.description,
+            'name': snapshot.name,
+            'description': snapshot.description,
             'force': force,
         }
         # TODO: set backend snapshot metadata if it is defined in NC.
@@ -1973,8 +1971,8 @@ class OpenStackBackend(ServiceBackend):
         tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
         spl = tenant.service_project_link
         snapshot = models.Snapshot(
-            name=backend_snapshot.display_name,
-            description=backend_snapshot.display_description,
+            name=backend_snapshot.name,
+            description=backend_snapshot.description or '',
             size=self.gb2mb(backend_snapshot.size),
             metadata=backend_snapshot.metadata,
             backend_id=backend_snapshot_id,
@@ -2027,15 +2025,15 @@ class OpenStackBackend(ServiceBackend):
         cinder = self.cinder_client
         try:
             cinder.volume_snapshots.update(
-                snapshot.backend_id, display_name=snapshot.name, display_description=snapshot.description)
+                snapshot.backend_id, name=snapshot.name, description=snapshot.description)
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
     def create_volume_backup(self, volume_backup):
-        cinder_v2 = self.cinder_v2_client
+        cinder = self.cinder_client
         try:
-            backend_volume_backup = cinder_v2.backups.create(
+            backend_volume_backup = cinder.backups.create(
                 volume_id=volume_backup.source_volume.backend_id,
                 name=volume_backup.name,
                 description=volume_backup.description,
@@ -2050,9 +2048,9 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action()
     def pull_volume_backup_record(self, volume_backup):
-        cinder_v2 = self.cinder_v2_client
+        cinder = self.cinder_client
         try:
-            backend_record = cinder_v2.backups.export_record(volume_backup.backend_id)
+            backend_record = cinder.backups.export_record(volume_backup.backend_id)
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         record = volume_backup.record or models.VolumeBackupRecord()
@@ -2066,9 +2064,9 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action()
     def pull_volume_backup_runtime_state(self, volume_backup):
-        cinder_v2 = self.cinder_v2_client
+        cinder = self.cinder_client
         try:
-            backend_volume_backup = cinder_v2.backups.get(volume_backup.backend_id)
+            backend_volume_backup = cinder.backups.get(volume_backup.backend_id)
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         if backend_volume_backup.status != volume_backup.runtime_state:
@@ -2078,9 +2076,9 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action()
     def delete_volume_backup(self, volume_backup):
-        cinder_v2 = self.cinder_v2_client
+        cinder = self.cinder_client
         try:
-            cinder_v2.backups.delete(volume_backup.backend_id)
+            cinder.backups.delete(volume_backup.backend_id)
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         if volume_backup.record:
@@ -2090,9 +2088,9 @@ class OpenStackBackend(ServiceBackend):
     @log_backend_action()
     def import_volume_backup_from_record(self, volume_backup):
         """ Create volume backup on backend based on its record """
-        cinder_v2 = self.cinder_v2_client
+        cinder = self.cinder_client
         try:
-            imported_record = cinder_v2.backups.import_record(
+            imported_record = cinder.backups.import_record(
                 volume_backup.record.service,
                 base64.b64encode(json.dumps(volume_backup.record.details))
             )
@@ -2104,9 +2102,9 @@ class OpenStackBackend(ServiceBackend):
 
     @log_backend_action()
     def restore_volume_backup(self, volume_backup, volume):
-        cinder_v2 = self.cinder_v2_client
+        cinder = self.cinder_client
         try:
-            cinder_v2.restores.restore(volume_id=volume.backend_id, backup_id=volume_backup.backend_id)
+            cinder.restores.restore(volume_id=volume.backend_id, backup_id=volume_backup.backend_id)
         except (cinder_exceptions.ClientException, KeyError) as e:
             six.reraise(OpenStackBackendError, e)
         return volume_backup
