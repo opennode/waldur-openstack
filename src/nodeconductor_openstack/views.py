@@ -1,3 +1,5 @@
+import uuid
+
 from django.http import Http404
 from django.utils import six
 from rest_framework import viewsets, decorators, exceptions, response, permissions, mixins, status
@@ -205,6 +207,10 @@ class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceVie
         context = {'resource_type': self.request.query_params.get('resource_type')}
         tenant_uuid = self.request.query_params.get('tenant_uuid')
         if tenant_uuid:
+            try:
+                uuid.UUID(tenant_uuid)
+            except ValueError:
+                raise ValidationError('Invalid tenant UUID')
             queryset = filter_queryset_for_user(models.Tenant.objects.all(), self.request.user)
             tenant = queryset.filter(service_project_link__service=self.get_object(),
                                      uuid=tenant_uuid).first()
@@ -898,7 +904,13 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         """
         queryset = filter_queryset_for_user(models.Instance.objects.all(), request.user)
         if 'customer' in self.request.query_params:
-            queryset = queryset.filter(customer__uuid=self.request.query_params['customer'])
+            customer_uuid = self.request.query_params['customer']
+            try:
+                uuid.UUID(customer_uuid)
+            except ValueError:
+                queryset = queryset.none()
+            else:
+                queryset = queryset.filter(customer__uuid=customer_uuid)
 
         tags_map = {
             Types.PriceItems.LICENSE_OS: dict(Types.Os.CHOICES),
