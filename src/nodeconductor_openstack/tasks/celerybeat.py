@@ -4,8 +4,8 @@ from celery import shared_task
 from datetime import timedelta
 from django.utils import six, timezone
 
-from nodeconductor.core import tasks as core_tasks, utils as core_utils
-from nodeconductor.structure import ServiceBackendError, models as structure_models
+from nodeconductor.core import utils as core_utils
+from nodeconductor.structure import ServiceBackendError, models as structure_models, tasks as structure_tasks
 
 from . import models
 
@@ -13,58 +13,14 @@ from . import models
 logger = logging.getLogger(__name__)
 
 
-class BackgroundPullTask(core_tasks.Task):
-
-    def run(self, serialized_instance):
-        instance = core_utils.deserialize_instance(serialized_instance)
-        try:
-            self.pull(instance)
-        except ServiceBackendError as e:
-            self.on_pull_fail(instance, e)
-        else:
-            self.on_pull_success(instance)
-
-    def pull(self, instance):
-        """ Pull instance from backend.
-
-            This method should not handle backend exception.
-        """
-        raise NotImplementedError('Pull task should implement pull method.')
-
-    def on_pull_fail(self, instance, error):
-        error_message = six.text_type(error)
-        self.log_error_message(instance, error_message)
-        self.set_instance_erred(instance, error_message)
-
-    def on_pull_success(self, instance):
-        if instance.state == instance.States.ERRED:
-            instance.recover()
-            instance.error_message = ''
-            instance.save(update_fields=['state', 'error_message'])
-
-    def log_error_message(self, instance, error_message):
-        logger_message = 'Failed to pull %s %s (PK: %s). Error: %s' % (
-            instance.__class__.__name__, instance.name, instance.pk, error_message)
-        if instance.state == instance.States.ERRED:  # report error on debug level if instance already was erred.
-            logger.debug(logger_message)
-        else:
-            logger.error(logger_message, exc_info=True)
-
-    def set_instance_erred(self, instance, error_message):
-        """ Mark instance as erred and save error message """
-        instance.set_erred()
-        instance.error_message = error_message
-        instance.save(update_fields=['state', 'error_message'])
-
-
-class VolumeBackgroundPullTask(BackgroundPullTask):
+class VolumeBackgroundPullTask(structure_tasks.BackgroundPullTask):
 
     def pull(self, volume):
         backend = volume.get_backend()
         backend.pull_volume(volume)
 
 
-class InstanceBackgroundPullTask(BackgroundPullTask):
+class InstanceBackgroundPullTask(structure_tasks.BackgroundPullTask):
     model = models.Instance
 
     def pull(self, instance):
@@ -88,7 +44,7 @@ class InstanceBackgroundPullTask(BackgroundPullTask):
                 instance, instance.pk, error_message))
 
 
-class TenantBackgroundPullTask(BackgroundPullTask):
+class TenantBackgroundPullTask(structure_tasks.BackgroundPullTask):
 
     def pull(self, tenant):
         backend = tenant.get_backend()
@@ -107,29 +63,30 @@ class TenantBackgroundPullTask(BackgroundPullTask):
                 tenant, tenant.pk, error_message))
 
 
-@shared_task(name='nodeconductor.openstack.pull_tenants')
-def pull_tenants():
-    States = models.Tenant.States
-    for tenant in models.Tenant.objects.filter(state__in=[States.ERRED, States.OK]).exclude(backend_id=''):
-        serialized_tenant = core_utils.serialize_instance(tenant)
-        TenantBackgroundPullTask().delay(serialized_tenant)
+class TenantListPullTask(structure_tasks.BackgroundListPullTask):
+    name = 'nodeconductor_openstack.TenantListPullTask'
+    model = models.Tenant
+    pull_task = TenantBackgroundPullTask
 
 
-@shared_task(name='nodeconductor.openstack.pull_instances')
-def pull_instances():
-    States = models.Instance.States
-    for instance in models.Instance.objects.filter(
-            state__in=[States.ERRED, States.ONLINE, States.OFFLINE]).exclude(backend_id=''):
-        serialized_instance = core_utils.serialize_instance(instance)
-        InstanceBackgroundPullTask().delay(serialized_instance)
+class InstanceListPullTask(structure_tasks.BackgroundListPullTask):
+    name = 'nodeconductor_openstack.InstanceListPullTask'
+    model = models.Instance
+    pull_task = InstanceBackgroundPullTask
+
+    def run(self):
+        # XXX: Need to override run method, because Instance does not support new style states. NC-1207.
+        States = self.model.States
+        for instance in self.model.objects.filter(
+                state__in=[States.ERRED, States.ONLINE, States.OFFLINE]).exclude(backend_id=''):
+            serialized_instance = core_utils.serialize_instance(instance)
+            self.pull_task().delay(serialized_instance)
 
 
-@shared_task(name='nodeconductor.openstack.pull_volumes')
-def pull_volumes():
-    States = models.Volume.States
-    for volume in models.Volume.objects.filter(state__in=[States.ERRED, States.OK]).exclude(backend_id=''):
-        serialized_volume = core_utils.serialize_instance(volume)
-        VolumeBackgroundPullTask().delay(serialized_volume)
+class VolumeListPullTask(structure_tasks.BackgroundListPullTask):
+    name = 'nodeconductor_openstack.VolumeListPullTask'
+    model = models.Volume
+    pull_task = VolumeBackgroundPullTask
 
 
 @shared_task(name='nodeconductor.openstack.schedule_backups')
