@@ -64,19 +64,19 @@ class OpenStackExtension(NodeConductorExtension):
             },
 
             'openstack-pull-tenants': {
-                'task': 'nodeconductor.openstack.pull_tenants',
+                'task': 'nodeconductor_openstack.TenantListPullTask',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },
 
             'openstack-pull-instances': {
-                'task': 'nodeconductor.openstack.pull_instances',
+                'task': 'nodeconductor_openstack.InstanceListPullTask',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },
 
             'openstack-pull-volumes': {
-                'task': 'nodeconductor.openstack.pull_volumes',
+                'task': 'nodeconductor_openstack.VolumeListPullTask',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },
