@@ -1,5 +1,6 @@
-import datetime
 import mock
+
+from django.utils import timezone
 from rest_framework import status
 
 from nodeconductor.structure.tests import factories as structure_factories
@@ -92,7 +93,7 @@ class InstanceImportTestCase(BaseImportTestCase):
         self.mocked_instance.flavor = {'id': 1}
         self.mocked_instance.addresses = {}
         self.mocked_instance.security_groups = []
-        self.mocked_instance.created = datetime.datetime.now().isoformat()
+        self.mocked_instance.created = timezone.now().isoformat()
         del self.mocked_instance.fault
 
         self.mocked_nova().flavors.get.return_value = self.mocked_flavor
