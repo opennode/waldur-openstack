@@ -14,7 +14,6 @@ class OpenStackConfig(AppConfig):
 
     def ready(self):
         from nodeconductor.core import models as core_models
-        from nodeconductor.cost_tracking import CostTrackingRegister
         from nodeconductor.structure import SupportedServices, signals as structure_signals, models as structure_models
         from . import handlers
 
@@ -25,10 +24,6 @@ class OpenStackConfig(AppConfig):
         # structure
         from .backend import OpenStackBackend
         SupportedServices.register_backend(OpenStackBackend)
-
-        # cost tracking
-        from .cost_tracking import OpenStackCostTrackingBackend
-        CostTrackingRegister.register(self.label, OpenStackCostTrackingBackend)
 
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
