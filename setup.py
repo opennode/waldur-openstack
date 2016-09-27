@@ -12,7 +12,7 @@ dev_requires = [
 
 install_requires = [
     'iptools>=0.6.1',
-    'nodeconductor>=0.107.0',
+    'nodeconductor>0.108.0',
     'python-ceilometerclient==2.3.0',
     'python-cinderclient==1.6.0',
     'python-glanceclient==2.0.0',
@@ -24,7 +24,7 @@ install_requires = [
 
 setup(
     name='nodeconductor-openstack',
-    version='0.6.0',
+    version='0.7.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://nodeconductor.com',

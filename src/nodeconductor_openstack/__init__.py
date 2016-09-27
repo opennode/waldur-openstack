@@ -1,6 +1,5 @@
 from collections import OrderedDict
 from nodeconductor import _get_version
-from nodeconductor.cost_tracking import CostTrackingBackend
 
 __version__ = _get_version('nodeconductor_openstack')
 
@@ -8,7 +7,7 @@ default_app_config = 'nodeconductor_openstack.apps.OpenStackConfig'
 
 
 class PriceItemTypes:
-    FLAVOR = CostTrackingBackend.VM_SIZE_ITEM_TYPE
+    FLAVOR = 'flavor'
     STORAGE = 'storage'
     LICENSE_APPLICATION = 'license-application'
     LICENSE_OS = 'license-os'

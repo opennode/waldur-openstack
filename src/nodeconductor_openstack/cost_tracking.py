@@ -1,76 +1,90 @@
-from django.contrib.contenttypes.models import ContentType
+from nodeconductor.cost_tracking import CostTrackingRegister, CostTrackingStrategy, ConsumableItem
 
-from nodeconductor.cost_tracking import CostTrackingBackend
-from nodeconductor.cost_tracking.models import DefaultPriceListItem
-
-from . import models, Types
+from . import models, ApplicationTypes, OsTypes, SupportTypes, PriceItemTypes
 
 
-class OpenStackCostTrackingBackend(CostTrackingBackend):
-    NUMERICAL = [Types.PriceItems.STORAGE]
-    STORAGE_KEY = '1 GB'
+class InstanceStrategy(CostTrackingStrategy):
+    resource_class = models.Instance
 
-    @classmethod
-    def get_default_price_list_items(cls):
-        ct = ContentType.objects.get_for_model(models.Instance)
-        price_item = lambda t, k: DefaultPriceListItem(item_type=t, key=k, resource_content_type=ct)
-
-        # flavors
-        for flavor in models.Flavor.objects.all():
-            yield price_item(Types.PriceItems.FLAVOR, flavor.name)
-
-        # os
-        for os, _ in Types.Os.CHOICES:
-            yield price_item(Types.PriceItems.LICENSE_OS, os)
-
-        # applications
-        for app, _ in Types.Applications.CHOICES:
-            yield price_item(Types.PriceItems.LICENSE_APPLICATION, app)
-
-        # support
-        for support, _ in Types.Support.CHOICES:
-            yield price_item(Types.PriceItems.SUPPORT, support)
-
-        # storage
-        yield price_item(Types.PriceItems.STORAGE, cls.STORAGE_KEY)
+    class Types(object):
+        FLAVOR = PriceItemTypes.FLAVOR
+        LICENSE_APPLICATION = PriceItemTypes.LICENSE_APPLICATION
+        LICENSE_OS = PriceItemTypes.LICENSE_OS
+        SUPPORT = PriceItemTypes.SUPPORT
 
     @classmethod
-    def get_used_items(cls, resource):
-        if not isinstance(resource, models.Instance):  # XXX: Hotfix for new resources provision.
-            return []
-        items = []
-        tags = [t.name for t in resource.tags.all()]
+    def get_consumable_items(cls):
+        for os, name in OsTypes.CHOICES:
+            yield ConsumableItem(item_type=cls.Types.LICENSE_OS, key=os, name='OS: %s' % os)
 
-        def get_tag(name):
+        for key, name in ApplicationTypes.CHOICES:
+            yield ConsumableItem(
+                item_type=cls.Types.LICENSE_APPLICATION, key=key, name='Application: %s' % name)
+
+        for key, name in SupportTypes.CHOICES:
+            yield ConsumableItem(item_type=cls.Types.SUPPORT, key=key, name='Support: %s' % name)
+
+        for flavor_name in set(models.Flavor.objects.all().values_list('name', flat=True)):
+            yield ConsumableItem(item_type=cls.Types.FLAVOR, key=flavor_name, name='Flavor: %s' % flavor_name)
+
+    @classmethod
+    def get_configuration(cls, instance):
+        States = models.Instance.States
+        tags = [t.name for t in instance.tags.all()]
+
+        consumables = {}
+        for type in (cls.Types.LICENSE_APPLICATION, cls.Types.LICENSE_OS, cls.Types.SUPPORT):
             try:
-                return [t.split(':')[1] for t in tags if t.startswith('%s:' % name)][0]
+                key = [t.split(':')[1] for t in tags if t.startswith('%s:' % type)][0]
             except IndexError:
-                return None
+                continue
+            consumables[ConsumableItem(item_type=type, key=key)] = 1
 
-        # flavor
-        if resource.state == resource.States.ONLINE and resource.flavor_name:
-            items.append((Types.PriceItems.FLAVOR, resource.flavor_name, 1))
+        if instance.state == States.ONLINE:
+            consumables[ConsumableItem(item_type=cls.Types.FLAVOR, key=instance.flavor_name)] = 1
+        return consumables
 
-        # OS
-        os_type = get_tag(Types.PriceItems.LICENSE_OS)
-        if os_type:
-            items.append((Types.PriceItems.LICENSE_OS, os_type, 1))
 
-        # application
-        app_type = get_tag(Types.PriceItems.LICENSE_APPLICATION)
-        if app_type:
-            items.append((Types.PriceItems.LICENSE_APPLICATION, app_type, 1))
+CostTrackingRegister.register_strategy(InstanceStrategy)
 
-        # support
-        support = get_tag(Types.PriceItems.SUPPORT)
-        if support:
-            items.append((Types.PriceItems.SUPPORT, support, 1))
 
-        # storage
-        storage_size = resource.data_volume_size
-        backups = resource.backups.exclude(state=models.Backup.States.ERRED)
-        for backup in backups:
-            storage_size += sum(snapshot.size for snapshot in backup.snapshots.all())
-        items.append((Types.PriceItems.STORAGE, cls.STORAGE_KEY, storage_size))
+class VolumeStrategy(CostTrackingStrategy):
+    resource_class = models.Volume
 
-        return items
+    class Types(object):
+        STORAGE = PriceItemTypes.STORAGE
+
+    class Keys(object):
+        STORAGE = '1 GB'
+
+    @classmethod
+    def get_consumable_items(cls):
+        return [ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE, name='1 GB of storage', units='GB')]
+
+    @classmethod
+    def get_configuration(cls, volume):
+        return {ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE): float(volume.size) / 1024}
+
+
+CostTrackingRegister.register_strategy(VolumeStrategy)
+
+
+class SnapshotStrategy(CostTrackingStrategy):
+    resource_class = models.Snapshot
+
+    class Types(object):
+        STORAGE = PriceItemTypes.STORAGE
+
+    class Keys(object):
+        STORAGE = '1 GB'
+
+    @classmethod
+    def get_consumable_items(cls):
+        return [ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE, name='1 GB of storage', units='GB')]
+
+    @classmethod
+    def get_configuration(cls, snapshot):
+        return {ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE): float(snapshot.size) / 1024}
+
+
+CostTrackingRegister.register_strategy(SnapshotStrategy)
