@@ -1229,7 +1229,7 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
     pull_executor = executors.SnapshotPullExecutor
-    filter_class = structure_filters.BaseResourceStateFilter
+    filter_class = filters.SnapshotFilter
 
 
 class DRBackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
