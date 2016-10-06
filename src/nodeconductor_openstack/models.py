@@ -446,8 +446,7 @@ class BackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, Ti
         return 'openstack-backup-restoration'
 
 
-class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
-             structure_models.PrivateCloudMixin, structure_models.NewResource):
+class Tenant(structure_models.PrivateCloud):
 
     class Quotas(QuotaModelMixin.Quotas):
         vcpu = QuotaField(default_limit=20, is_backend=True)
