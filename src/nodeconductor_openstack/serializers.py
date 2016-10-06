@@ -1217,6 +1217,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         # source volume should be added to context on creation
         source_volume = self.context['source_volume']
+        validated_data['source_volume'] = source_volume
         validated_data['service_project_link'] = source_volume.service_project_link
         validated_data['tenant'] = source_volume.tenant
         validated_data['size'] = source_volume.size

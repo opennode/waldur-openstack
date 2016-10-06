@@ -1210,9 +1210,9 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return super(VolumeViewSet, self).get_serializer_class()
 
     def get_serializer_context(self):
-        context = super(self, VolumeViewSet).get_serializer_context()
+        context = super(VolumeViewSet, self).get_serializer_context()
         if self.action == 'snapshot':
-            context['volume'] = self.get_object()
+            context['source_volume'] = self.get_object()
         return context
 
     @decorators.detail_route(methods=['post'])
