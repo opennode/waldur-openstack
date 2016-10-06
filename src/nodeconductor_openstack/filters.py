@@ -180,3 +180,12 @@ class DRBackupFilter(structure_filters.BaseResourceFilter):
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.DRBackup
         fields = structure_filters.BaseResourceFilter.Meta.fields + ('source_instance_uuid', 'source_instance')
+
+
+class VolumeFilter(structure_filters.BaseResourceStateFilter):
+    instance_uuid = UUIDFilter(name='instances__uuid')
+    instance = core_filters.URLFilter(view_name='openstack-instance-detail', name='instances__uuid')
+
+    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+        model = models.Volume
+        fields = structure_filters.BaseResourceStateFilter.Meta.fields + ('instance_uuid', 'instance')
