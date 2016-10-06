@@ -1035,7 +1035,7 @@ class InstanceDeleteSerializer(serializers.Serializer):
         return attrs
 
 
-class TenantSerializer(structure_serializers.BaseResourceSerializer):
+class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -1050,17 +1050,17 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
 
-    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+    class Meta(structure_serializers.PrivateCloudSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
-        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+        fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
             'user_username', 'user_password', 'quotas', 'runtime_state',
         )
-        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+        read_only_fields = structure_serializers.PrivateCloudSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password', 'runtime_state'
         )
-        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
+        protected_fields = structure_serializers.PrivateCloudSerializer.Meta.protected_fields + (
             'user_username',
         )
 

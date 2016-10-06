@@ -1200,7 +1200,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
     pull_executor = executors.VolumePullExecutor
-    filter_class = structure_filters.BaseResourceStateFilter
+    filter_class = filters.VolumeFilter
 
     def get_serializer_class(self):
         if self.action == 'extend':
@@ -1247,7 +1247,7 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
     pull_executor = executors.SnapshotPullExecutor
-    filter_class = structure_filters.BaseResourceStateFilter
+    filter_class = filters.SnapshotFilter
 
 
 class DRBackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
