@@ -7,7 +7,7 @@ License: MIT
 Url: http://nodeconductor.com
 Source0: %{name}-%{version}.tar.gz
 
-Requires: nodeconductor > 0.102.5
+Requires: nodeconductor > 0.108.1
 Requires: python-ceilometerclient = 2.3.0
 Requires: python-cinderclient = 1.6.0
 Requires: python-glanceclient = 1:2.0.0
