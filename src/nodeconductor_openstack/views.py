@@ -1205,7 +1205,15 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     def get_serializer_class(self):
         if self.action == 'extend':
             return serializers.VolumeExtendSerializer
+        if self.action == 'snapshot':
+            return serializers.SnapshotSerializer
         return super(VolumeViewSet, self).get_serializer_class()
+
+    def get_serializer_context(self):
+        context = super(self, VolumeViewSet).get_serializer_context()
+        if self.action == 'snapshot':
+            context['volume'] = self.get_object()
+        return context
 
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
@@ -1216,6 +1224,16 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         new_size = serializer.validated_data.get('disk_size')
         executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def snapshot(self, request, volume, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        snapshot = serializer.save()
+
+        executors.SnapshotCreateExecutor().execute(snapshot)
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
