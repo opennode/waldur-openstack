@@ -7,34 +7,6 @@ from nodeconductor_openstack.models import Tenant, OpenStackService
 from . import factories
 
 
-class TenantCreateTest(test.APISimpleTestCase):
-    def setUp(self):
-        super(TenantCreateTest, self).setUp()
-        staff = structure_factories.UserFactory(is_staff=True)
-        self.client.force_authenticate(user=staff)
-
-    def test_can_create_tenant_for_admin_service(self):
-        response = self.create_tenant(factories.OpenStackServiceProjectLinkFactory())
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_unable_create_tenant_for_non_admin_service(self):
-        link = factories.OpenStackServiceProjectLinkFactory()
-        settings = link.service.settings
-        settings.options['is_admin'] = False
-        settings.save()
-
-        response = self.create_tenant(link)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['non_field_errors'],
-                         'Tenant provisioning is only possible for admin service.')
-
-    def create_tenant(self, link):
-        return self.client.post(factories.TenantFactory.get_list_url(), {
-            'name': 'Valid tenant name',
-            'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(link)
-        })
-
-
 class BaseTenantActionsTest(test.APISimpleTestCase):
 
     def setUp(self):

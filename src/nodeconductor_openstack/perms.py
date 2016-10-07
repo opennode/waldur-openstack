@@ -44,7 +44,7 @@ PERMISSION_LOGICS = (
     ('openstack.DRBackupRestoration', openstack_permission_logic('dr_backup')),
     ('openstack.VolumeBackupRestoration', openstack_permission_logic('volume_backup')),
     ('openstack.Instance', structure_perms.resource_permission_logic),
-    ('openstack.Tenant', structure_perms.private_cloud_permission_logic),
+    ('openstack.Tenant', structure_perms.resource_permission_logic),
     ('openstack.Volume', structure_perms.resource_permission_logic),
     ('openstack.VolumeBackup', structure_perms.resource_permission_logic),
     ('openstack.Snapshot', structure_perms.resource_permission_logic),
