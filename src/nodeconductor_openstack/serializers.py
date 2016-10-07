@@ -1206,20 +1206,18 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
             'source_volume', 'size', 'metadata', 'tenant',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'size', 'tenant'
-        )
-        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
-            'source_volume',
+            'size', 'tenant', 'source_volume',
         )
         extra_kwargs = dict(
-            source_volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail',
-                           'allow_null': False, 'required': True},
+            source_volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail'},
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
     def create(self, validated_data):
-        source_volume = validated_data['source_volume']
+        # source volume should be added to context on creation
+        source_volume = self.context['source_volume']
+        validated_data['source_volume'] = source_volume
         validated_data['service_project_link'] = source_volume.service_project_link
         validated_data['tenant'] = source_volume.tenant
         validated_data['size'] = source_volume.size
