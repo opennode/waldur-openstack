@@ -1199,11 +1199,13 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstack-spl-detail',
         read_only=True)
 
+    source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
+
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Snapshot
         view_name = 'openstack-snapshot-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'source_volume', 'size', 'metadata', 'tenant',
+            'source_volume', 'size', 'metadata', 'tenant', 'source_volume_name'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'size', 'tenant', 'source_volume',
