@@ -1218,6 +1218,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def extend(self, request, volume, uuid=None):
+        """ Increase volume size """
         serializer = self.get_serializer(volume, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -1228,6 +1229,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def snapshot(self, request, volume, uuid=None):
+        """ Create snapshot from volume """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         snapshot = serializer.save()
