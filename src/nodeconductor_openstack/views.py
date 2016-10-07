@@ -980,10 +980,9 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
                                        structure_views.PullMixin,
-                                       StateExecutorViewSet)):
+                                       UpdateOnlyStateExecutorViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
-    create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     delete_executor = executors.TenantDeleteExecutor
     pull_executor = executors.TenantPullExecutor
