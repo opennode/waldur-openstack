@@ -227,8 +227,6 @@ class Instance(structure_models.VirtualMachineMixin,
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='instances', on_delete=models.PROTECT)
 
-    volumes = models.ManyToManyField('Volume', related_name='instances')
-
     flavor_name = models.CharField(max_length=255, blank=True)
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
 
@@ -509,6 +507,7 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='volumes')
+    instance = models.ForeignKey(Instance, related_name='volumes', blank=True, null=True)
     size = models.PositiveIntegerField(help_text='Size in MiB')
     bootable = models.BooleanField(default=False)
     metadata = JSONField(blank=True)
