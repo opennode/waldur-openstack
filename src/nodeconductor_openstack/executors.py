@@ -759,15 +759,15 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
         super(VolumeExtendExecutor, cls).pre_apply(volume, **kwargs)
         new_size = kwargs.pop('new_size')
 
-        for instance in volume.instances.all():
-            instance.schedule_resizing()
-            instance.save(update_fields=['state'])
+        if volume.instance:
+            volume.instance.schedule_resizing()
+            volume.instance.save(update_fields=['state'])
 
             event_logger.openstack_volume.info(
                 'Virtual machine {resource_name} has been scheduled to extend disk.',
                 event_type='resource_volume_extension_scheduled',
                 event_context={
-                    'resource': instance,
+                    'resource': volume.instance,
                     'volume_size': new_size
                 }
             )
