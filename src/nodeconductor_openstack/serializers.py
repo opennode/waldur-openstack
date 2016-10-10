@@ -1131,26 +1131,27 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstack-detail',
         read_only=True,
         lookup_field='uuid')
-
     service_project_link = serializers.HyperlinkedRelatedField(
         view_name='openstack-spl-detail',
         read_only=True)
+    instance_name = serializers.ReadOnlyField(source='instance.name')
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Volume
         view_name = 'openstack-volume-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'tenant', 'source_snapshot', 'size', 'bootable', 'metadata',
-            'image', 'image_metadata', 'type', 'runtime_state'
+            'image', 'image_metadata', 'type', 'runtime_state', 'instance', 'instance_name',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state'
+            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'instance',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'tenant', 'size', 'type', 'image'
         )
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
             image={'lookup_field': 'uuid', 'view_name': 'openstack-image-detail'},
             source_snapshot={'lookup_field': 'uuid', 'view_name': 'openstack-snapshot-detail'},
             size={'required': False, 'allow_null': True},
