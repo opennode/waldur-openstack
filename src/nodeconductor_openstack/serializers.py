@@ -956,7 +956,7 @@ class VolumeExtendSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'non_field_errors': ['Unable to extend volume without backend_id']
             })
-        if volume.instance.state != models.Instance.States.OFFLINE:
+        if volume.instance and volume.instance.state != models.Instance.States.OFFLINE:
             raise serializers.ValidationError({
                 'non_field_errors': ['Volume instance should be in OFFLINE state']
             })
