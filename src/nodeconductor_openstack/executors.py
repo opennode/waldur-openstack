@@ -168,7 +168,7 @@ class TenantPullExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
-        return core_tasks.BackendMethodTask().si(
+        return core_tasks.BlackendMethodTask().si(
             serialized_tenant, 'pull_tenant',
             state_transition='begin_updating')
 
@@ -834,6 +834,28 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
     def get_failure_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
         return tasks.LogVolumeExtendFailed().s(serialized_volume, new_size=new_size)
+
+
+class VolumeAttachExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_volume, backend_method='attach_volume', state_transition='begin_updating'),
+            core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
+        )
+
+
+class VolumeDetachExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_volume, backend_method='detach_volume', state_transition='begin_updating'),
+            core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
+        )
 
 
 class BackupCreateExecutor(core_executors.CreateExecutor):

@@ -2,7 +2,7 @@ from __future__ import unicode_literals
 
 from django.db import models
 from django.conf import settings
-from django.core.validators import MaxValueValidator
+from django.core.validators import MaxValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
 from django.utils.encoding import python_2_unicode_compatible, force_text
 from jsonfield import JSONField
@@ -508,6 +508,10 @@ class Volume(structure_models.Storage):
         OpenStackServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='volumes')
     instance = models.ForeignKey(Instance, related_name='volumes', blank=True, null=True)
+    device = models.CharField(
+        max_length=50, blank=True,
+        validators=[RegexValidator('^/dev/[a-zA-Z0-9]+$', message='Device should match pattern "/dev/alphanumeric+"')],
+        help_text='Name of volume as instance device e.g. /dev/vdb.')
     bootable = models.BooleanField(default=False)
     metadata = JSONField(blank=True)
     image = models.ForeignKey(Image, null=True)

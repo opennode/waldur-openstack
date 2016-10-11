@@ -975,6 +975,24 @@ class VolumeExtendSerializer(serializers.Serializer):
         return instance
 
 
+class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.ModelSerializer):
+    class Meta(object):
+        model = models.Volume
+        fields = ('instance', 'device')
+
+    def get_fields(self):
+        fields = super(VolumeAttachSerializer, self).get_fields()
+        volume = self.instance
+        if volume:
+            fields['instance'].query_params = {
+                'settings_uuid': volume.service_project_link.service.settings.uuid
+            }
+        return fields
+
+    def get_filtered_field_names(self):
+        return ('instance',)
+
+
 class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin,
                                      serializers.Serializer):
     flavor = serializers.HyperlinkedRelatedField(
