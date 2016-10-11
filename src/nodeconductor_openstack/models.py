@@ -507,7 +507,7 @@ class Volume(structure_models.Storage):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='volumes')
-    instance = models.ForeignKey(Instance, related_name='volumes', blank=True, null=True)
+    instance = models.ForeignKey(Instance, related_name='volumes', blank=True, null=True, on_delete=models.SET_NULL)
     device = models.CharField(
         max_length=50, blank=True,
         validators=[RegexValidator('^/dev/[a-zA-Z0-9]+$', message='Device should match pattern "/dev/alphanumeric+"')],
