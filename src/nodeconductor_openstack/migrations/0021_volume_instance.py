@@ -35,6 +35,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='volume',
             name='instance',
-            field=models.ForeignKey(related_name='volumes', blank=True, to='openstack.Instance', null=True),
+            field=models.ForeignKey(related_name='volumes', blank=True, to='openstack.Instance', null=True, on_delete=django.db.models.deletion.SET_NULL),
         ),
     ]
