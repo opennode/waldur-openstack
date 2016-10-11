@@ -507,7 +507,7 @@ class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='volumes')
-    instance = models.ForeignKey(Instance, related_name='volumes', blank=True, null=True)
+    instance = models.ForeignKey(Instance, related_name='volumes', blank=True, null=True, on_delete=models.SET_NULL)
     size = models.PositiveIntegerField(help_text='Size in MiB')
     bootable = models.BooleanField(default=False)
     metadata = JSONField(blank=True)

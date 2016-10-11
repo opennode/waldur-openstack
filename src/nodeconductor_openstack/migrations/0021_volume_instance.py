@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
+import django.db.models.deletion
 
 
 def migrate_volume_instances(apps, schema_editor):
@@ -24,7 +25,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='volume',
             name='instance',
-            field=models.ForeignKey(related_name='+', blank=True, to='openstack.Instance', null=True),
+            field=models.ForeignKey(related_name='+', blank=True, to='openstack.Instance', null=True, on_delete=django.db.models.deletion.SET_NULL),
         ),
         migrations.RunPython(migrate_volume_instances),
         migrations.RemoveField(

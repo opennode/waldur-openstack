@@ -776,16 +776,6 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
 
-        detach = [
-            core_tasks.BackendMethodTask().si(
-                core_utils.serialize_instance(instance),
-                backend_method='detach_instance_volume',
-                state_transition='begin_resizing',
-                backend_volume_id=volume.backend_id
-            )
-            for instance in volume.instances.all()
-        ]
-
         extend = [
             tasks.PollRuntimeStateTask().si(
                 serialized_volume,
@@ -807,15 +797,6 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
             )
         ]
 
-        attach = [
-            core_tasks.BackendMethodTask().si(
-                core_utils.serialize_instance(instance),
-                backend_method='attach_instance_volume',
-                backend_volume_id=volume.backend_id
-            )
-            for instance in volume.instances.all()
-        ]
-
         check = tasks.PollRuntimeStateTask().si(
             serialized_volume,
             backend_pull_method='pull_volume_runtime_state',
@@ -823,7 +804,21 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
             erred_state='error'
         )
 
-        return chain(detach + extend + attach + [check])
+        if volume.instance:
+            detach = core_tasks.BackendMethodTask().si(
+                core_utils.serialize_instance(volume.instance),
+                backend_method='detach_instance_volume',
+                state_transition='begin_resizing',
+                backend_volume_id=volume.backend_id
+            )
+            attach = core_tasks.BackendMethodTask().si(
+                core_utils.serialize_instance(volume.instance),
+                backend_method='attach_instance_volume',
+                backend_volume_id=volume.backend_id
+            )
+            return chain([detach] + extend + [attach, check])
+
+        return chain(extend + [check])
 
     @classmethod
     def get_success_signature(cls, volume, serialized_volume, **kwargs):
