@@ -1932,6 +1932,10 @@ class OpenStackBackend(ServiceBackend):
                     settings=spl.service.settings, backend_id=volume.image_metadata['image_id'])
             except models.Image.DoesNotExist:
                 pass
+        # In our setup volume could be attached only to one instance.
+        if getattr(backend_volume, 'attachments', False):
+            if 'device' in backend_volume.attachments[0]:
+                volume.device = backend_volume.attachments[0]['device']
         if save:
             volume.save()
         return volume
