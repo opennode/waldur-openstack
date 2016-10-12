@@ -145,6 +145,7 @@ class VolumeImportTestCase(BaseImportTestCase):
         self.mocked_volume.name = 'Webserver data volume'
         self.mocked_volume.status = 'AVAILABLE'
         self.mocked_volume.metadata = {}
+        self.mocked_volume.attachments = [{'device': '/dev/vba'}]
         del self.mocked_volume.volume_image_metadata
 
         self.mocked_cinder().volumes.list.return_value = [self.mocked_volume]
