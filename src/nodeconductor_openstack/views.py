@@ -1237,7 +1237,6 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.SnapshotCreateExecutor().execute(snapshot)
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    # TODO: add validation.
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def attach(self, request, volume, uuid=None):
@@ -1252,6 +1251,10 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def detach(self, request, volume, uuid=None):
         """ Detach instance from volume """
+        if not volume.instance:
+            raise ValidationError('Volume is not attached to any instance.')
+        if volume.instance.state != models.Instance.States.OFFLINE:
+            raise ValidationError('Volume can be detached only if instance is offline.')
         executors.VolumeDetachExecutor().execute(volume)
 
 

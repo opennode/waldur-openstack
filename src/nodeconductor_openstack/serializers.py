@@ -979,6 +979,9 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
     class Meta(object):
         model = models.Volume
         fields = ('instance', 'device')
+        extra_kwargs = dict(
+            instance={'required': True, 'allow_null': False}
+        )
 
     def get_fields(self):
         fields = super(VolumeAttachSerializer, self).get_fields()
@@ -991,6 +994,14 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 
     def get_filtered_field_names(self):
         return ('instance',)
+
+    def validate_instance(self, instance):
+        if instance.state != models.Instance.States.OFFLINE:
+            raise serializers.ValidationError('Volume can be attached only to instance that is offline.')
+        volume = self.instance
+        if instance.tenant != volume.tenant:
+            raise serializers.ValidationError('Volume and instance should belong to the same tenant.')
+        return instance
 
 
 class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin,
