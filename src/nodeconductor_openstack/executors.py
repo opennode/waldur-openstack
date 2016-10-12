@@ -659,9 +659,8 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
         data_volumes = instance.volumes.all().filter(bootable=False)
         detach_volumes = [
             core_tasks.BackendMethodTask().si(
-                serialized_instance,
-                backend_method='detach_instance_volume',
-                backend_volume_id=volume.backend_id
+                core_utils.serialize_instance(volume),
+                backend_method='detach_volume',
             )
             for volume in data_volumes
         ]
