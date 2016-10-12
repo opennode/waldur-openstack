@@ -1360,7 +1360,7 @@ class OpenStackBackend(ServiceBackend):
             six.reraise(OpenStackBackendError, e)
         else:
             volume.instance = None
-            volume.device = None
+            volume.device = ''
             volume.save()
 
     @log_backend_action()
