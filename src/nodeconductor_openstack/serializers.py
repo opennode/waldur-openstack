@@ -987,9 +987,7 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
         fields = super(VolumeAttachSerializer, self).get_fields()
         volume = self.instance
         if volume:
-            fields['instance'].query_params = {
-                'settings_uuid': volume.service_project_link.service.settings.uuid
-            }
+            fields['instance'].query_params = {'tenant_uuid': volume.tenant.uuid}
         return fields
 
     def get_filtered_field_names(self):
