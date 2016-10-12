@@ -806,15 +806,13 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
 
         if volume.instance:
             detach = core_tasks.BackendMethodTask().si(
-                core_utils.serialize_instance(volume.instance),
-                backend_method='detach_instance_volume',
+                serialized_volume,
+                backend_method='detach_volume',
                 state_transition='begin_resizing',
-                backend_volume_id=volume.backend_id
             )
             attach = core_tasks.BackendMethodTask().si(
-                core_utils.serialize_instance(volume.instance),
-                backend_method='attach_instance_volume',
-                backend_volume_id=volume.backend_id
+                serialized_volume,
+                backend_method='attach_volume',
             )
             return chain([detach] + extend + [attach, check])
 
@@ -838,7 +836,14 @@ class VolumeAttachExecutor(core_executors.ActionExecutor):
         return chain(
             core_tasks.BackendMethodTask().si(
                 serialized_volume, backend_method='attach_volume', state_transition='begin_updating'),
-            core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
+            tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='in-use',
+                erred_state='error',
+            ),
+            # additional pull to populate field "device".
+            core_tasks.BackendMethodTask().si(serialized_volume, backend_method='pull_volume'),
         )
 
 
@@ -849,7 +854,12 @@ class VolumeDetachExecutor(core_executors.ActionExecutor):
         return chain(
             core_tasks.BackendMethodTask().si(
                 serialized_volume, backend_method='detach_volume', state_transition='begin_updating'),
-            core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
+            tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error',
+            )
         )
 
 

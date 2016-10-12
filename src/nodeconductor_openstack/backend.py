@@ -1358,6 +1358,10 @@ class OpenStackBackend(ServiceBackend):
             nova.volumes.delete_server_volume(volume.instance.backend_id, volume.backend_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+        else:
+            volume.instance = None
+            volume.device = None
+            volume.save()
 
     @log_backend_action()
     def extend_volume(self, volume, new_size):

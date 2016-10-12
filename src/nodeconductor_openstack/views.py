@@ -1241,6 +1241,8 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def attach(self, request, volume, uuid=None):
         """ Attach volume to instance """
+        if volume.runtime_state != 'available':
+            raise ValidationError('Volume runtime state should be "available".')
         serializer = self.get_serializer(volume, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -1251,6 +1253,8 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def detach(self, request, volume, uuid=None):
         """ Detach instance from volume """
+        if volume.runtime_state != 'in-use':
+            raise ValidationError('Volume runtime state should be "in-use".')
         if not volume.instance:
             raise ValidationError('Volume is not attached to any instance.')
         if volume.instance.state != models.Instance.States.OFFLINE:
