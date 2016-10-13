@@ -659,9 +659,8 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
         data_volumes = instance.volumes.all().filter(bootable=False)
         detach_volumes = [
             core_tasks.BackendMethodTask().si(
-                serialized_instance,
-                backend_method='detach_instance_volume',
-                backend_volume_id=volume.backend_id
+                core_utils.serialize_instance(volume),
+                backend_method='detach_volume',
             )
             for volume in data_volumes
         ]
@@ -806,15 +805,13 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
 
         if volume.instance:
             detach = core_tasks.BackendMethodTask().si(
-                core_utils.serialize_instance(volume.instance),
-                backend_method='detach_instance_volume',
+                serialized_volume,
+                backend_method='detach_volume',
                 state_transition='begin_resizing',
-                backend_volume_id=volume.backend_id
             )
             attach = core_tasks.BackendMethodTask().si(
-                core_utils.serialize_instance(volume.instance),
-                backend_method='attach_instance_volume',
-                backend_volume_id=volume.backend_id
+                serialized_volume,
+                backend_method='attach_volume',
             )
             return chain([detach] + extend + [attach, check])
 
@@ -829,6 +826,40 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
     def get_failure_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
         return tasks.LogVolumeExtendFailed().s(serialized_volume, new_size=new_size)
+
+
+class VolumeAttachExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_volume, backend_method='attach_volume', state_transition='begin_updating'),
+            tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='in-use',
+                erred_state='error',
+            ),
+            # additional pull to populate field "device".
+            core_tasks.BackendMethodTask().si(serialized_volume, backend_method='pull_volume'),
+        )
+
+
+class VolumeDetachExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_volume, backend_method='detach_volume', state_transition='begin_updating'),
+            tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error',
+            )
+        )
 
 
 class BackupCreateExecutor(core_executors.CreateExecutor):

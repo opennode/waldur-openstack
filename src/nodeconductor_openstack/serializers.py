@@ -975,6 +975,33 @@ class VolumeExtendSerializer(serializers.Serializer):
         return instance
 
 
+class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.ModelSerializer):
+    class Meta(object):
+        model = models.Volume
+        fields = ('instance', 'device')
+        extra_kwargs = dict(
+            instance={'required': True, 'allow_null': False}
+        )
+
+    def get_fields(self):
+        fields = super(VolumeAttachSerializer, self).get_fields()
+        volume = self.instance
+        if volume:
+            fields['instance'].query_params = {'tenant_uuid': volume.tenant.uuid}
+        return fields
+
+    def get_filtered_field_names(self):
+        return ('instance',)
+
+    def validate_instance(self, instance):
+        if instance.state != models.Instance.States.OFFLINE:
+            raise serializers.ValidationError('Volume can be attached only to instance that is offline.')
+        volume = self.instance
+        if instance.tenant != volume.tenant:
+            raise serializers.ValidationError('Volume and instance should belong to the same tenant.')
+        return instance
+
+
 class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin,
                                      serializers.Serializer):
     flavor = serializers.HyperlinkedRelatedField(
@@ -1142,9 +1169,10 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'tenant', 'source_snapshot', 'size', 'bootable', 'metadata',
             'image', 'image_metadata', 'type', 'runtime_state', 'instance', 'instance_name',
+            'device',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'instance',
+            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'instance', 'device',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'tenant', 'size', 'type', 'image'

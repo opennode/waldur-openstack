@@ -1200,13 +1200,14 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     delete_executor = executors.VolumeDeleteExecutor
     pull_executor = executors.VolumePullExecutor
     filter_class = filters.VolumeFilter
+    actions_serializers = {
+        'extend': serializers.VolumeExtendSerializer,
+        'snapshot': serializers.SnapshotSerializer,
+        'attach': serializers.VolumeAttachSerializer,
+    }
 
     def get_serializer_class(self):
-        if self.action == 'extend':
-            return serializers.VolumeExtendSerializer
-        if self.action == 'snapshot':
-            return serializers.SnapshotSerializer
-        return super(VolumeViewSet, self).get_serializer_class()
+        return self.actions_serializers.get(self.action, super(VolumeViewSet, self).get_serializer_class())
 
     def get_serializer_context(self):
         context = super(VolumeViewSet, self).get_serializer_context()
@@ -1235,6 +1236,30 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         executors.SnapshotCreateExecutor().execute(snapshot)
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def attach(self, request, volume, uuid=None):
+        """ Attach volume to instance """
+        if volume.runtime_state != 'available':
+            raise ValidationError('Volume runtime state should be "available".')
+        serializer = self.get_serializer(volume, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        executors.VolumeAttachExecutor().execute(volume)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def detach(self, request, volume, uuid=None):
+        """ Detach instance from volume """
+        if volume.runtime_state != 'in-use':
+            raise ValidationError('Volume runtime state should be "in-use".')
+        if not volume.instance:
+            raise ValidationError('Volume is not attached to any instance.')
+        if volume.instance.state != models.Instance.States.OFFLINE:
+            raise ValidationError('Volume can be detached only if instance is offline.')
+        executors.VolumeDetachExecutor().execute(volume)
 
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
