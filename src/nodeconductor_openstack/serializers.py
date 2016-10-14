@@ -987,6 +987,8 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
         fields = super(VolumeAttachSerializer, self).get_fields()
         volume = self.instance
         if volume:
+            fields['instance'].view_name = 'openstack-instance-detail'
+            fields['instance'].display_name_field = 'name'
             fields['instance'].query_params = {'tenant_uuid': volume.tenant.uuid}
         return fields
 
