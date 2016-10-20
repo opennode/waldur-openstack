@@ -39,6 +39,11 @@ class Command(BaseCommand):
                     self.stdout.write(
                         'Failed to add security_group %s to tenant %s. Error: %s' % (group['name'], tenant, e))
                 else:
-                    executors.SecurityGroupCreateExecutor.execute(db_security_group, async=False)
-                    self.stdout.write(
-                        'Security group %s has been successfully added to tenant %s' % (group['name'], tenant))
+                    try:
+                        executors.SecurityGroupCreateExecutor.execute(db_security_group, async=False)
+                    except Exception as e:
+                        self.stdout.write('Failed to add security group %s to tenant %s. Error: %s' %
+                                          (db_security_group, tenant, e))
+                    else:
+                        self.stdout.write(
+                            'Security group %s has been successfully added to tenant %s' % (group['name'], tenant))

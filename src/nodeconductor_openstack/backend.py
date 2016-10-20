@@ -1344,20 +1344,24 @@ class OpenStackBackend(ServiceBackend):
             instance.save(update_fields=['runtime_state'])
 
     @log_backend_action()
-    def attach_instance_volume(self, instance, backend_volume_id):
+    def attach_volume(self, volume, device=None):
         nova = self.nova_client
         try:
-            nova.volumes.create_server_volume(instance.backend_id, backend_volume_id)
+            nova.volumes.create_server_volume(volume.instance.backend_id, volume.backend_id, device=device)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
-    def detach_instance_volume(self, instance, backend_volume_id):
+    def detach_volume(self, volume):
         nova = self.nova_client
         try:
-            nova.volumes.delete_server_volume(instance.backend_id, backend_volume_id)
+            nova.volumes.delete_server_volume(volume.instance.backend_id, volume.backend_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+        else:
+            volume.instance = None
+            volume.device = ''
+            volume.save()
 
     @log_backend_action()
     def extend_volume(self, volume, new_size):
@@ -1928,6 +1932,10 @@ class OpenStackBackend(ServiceBackend):
                     settings=spl.service.settings, backend_id=volume.image_metadata['image_id'])
             except models.Image.DoesNotExist:
                 pass
+        # In our setup volume could be attached only to one instance.
+        if getattr(backend_volume, 'attachments', False):
+            if 'device' in backend_volume.attachments[0]:
+                volume.device = backend_volume.attachments[0]['device']
         if save:
             volume.save()
         return volume

@@ -956,9 +956,9 @@ class VolumeExtendSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'non_field_errors': ['Unable to extend volume without backend_id']
             })
-        if volume.instances.all().exclude(state=models.Instance.States.OFFLINE).exists():
+        if volume.instance and volume.instance.state != models.Instance.States.OFFLINE:
             raise serializers.ValidationError({
-                'non_field_errors': ['All instances attached to the volume should be in OFFLINE state']
+                'non_field_errors': ['Volume instance should be in OFFLINE state']
             })
         if volume.bootable:
             raise serializers.ValidationError({
@@ -972,6 +972,35 @@ class VolumeExtendSerializer(serializers.Serializer):
         instance.tenant.add_quota_usage('storage', new_size - instance.size, validate=True)
         instance.size = new_size
         instance.save(update_fields=['size'])
+        return instance
+
+
+class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.ModelSerializer):
+    class Meta(object):
+        model = models.Volume
+        fields = ('instance', 'device')
+        extra_kwargs = dict(
+            instance={'required': True, 'allow_null': False}
+        )
+
+    def get_fields(self):
+        fields = super(VolumeAttachSerializer, self).get_fields()
+        volume = self.instance
+        if volume:
+            fields['instance'].view_name = 'openstack-instance-detail'
+            fields['instance'].display_name_field = 'name'
+            fields['instance'].query_params = {'tenant_uuid': volume.tenant.uuid}
+        return fields
+
+    def get_filtered_field_names(self):
+        return ('instance',)
+
+    def validate_instance(self, instance):
+        if instance.state != models.Instance.States.OFFLINE:
+            raise serializers.ValidationError('Volume can be attached only to instance that is offline.')
+        volume = self.instance
+        if instance.tenant != volume.tenant:
+            raise serializers.ValidationError('Volume and instance should belong to the same tenant.')
         return instance
 
 
@@ -1035,7 +1064,7 @@ class InstanceDeleteSerializer(serializers.Serializer):
         return attrs
 
 
-class TenantSerializer(structure_serializers.BaseResourceSerializer):
+class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -1050,17 +1079,17 @@ class TenantSerializer(structure_serializers.BaseResourceSerializer):
 
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
 
-    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+    class Meta(structure_serializers.PrivateCloudSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
-        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+        fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
             'user_username', 'user_password', 'quotas', 'runtime_state',
         )
-        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+        read_only_fields = structure_serializers.PrivateCloudSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password', 'runtime_state'
         )
-        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
+        protected_fields = structure_serializers.PrivateCloudSerializer.Meta.protected_fields + (
             'user_username',
         )
 
@@ -1131,26 +1160,28 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstack-detail',
         read_only=True,
         lookup_field='uuid')
-
     service_project_link = serializers.HyperlinkedRelatedField(
         view_name='openstack-spl-detail',
         read_only=True)
+    instance_name = serializers.ReadOnlyField(source='instance.name')
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Volume
         view_name = 'openstack-volume-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'tenant', 'source_snapshot', 'size', 'bootable', 'metadata',
-            'image', 'image_metadata', 'type', 'runtime_state'
+            'image', 'image_metadata', 'type', 'runtime_state', 'instance', 'instance_name',
+            'device',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state'
+            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'instance', 'device',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'tenant', 'size', 'type', 'image'
         )
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            instance={'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
             image={'lookup_field': 'uuid', 'view_name': 'openstack-image-detail'},
             source_snapshot={'lookup_field': 'uuid', 'view_name': 'openstack-snapshot-detail'},
             size={'required': False, 'allow_null': True},
@@ -1199,27 +1230,27 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstack-spl-detail',
         read_only=True)
 
+    source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
+
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Snapshot
         view_name = 'openstack-snapshot-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'source_volume', 'size', 'metadata', 'tenant',
+            'source_volume', 'size', 'metadata', 'tenant', 'source_volume_name'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'size', 'tenant'
-        )
-        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
-            'source_volume',
+            'size', 'tenant', 'source_volume',
         )
         extra_kwargs = dict(
-            source_volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail',
-                           'allow_null': False, 'required': True},
+            source_volume={'lookup_field': 'uuid', 'view_name': 'openstack-volume-detail'},
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
     def create(self, validated_data):
-        source_volume = validated_data['source_volume']
+        # source volume should be added to context on creation
+        source_volume = self.context['source_volume']
+        validated_data['source_volume'] = source_volume
         validated_data['service_project_link'] = source_volume.service_project_link
         validated_data['tenant'] = source_volume.tenant
         validated_data['size'] = source_volume.size

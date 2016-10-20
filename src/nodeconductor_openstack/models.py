@@ -2,7 +2,7 @@ from __future__ import unicode_literals
 
 from django.db import models
 from django.conf import settings
-from django.core.validators import MaxValueValidator
+from django.core.validators import MaxValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
 from django.utils.encoding import python_2_unicode_compatible, force_text
 from jsonfield import JSONField
@@ -227,8 +227,6 @@ class Instance(structure_models.VirtualMachineMixin,
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='instances', on_delete=models.PROTECT)
 
-    volumes = models.ManyToManyField('Volume', related_name='instances')
-
     flavor_name = models.CharField(max_length=255, blank=True)
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
 
@@ -446,8 +444,7 @@ class BackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, Ti
         return 'openstack-backup-restoration'
 
 
-class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
-             structure_models.PrivateCloudMixin, structure_models.NewResource):
+class Tenant(structure_models.PrivateCloud):
 
     class Quotas(QuotaModelMixin.Quotas):
         vcpu = QuotaField(default_limit=20, is_backend=True)
@@ -506,11 +503,15 @@ class Tenant(QuotaModelMixin, core_models.RuntimeStateMixin,
         )
 
 
-class Volume(core_models.RuntimeStateMixin, structure_models.NewResource):
+class Volume(structure_models.Storage):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='volumes')
-    size = models.PositiveIntegerField(help_text='Size in MiB')
+    instance = models.ForeignKey(Instance, related_name='volumes', blank=True, null=True, on_delete=models.SET_NULL)
+    device = models.CharField(
+        max_length=50, blank=True,
+        validators=[RegexValidator('^/dev/[a-zA-Z0-9]+$', message='Device should match pattern "/dev/alphanumeric+"')],
+        help_text='Name of volume as instance device e.g. /dev/vdb.')
     bootable = models.BooleanField(default=False)
     metadata = JSONField(blank=True)
     image = models.ForeignKey(Image, null=True)
@@ -581,13 +582,12 @@ class VolumeBackupRestoration(core_models.UuidMixin, TimeStampedModel):
         return self.tenant.get_backend()
 
 
-class Snapshot(core_models.RuntimeStateMixin, structure_models.NewResource):
+class Snapshot(structure_models.Storage):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='snapshots', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='snapshots')
     # TODO: protect source_volume after NC-1410 implementation
     source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.SET_NULL)
-    size = models.PositiveIntegerField(help_text='Size in MiB')
     metadata = JSONField(blank=True)
 
     def get_backend(self):

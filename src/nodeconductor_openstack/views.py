@@ -13,7 +13,7 @@ from nodeconductor.core import utils as core_utils
 from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
-from nodeconductor.core.views import StateExecutorViewSet
+from nodeconductor.core.views import StateExecutorViewSet, UpdateOnlyStateExecutorViewSet
 from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import executors as structure_executors
 from nodeconductor.structure import filters as structure_filters
@@ -980,10 +980,9 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
                                        structure_views.PullMixin,
-                                       StateExecutorViewSet)):
+                                       UpdateOnlyStateExecutorViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
-    create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     delete_executor = executors.TenantDeleteExecutor
     pull_executor = executors.TenantPullExecutor
@@ -1200,16 +1199,26 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.VolumeUpdateExecutor
     delete_executor = executors.VolumeDeleteExecutor
     pull_executor = executors.VolumePullExecutor
-    filter_class = structure_filters.BaseResourceStateFilter
+    filter_class = filters.VolumeFilter
+    actions_serializers = {
+        'extend': serializers.VolumeExtendSerializer,
+        'snapshot': serializers.SnapshotSerializer,
+        'attach': serializers.VolumeAttachSerializer,
+    }
 
     def get_serializer_class(self):
-        if self.action == 'extend':
-            return serializers.VolumeExtendSerializer
-        return super(VolumeViewSet, self).get_serializer_class()
+        return self.actions_serializers.get(self.action, super(VolumeViewSet, self).get_serializer_class())
+
+    def get_serializer_context(self):
+        context = super(VolumeViewSet, self).get_serializer_context()
+        if self.action == 'snapshot':
+            context['source_volume'] = self.get_object()
+        return context
 
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def extend(self, request, volume, uuid=None):
+        """ Increase volume size """
         serializer = self.get_serializer(volume, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -1217,19 +1226,58 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         new_size = serializer.validated_data.get('disk_size')
         executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
 
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def snapshot(self, request, volume, uuid=None):
+        """ Create snapshot from volume """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        snapshot = serializer.save()
+
+        executors.SnapshotCreateExecutor().execute(snapshot)
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def attach(self, request, volume, uuid=None):
+        """ Attach volume to instance """
+        serializer = self.get_serializer(volume, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        executors.VolumeAttachExecutor().execute(volume)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def detach(self, request, volume, uuid=None):
+        """ Detach instance from volume """
+        executors.VolumeDetachExecutor().execute(volume)
+
+    def check_operation(self, request, resource, action):
+        volume = resource
+        if action == 'attach' and volume.runtime_state != 'available':
+            raise ValidationError('Volume runtime state should be "available".')
+        elif action == 'detach':
+            if volume.runtime_state != 'in-use':
+                raise ValidationError('Volume runtime state should be "in-use".')
+            if not volume.instance:
+                raise ValidationError('Volume is not attached to any instance.')
+            if volume.instance.state != models.Instance.States.OFFLINE:
+                raise ValidationError('Volume can be detached only if instance is offline.')
+        return super(VolumeViewSet, self).check_operation(request, resource, action)
+
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewMixin,
                                          structure_views.PullMixin,
                                          TelemetryMixin,
-                                         StateExecutorViewSet)):
+                                         UpdateOnlyStateExecutorViewSet)):
     queryset = models.Snapshot.objects.all()
     serializer_class = serializers.SnapshotSerializer
-    create_executor = executors.SnapshotCreateExecutor
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
     pull_executor = executors.SnapshotPullExecutor
-    filter_class = structure_filters.BaseResourceStateFilter
+    filter_class = filters.SnapshotFilter
 
 
 class DRBackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
