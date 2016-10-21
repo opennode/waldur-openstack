@@ -893,10 +893,13 @@ class OpenStackBackend(ServiceBackend):
                 name=tenant.user_username,
                 password=tenant.user_password,
             )
-            admin_role = keystone.roles.find(name='Member')
+            try:
+                role = keystone.roles.find(name='Member')
+            except keystone_exceptions.NotFound:
+                role = keystone.roles.find(name='_member_')
             keystone.roles.add_user_role(
                 user=user.id,
-                role=admin_role.id,
+                role=role.id,
                 tenant=tenant.backend_id,
             )
         except keystone_exceptions.ClientException as e:
