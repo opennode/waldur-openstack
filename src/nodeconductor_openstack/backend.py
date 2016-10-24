@@ -1347,12 +1347,17 @@ class OpenStackBackend(ServiceBackend):
             instance.save(update_fields=['runtime_state'])
 
     @log_backend_action()
-    def attach_volume(self, volume, device=None):
+    def attach_volume(self, volume, instance_uuid, device=None):
+        instance = models.Instance.objects.get(uuid=instance_uuid)
         nova = self.nova_client
         try:
-            nova.volumes.create_server_volume(volume.instance.backend_id, volume.backend_id, device=device)
+            nova.volumes.create_server_volume(instance.backend_id, volume.backend_id, device=device)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+        else:
+            volume.instance = instance
+            volume.device = device
+            volume.save(update_fields=['instance', 'device'])
 
     @log_backend_action()
     def detach_volume(self, volume):
@@ -1364,7 +1369,7 @@ class OpenStackBackend(ServiceBackend):
         else:
             volume.instance = None
             volume.device = ''
-            volume.save()
+            volume.save(update_fields=['instance', 'device'])
 
     @log_backend_action()
     def extend_volume(self, volume, new_size):
@@ -1950,7 +1955,7 @@ class OpenStackBackend(ServiceBackend):
 
         volume.refresh_from_db()
         if volume.modified < import_time:
-            update_fields = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state')
+            update_fields = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'device')
             _update_pulled_fields(volume, imported_volume, update_fields)
 
     @log_backend_action()
