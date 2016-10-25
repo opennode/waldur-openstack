@@ -975,18 +975,19 @@ class VolumeExtendSerializer(serializers.Serializer):
         return instance
 
 
-class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.ModelSerializer):
-    instance = serializers.HyperlinkedRelatedField(
-        view_name='openstack-instance-detail',
-        lookup_field='uuid',
-        queryset=models.Instance.objects.all(),
-        required=True,
-        allow_null=False
-    )
-
+class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin,
+                             serializers.HyperlinkedModelSerializer):
     class Meta(object):
         model = models.Volume
         fields = ('instance', 'device')
+        extra_kwargs = dict(
+            instance={
+                'required': True,
+                'allow_null': False,
+                'view_name': 'openstack-instance-detail',
+                'lookup_field': 'uuid'
+            }
+        )
 
     def get_fields(self):
         fields = super(VolumeAttachSerializer, self).get_fields()
