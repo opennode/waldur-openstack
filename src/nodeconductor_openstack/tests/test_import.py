@@ -127,7 +127,7 @@ class InstanceImportTestCase(BaseImportTestCase):
         self.assertEqual(instance.service_project_link, self.link)
         self.assertEqual(instance.name, self.mocked_instance.name)
         self.assertEqual(instance.backend_id, self.mocked_instance.id)
-        self.assertEqual(instance.state, models.Instance.States.ONLINE)
+        self.assertEqual(instance.state, models.Instance.States.OK)
 
         self.assertEqual(instance.flavor_name, self.mocked_flavor.name)
         self.assertEqual(instance.flavor_disk, self.mocked_flavor.disk)

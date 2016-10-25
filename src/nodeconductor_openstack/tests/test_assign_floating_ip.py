@@ -48,7 +48,8 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
             tenant=self.tenant,
-            state=Instance.States.OFFLINE
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
         )
 
         with self.get_task() as mocked_task:
@@ -72,7 +73,8 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
             tenant=self.tenant,
-            state=Instance.States.OFFLINE
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
         )
 
         with self.get_task() as mocked_task:
@@ -86,7 +88,10 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
             uuid = uuid4()
 
         invalid_floating_ip = InvalidFloatingIP()
-        instance = factories.InstanceFactory(state=Instance.States.OFFLINE, tenant=self.tenant)
+        instance = factories.InstanceFactory(
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
+            tenant=self.tenant)
 
         with self.get_task() as mocked_task:
             response = self.get_response(instance, invalid_floating_ip)
@@ -107,7 +112,8 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
             tenant=self.tenant,
-            state=Instance.States.OFFLINE
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
         )
 
         with self.get_task() as mocked_task:
@@ -124,7 +130,8 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
             tenant=self.tenant,
-            state=Instance.States.OFFLINE
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
         )
 
         with self.get_task() as mocked_task:
@@ -147,7 +154,8 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
             tenant=self.tenant,
-            state=Instance.States.OFFLINE
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
         )
 
         with self.get_task() as mocked_task:
@@ -169,7 +177,8 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
             tenant=self.tenant,
-            state=Instance.States.OFFLINE
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
         )
 
         with self.get_task() as mocked_task:

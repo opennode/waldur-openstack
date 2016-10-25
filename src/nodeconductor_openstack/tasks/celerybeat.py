@@ -74,14 +74,6 @@ class InstanceListPullTask(structure_tasks.BackgroundListPullTask):
     model = models.Instance
     pull_task = InstanceBackgroundPullTask
 
-    def run(self):
-        # XXX: Need to override run method, because Instance does not support new style states. NC-1207.
-        States = self.model.States
-        for instance in self.model.objects.filter(
-                state__in=[States.ERRED, States.ONLINE, States.OFFLINE]).exclude(backend_id=''):
-            serialized_instance = core_utils.serialize_instance(instance)
-            self.pull_task().delay(serialized_instance)
-
 
 class VolumeListPullTask(structure_tasks.BackgroundListPullTask):
     name = 'nodeconductor_openstack.VolumeListPullTask'
@@ -108,15 +100,8 @@ def delete_expired_backups():
 @shared_task(name='nodeconductor.openstack.set_erred_stuck_resources')
 def set_erred_stuck_resources():
     for model in (models.Instance, models.Volume, models.Snapshot):
-        if issubclass(model, structure_models.Resource):
-            source_state = structure_models.Resource.States.PROVISIONING
-        elif issubclass(model, structure_models.NewResource):
-            source_state = structure_models.NewResource.States.CREATING
-        else:
-            continue
-
         cutoff = timezone.now() - timedelta(minutes=30)
-        for resource in model.objects.filter(modified__lt=cutoff, state=source_state):
+        for resource in model.objects.filter(modified__lt=cutoff, state=structure_models.NewResource.States.CREATING):
             resource.set_erred()
             resource.error_message = 'Provisioning is timed out.'
             resource.save(update_fields=['state', 'error_message'])

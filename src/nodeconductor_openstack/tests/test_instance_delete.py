@@ -19,7 +19,8 @@ class BaseInstanceDeletionTest(BaseBackendTestCase):
     def setUp(self):
         super(BaseInstanceDeletionTest, self).setUp()
         self.instance = factories.InstanceFactory(
-            state=models.Instance.States.OFFLINE,
+            state=models.Instance.States.OK,
+            runtime_state=models.Instance.RuntimeStates.SHUTOFF,
             backend_id='VALID_ID'
         )
         self.instance.increase_backend_quotas_usage()
@@ -144,7 +145,8 @@ class InstanceDeletedWithBackupsTest(test.APITransactionTestCase):
 
     def setUp(self):
         self.instance = factories.InstanceFactory(
-            state=models.Instance.States.OFFLINE,
+            state=models.Instance.States.OK,
+            runtime_state=models.Instance.RuntimeStates.SHUTOFF,
             backend_id='VALID_ID'
         )
         staff = structure_factories.UserFactory(is_staff=True)

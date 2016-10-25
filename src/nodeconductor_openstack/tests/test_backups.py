@@ -18,7 +18,10 @@ class BackupUsageTest(test.APITransactionTestCase):
 
     def test_backup_manually_create(self):
         # success:
-        backupable = factories.InstanceFactory(state=models.Instance.States.OFFLINE)
+        backupable = factories.InstanceFactory(
+            state=models.Instance.States.OK,
+            runtime_state=models.Instance.RuntimeStates.SHUTOFF,
+        )
         backup_data = {
             'instance': factories.InstanceFactory.get_url(backupable),
         }
@@ -35,7 +38,7 @@ class BackupUsageTest(test.APITransactionTestCase):
         self.assertIn('instance', response.content)
 
     def test_user_cannot_backup_unstable_instance(self):
-        instance = factories.InstanceFactory(state=models.Instance.States.RESIZING)
+        instance = factories.InstanceFactory(state=models.Instance.States.UPDATING)
         backup_data = {
             'instance': factories.InstanceFactory.get_url(instance),
         }
@@ -90,7 +93,7 @@ class BackupPermissionsTest(helpers.PermissionsTest):
         self.project_group.projects.add(self.project)
         self.service = factories.OpenStackServiceFactory(customer=self.customer)
         self.spl = factories.OpenStackServiceProjectLinkFactory(service=self.service, project=self.project)
-        self.instance = factories.InstanceFactory(service_project_link=self.spl, state=models.Instance.States.ONLINE)
+        self.instance = factories.InstanceFactory(service_project_link=self.spl, state=models.Instance.States.OK)
         self.backup = factories.BackupFactory(instance=self.instance)
         # users
         self.staff = structure_factories.UserFactory(username='staff', is_staff=True)

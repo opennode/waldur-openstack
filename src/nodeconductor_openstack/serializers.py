@@ -486,7 +486,7 @@ class BackupSerializer(core_serializers.AugmentedSerializerMixin, serializers.Hy
         }
 
     def validate_instance(self, instance):
-        if instance.state not in (models.Instance.States.OFFLINE, models.Instance.States.ONLINE):
+        if instance.state != models.Instance.States.OK:
             raise serializers.ValidationError('Cannot create backup if instance is not in stable state.')
         return instance
 
@@ -956,9 +956,10 @@ class VolumeExtendSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'non_field_errors': ['Unable to extend volume without backend_id']
             })
-        if volume.instance and volume.instance.state != models.Instance.States.OFFLINE:
+        if volume.instance and (volume.instance.state != models.Instance.States.OK or
+                                volume.instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF):
             raise serializers.ValidationError({
-                'non_field_errors': ['Volume instance should be in OFFLINE state']
+                'non_field_errors': ['Volume instance should be shutoff and in OK state.']
             })
         if volume.bootable:
             raise serializers.ValidationError({
@@ -996,8 +997,10 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
         return ('instance',)
 
     def validate_instance(self, instance):
-        if instance.state != models.Instance.States.OFFLINE:
-            raise serializers.ValidationError('Volume can be attached only to instance that is offline.')
+        States, RuntimeStates = models.Instance.States, models.Instance.RuntimeStates
+        if instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF:
+            raise serializers.ValidationError(
+                'Volume can be attached only to instance that is shutoff and in state OK.')
         volume = self.instance
         if instance.tenant != volume.tenant:
             raise serializers.ValidationError('Volume and instance should belong to the same tenant.')
