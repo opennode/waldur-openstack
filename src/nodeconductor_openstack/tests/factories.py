@@ -9,12 +9,16 @@ from nodeconductor.structure.tests import factories as structure_factories
 from .. import models
 
 
+class OpenStackServiceSettingsFactory(structure_factories.ServiceSettingsFactory):
+    type = 'OpenStack'
+
+
 class OpenStackServiceFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.OpenStackService
 
     name = factory.Sequence(lambda n: 'service%s' % n)
-    settings = factory.SubFactory(structure_factories.ServiceSettingsFactory, type='OpenStack')
+    settings = factory.SubFactory(OpenStackServiceSettingsFactory)
     customer = factory.SubFactory(structure_factories.CustomerFactory)
 
     @classmethod
