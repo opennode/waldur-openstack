@@ -580,6 +580,14 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance', **kwargs).set(countdown=10))
 
+        # Update volumes runtime state and device name
+        for serialized_volume in serialized_volumes:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_volume,
+                backend_method='pull_volume',
+                update_fields=['runtime_state', 'device']
+            ))
+
         return chain(*_tasks)
 
     @classmethod

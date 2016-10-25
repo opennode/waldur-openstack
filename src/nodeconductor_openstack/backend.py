@@ -1949,13 +1949,16 @@ class OpenStackBackend(ServiceBackend):
         return volume
 
     @log_backend_action()
-    def pull_volume(self, volume):
+    def pull_volume(self, volume, update_fields=None):
         import_time = timezone.now()
         imported_volume = self.import_volume(volume.backend_id, save=False)
 
         volume.refresh_from_db()
         if volume.modified < import_time:
-            update_fields = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'device')
+            if not update_fields:
+                update_fields = ('name', 'description', 'size', 'metadata',
+                                 'type', 'bootable', 'runtime_state', 'device')
+
             _update_pulled_fields(volume, imported_volume, update_fields)
 
     @log_backend_action()
