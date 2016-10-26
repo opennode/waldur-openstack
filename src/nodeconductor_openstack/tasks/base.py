@@ -79,19 +79,12 @@ class BaseThrottleProvisionTask(RetryUntilAvailableTask):
         return usage <= limit
 
     def get_usage(self, instance):
-        state = self.get_provisioning_state(instance)
         service_settings = instance.service_project_link.service.settings
         model_class = instance._meta.model
         return model_class.objects.filter(
-            state=state,
+            state=structure_models.NewResource.States.CREATING,
             service_project_link__service__settings=service_settings
         ).count()
-
-    def get_provisioning_state(self, instance):
-        if isinstance(instance, structure_models.Resource):
-            return structure_models.Resource.States.PROVISIONING
-        elif isinstance(instance, structure_models.NewResource):
-            return structure_models.NewResource.States.CREATING
 
     def get_limit(self, instance):
         nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})

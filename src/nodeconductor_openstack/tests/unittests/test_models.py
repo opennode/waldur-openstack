@@ -13,7 +13,10 @@ from ... import models
 
 class BackupScheduleTest(TestCase):
     def setUp(self):
-        self.instance = factories.InstanceFactory(state=models.Instance.States.OFFLINE)
+        self.instance = factories.InstanceFactory(
+            state=models.Instance.States.OK,
+            runtime_state=models.Instance.RuntimeStates.SHUTOFF,
+        )
 
     def test_update_next_trigger_at(self):
         now = timezone.now()

@@ -550,7 +550,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
-        _tasks = [tasks.ThrottleProvisionStateTask().si(serialized_instance, state_transition='begin_provisioning')]
+        _tasks = [tasks.ThrottleProvisionStateTask().si(serialized_instance, state_transition='begin_creating')]
         # Create volumes
         for serialized_volume in serialized_volumes:
             _tasks.append(tasks.ThrottleProvisionTask().si(
@@ -591,11 +591,6 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         return chain(*_tasks)
 
     @classmethod
-    def get_success_signature(cls, instance, serialized_instance, **kwargs):
-        # XXX: This method is overridden to support old-style states.
-        return core_tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
-
-    @classmethod
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
         return tasks.SetInstanceErredTask().s(serialized_instance)
 
@@ -615,11 +610,6 @@ class InstanceUpdateExecutor(core_executors.BaseExecutor):
 
 
 class InstanceDeleteExecutor(core_executors.DeleteExecutor):
-
-    @classmethod
-    def pre_apply(cls, instance, **kwargs):
-        instance.schedule_deletion()
-        instance.save(update_fields=['state'])
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
@@ -684,12 +674,11 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
         return detach_volumes + check_volumes
 
 
-class InstanceFlavorChangeExecutor(core_executors.BaseExecutor):
+class InstanceFlavorChangeExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def pre_apply(cls, instance, **kwargs):
-        instance.schedule_resizing()
-        instance.save(update_fields=['state'])
+        super(InstanceFlavorChangeExecutor, cls).pre_apply(instance, **kwargs)
 
         event_logger.openstack_flavor.info(
             'Virtual machine {resource_name} has been scheduled to change flavor.',
@@ -704,7 +693,7 @@ class InstanceFlavorChangeExecutor(core_executors.BaseExecutor):
             core_tasks.BackendMethodTask().si(
                 serialized_instance,
                 backend_method='resize_instance',
-                state_transition='begin_resizing',
+                state_transition='begin_updating',
                 flavor_id=flavor.backend_id
             ),
             tasks.PollRuntimeStateTask().si(
@@ -729,7 +718,7 @@ class InstanceFlavorChangeExecutor(core_executors.BaseExecutor):
     def get_success_signature(cls, instance, serialized_instance, **kwargs):
         flavor = kwargs.pop('flavor')
         return tasks.LogFlavorChangeSucceeded().si(
-            serialized_instance, core_utils.serialize_instance(flavor), state_transition='set_resized')
+            serialized_instance, core_utils.serialize_instance(flavor), state_transition='set_ok')
 
     @classmethod
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
@@ -767,7 +756,7 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
         new_size = kwargs.pop('new_size')
 
         if volume.instance:
-            volume.instance.schedule_resizing()
+            volume.instance.schedule_updating()
             volume.instance.save(update_fields=['state'])
 
             event_logger.openstack_volume.info(
@@ -837,7 +826,7 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='in-use',
                 erred_state='error'
-            )
+            ),
         )
 
     @classmethod

@@ -35,7 +35,7 @@ def restart(instance_uuid):
 
 
 @shared_task
-@transition(Instance, 'begin_starting')
+@transition(Instance, 'begin_updating')
 @save_error_message
 def start_instance(instance_uuid, transition_entity=None):
     instance = transition_entity
@@ -44,7 +44,7 @@ def start_instance(instance_uuid, transition_entity=None):
 
 
 @shared_task
-@transition(Instance, 'begin_stopping')
+@transition(Instance, 'begin_updating')
 @save_error_message
 def stop_instance(instance_uuid, transition_entity=None):
     instance = transition_entity
@@ -53,7 +53,7 @@ def stop_instance(instance_uuid, transition_entity=None):
 
 
 @shared_task
-@transition(Instance, 'begin_restarting')
+@transition(Instance, 'begin_updating')
 @save_error_message
 def restart_instance(instance_uuid, transition_entity=None):
     instance = transition_entity
@@ -62,13 +62,13 @@ def restart_instance(instance_uuid, transition_entity=None):
 
 
 @shared_task
-@transition(Instance, 'set_online')
+@transition(Instance, 'set_ok')
 def set_online(instance_uuid, transition_entity=None):
     pass
 
 
 @shared_task
-@transition(Instance, 'set_offline')
+@transition(Instance, 'set_ok')
 def set_offline(instance_uuid, transition_entity=None):
     pass
 

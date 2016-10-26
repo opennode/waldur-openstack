@@ -30,6 +30,7 @@ class InstanceStrategy(CostTrackingStrategy):
     @classmethod
     def get_configuration(cls, instance):
         States = models.Instance.States
+        RuntimeStates = models.Instance.RuntimeStates
         tags = [t.name for t in instance.tags.all()]
 
         consumables = {}
@@ -40,7 +41,7 @@ class InstanceStrategy(CostTrackingStrategy):
                 continue
             consumables[ConsumableItem(item_type=type, key=key)] = 1
 
-        if instance.state == States.ONLINE:
+        if instance.state == States.OK and instance.runtime_state == RuntimeStates.ACTIVE:
             consumables[ConsumableItem(item_type=cls.Types.FLAVOR, key=instance.flavor_name)] = 1
         return consumables
 

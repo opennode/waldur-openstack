@@ -23,7 +23,7 @@ class BackupScheduleBackend(object):
         Instance should be stable state.
         """
         instance = self.schedule.instance
-        if instance.state not in instance.States.STABLE_STATES:
+        if instance.state != instance.States.OK:
             logger.warning('Cannot execute backup schedule for %s in state %s.' % (instance, instance.state))
             return False
 

@@ -271,7 +271,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
 class InstanceViewSet(TelemetryMixin,
                       structure_views.PullMixin,
                       core_mixins.UpdateExecutorMixin,
-                      structure_views.BaseResourceViewSet):
+                      structure_views._BaseResourceViewSet):
     """
     OpenStack instance permissions
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -282,18 +282,6 @@ class InstanceViewSet(TelemetryMixin,
       services that are connected to any of the projects they are administrators in.
     - Project managers can list all VM instances in all the services that are connected to any of the projects they are
       managers in.
-
-    OpenStack instance states
-    ^^^^^^^^^^^^^^^^^^^^^^^^^
-
-    Each instance has a **state** field that defines its current operational state.
-    Instance has a FSM that defines possible state transitions. If a request is made to perform an operation
-    on instance in incorrect state, a validation error will be returned.
-
-    The UI can poll for updates to provide feedback after submitting one of the longer running operations.
-
-    Any modification of an instance in unstable or PROVISIONING_SCHEDULED state is prohibited
-    and will fail with 409 response code. Assuming stable states are ONLINE and OFFLINE.
     """
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
@@ -306,6 +294,31 @@ class InstanceViewSet(TelemetryMixin,
         'change_flavor': serializers.InstanceFlavorChangeSerializer,
         'destroy': serializers.InstanceDeleteSerializer,
     }
+
+    def initial(self, request, *args, **kwargs):
+        # Disable old-style checks.
+        super(structure_views._BaseResourceViewSet, self).initial(request, *args, **kwargs)
+
+    def check_operation(self, request, resource, action):
+        instance = self.get_object()
+        States = models.Instance.States
+        RuntimeStates = models.Instance.RuntimeStates
+        if self.action in ('update', 'partial_update') and instance.state != States.OK:
+            raise IncorrectStateException('Instance should be in state OK.')
+        if action == 'start' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
+            raise IncorrectStateException('Instance state has to be shutoff and in state OK.')
+        if action == 'stop' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.ACTIVE):
+            raise IncorrectStateException('Instance state has to be active and in state OK.')
+        if action == 'restart' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.ACTIVE):
+            raise IncorrectStateException('Instance state has to be active and in state OK.')
+        if action == 'change_flavor' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
+            raise IncorrectStateException('Instance state has to be shutoff and in state OK.')
+        if action == 'destroy':
+            if instance.state not in (States.OK, States.ERRED):
+                raise IncorrectStateException('Instance state has to be OK or erred.')
+            if instance.state == States.OK and instance.runtime_state != RuntimeStates.SHUTOFF:
+                raise IncorrectStateException('Instance has to be shutoff.')
+        return super(InstanceViewSet, self).check_operation(request, resource, action)
 
     def list(self, request, *args, **kwargs):
         """
@@ -376,7 +389,7 @@ class InstanceViewSet(TelemetryMixin,
 
     async_executor = True
 
-    @safe_operation(valid_state=(models.Instance.States.OFFLINE, models.Instance.States.ERRED))
+    @structure_views.safe_operation(valid_state=(models.Instance.States.OK, models.Instance.States.ERRED))
     def destroy(self, request, resource, uuid=None):
         """
         Deletion of an instance is done through sending a **DELETE** request to the instance URI.
@@ -421,9 +434,7 @@ class InstanceViewSet(TelemetryMixin,
         return serializer or super(InstanceViewSet, self).get_serializer_class()
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=(models.Instance.States.ERRED,
-                                                 models.Instance.States.ONLINE,
-                                                 models.Instance.States.OFFLINE))
+    @structure_views.safe_operation(valid_state=(models.Instance.States.OK, models.Instance.States.ERRED))
     def pull(self, request, instance, uuid=None):
         self.pull_executor.execute(instance)
 
@@ -443,7 +454,7 @@ class InstanceViewSet(TelemetryMixin,
     allocate_floating_ip.title = 'Allocate floating IP'
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=tuple(models.Instance.States.STABLE_STATES))
+    @structure_views.safe_operation(valid_state=(models.Instance.States.OK,))
     def assign_floating_ip(self, request, instance, uuid=None):
         """
         To assign floating IP to the instance, make **POST** request to
@@ -474,11 +485,11 @@ class InstanceViewSet(TelemetryMixin,
     assign_floating_ip.title = 'Assign floating IP'
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
+    @structure_views.safe_operation(valid_state=models.Instance.States.OK)
     def resize(self, request, instance, uuid=None):
         """
         To resize an instance, submit a **POST** request to the instance's RPC URL, specifying URI of a target flavor.
-        Note, that instance must be OFFLINE.
+        Note, that instance must be shutoff.
         Example of a valid request:
 
         .. code-block:: http
@@ -543,7 +554,7 @@ class InstanceViewSet(TelemetryMixin,
     resize.deprecated = True
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=models.Instance.States.OFFLINE)
+    @structure_views.safe_operation(valid_state=models.Instance.States.OK)
     def change_flavor(self, request, instance, uuid=None):
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -551,6 +562,45 @@ class InstanceViewSet(TelemetryMixin,
 
         flavor = serializer.validated_data.get('flavor')
         executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OK)
+    def start(self, request, resource, uuid=None):
+        """
+        Schedule resource start. Resource must be shutoff in state OK.
+        """
+        backend = resource.get_backend()
+        backend.start(resource)
+        event_logger.resource.info(
+            'Resource {resource_name} has been scheduled to start.',
+            event_type='resource_start_scheduled',
+            event_context={'resource': resource})
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OK)
+    def stop(self, request, resource, uuid=None):
+        """
+        Schedule resource stop. Resource must be active in state OK.
+        """
+        backend = resource.get_backend()
+        backend.stop(resource)
+        event_logger.resource.info(
+            'Resource {resource_name} has been scheduled to stop.',
+            event_type='resource_stop_scheduled',
+            event_context={'resource': resource})
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OK)
+    def restart(self, request, resource, uuid=None):
+        """
+        Schedule resource restart. Resource must be active in state OK.
+        """
+        backend = resource.get_backend()
+        backend.restart(resource)
+        event_logger.resource.info(
+            'Resource {resource_name} has been scheduled to restart.',
+            event_type='resource_restart_scheduled',
+            event_context={'resource': resource})
 
 
 class SecurityGroupViewSet(StateExecutorViewSet):
@@ -1263,7 +1313,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                 raise ValidationError('Volume runtime state should be "in-use".')
             if not volume.instance:
                 raise ValidationError('Volume is not attached to any instance.')
-            if volume.instance.state != models.Instance.States.OFFLINE:
+            if volume.instance.state != models.Instance.States.OK:
                 raise ValidationError('Volume can be detached only if instance is offline.')
         return super(VolumeViewSet, self).check_operation(request, resource, action)
 

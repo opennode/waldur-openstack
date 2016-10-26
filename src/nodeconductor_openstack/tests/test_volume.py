@@ -78,11 +78,12 @@ class VolumeAttachTestCase(test.APITransactionTestCase):
         self.volume.runtime_state = 'available'
         self.volume.save()
 
-        self.instance.state = models.Instance.States.OFFLINE
+        self.instance.state = models.Instance.States.OK
+        self.instance.runtime_state = models.Instance.RuntimeStates.SHUTOFF
         self.instance.save()
 
         response = self.get_response()
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
 
     def test_user_can_not_attach_erred_volume_to_instance(self):
         self.volume.state = models.Volume.States.ERRED
