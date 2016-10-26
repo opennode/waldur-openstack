@@ -41,6 +41,7 @@ setup(
     entry_points={
         'nodeconductor_extensions': (
             'openstack = nodeconductor_openstack.openstack.extension:OpenStackExtension',
+            'openstack_tenant = nodeconductor_openstack.openstack_tenant.extension:OpenStackTenantExtension',
         ),
     },
     include_package_data=True,
