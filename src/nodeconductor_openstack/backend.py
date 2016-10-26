@@ -288,17 +288,17 @@ class OpenStackBackend(ServiceBackend):
         send_task('openstack', 'destroy')(instance.uuid.hex, force=force)
 
     def start(self, instance):
-        instance.schedule_starting()
+        instance.schedule_updating()
         instance.save()
         send_task('openstack', 'start')(instance.uuid.hex)
 
     def stop(self, instance):
-        instance.schedule_stopping()
+        instance.schedule_updating()
         instance.save()
         send_task('openstack', 'stop')(instance.uuid.hex)
 
     def restart(self, instance):
-        instance.schedule_restarting()
+        instance.schedule_updating()
         instance.save()
         send_task('openstack', 'restart')(instance.uuid.hex)
 
@@ -328,33 +328,6 @@ class OpenStackBackend(ServiceBackend):
                 nova.keypairs.delete(key)
 
         logger.info('Deleted ssh public key %s from backend', key_name)
-
-    def _get_instance_state(self, instance):
-        # See http://developer.openstack.org/api-ref-compute-v2.html
-        nova_to_nodeconductor = {
-            'ACTIVE': models.Instance.States.ONLINE,
-            'BUILDING': models.Instance.States.PROVISIONING,
-            # 'DELETED': models.Instance.States.DELETING,
-            # 'SOFT_DELETED': models.Instance.States.DELETING,
-            'ERROR': models.Instance.States.ERRED,
-            'UNKNOWN': models.Instance.States.ERRED,
-
-            'HARD_REBOOT': models.Instance.States.STOPPING,  # Or starting?
-            'REBOOT': models.Instance.States.STOPPING,  # Or starting?
-            'REBUILD': models.Instance.States.STARTING,  # Or stopping?
-
-            'PASSWORD': models.Instance.States.ONLINE,
-            'PAUSED': models.Instance.States.OFFLINE,
-
-            'RESCUED': models.Instance.States.ONLINE,
-            'RESIZED': models.Instance.States.OFFLINE,
-            'REVERT_RESIZE': models.Instance.States.STOPPING,
-            'SHUTOFF': models.Instance.States.OFFLINE,
-            'STOPPED': models.Instance.States.OFFLINE,
-            'SUSPENDED': models.Instance.States.OFFLINE,
-            'VERIFY_RESIZE': models.Instance.States.OFFLINE,
-        }
-        return nova_to_nodeconductor.get(instance.status, models.Instance.States.ERRED)
 
     def _get_current_properties(self, model):
         return {p.backend_id: p for p in model.objects.filter(settings=self.settings)}
@@ -389,13 +362,8 @@ class OpenStackBackend(ServiceBackend):
 
         return rule
 
-    def _wait_for_instance_status(self, server_id, nova, complete_status,
+    def _wait_for_instance_status(self, instance, nova, complete_status,
                                   error_status=None, retries=300, poll_interval=3):
-        return self._wait_for_object_status(
-            server_id, nova.servers.get, complete_status, error_status, retries, poll_interval)
-
-    def _wait_for_object_status(self, obj_id, client_get_method, complete_status, error_status=None,
-                                retries=30, poll_interval=3):
         complete_state_predicate = lambda o: o.status == complete_status
         if error_status is not None:
             error_state_predicate = lambda o: o.status == error_status
@@ -403,8 +371,11 @@ class OpenStackBackend(ServiceBackend):
             error_state_predicate = lambda _: False
 
         for _ in range(retries):
-            obj = client_get_method(obj_id)
+            obj = nova.servers.get(instance.backend_id)
             logger.debug('Instance %s status: "%s"' % (obj, obj.status))
+            if instance.runtime_state != obj.status:
+                instance.runtime_state = obj.status
+                instance.save(update_fields=['runtime_state'])
 
             if complete_state_predicate(obj):
                 return True
@@ -893,10 +864,13 @@ class OpenStackBackend(ServiceBackend):
                 name=tenant.user_username,
                 password=tenant.user_password,
             )
-            admin_role = keystone.roles.find(name='Member')
+            try:
+                role = keystone.roles.find(name='Member')
+            except keystone_exceptions.NotFound:
+                role = keystone.roles.find(name='_member_')
             keystone.roles.add_user_role(
                 user=user.id,
-                role=admin_role.id,
+                role=role.id,
                 tenant=tenant.backend_id,
             )
         except keystone_exceptions.ClientException as e:
@@ -958,7 +932,8 @@ class OpenStackBackend(ServiceBackend):
                 service_project_link=tenant.service_project_link,
                 key_name=backend_instance.key_name or '',
                 start_time=launch_time,
-                state=self._get_instance_state(backend_instance),
+                state=models.Instance.States.OK,
+                runtime_state=backend_instance.status,
                 created=dateparse.parse_datetime(backend_instance.created),
 
                 flavor_name=flavor.name,
@@ -1007,7 +982,7 @@ class OpenStackBackend(ServiceBackend):
             'type': SupportedServices.get_name_for_model(models.Instance)
         } for instance in instances
             if instance.id not in cur_instances and
-            self._get_instance_state(instance) != models.Instance.States.ERRED]
+            instance.status != models.Instance.RuntimeStates.ERROR]
 
     def get_volumes_for_import(self, tenant):
         cur_volumes = set(tenant.volumes.values_list('backend_id', flat=True))
@@ -1130,7 +1105,7 @@ class OpenStackBackend(ServiceBackend):
             instance.backend_id = server.id
             instance.save()
 
-            if not self._wait_for_instance_status(server.id, nova, 'ACTIVE', 'ERROR'):
+            if not self._wait_for_instance_status(instance, nova, 'ACTIVE', 'ERROR'):
                 logger.error(
                     "Failed to provision instance %s: timed out waiting "
                     "for instance to become online",
@@ -1191,10 +1166,8 @@ class OpenStackBackend(ServiceBackend):
 
         instance.refresh_from_db()
         if instance.modified < import_time:
-            # XXX: It is not right to update instance state here, should be fixed in NC-1207.
-            # We should update runtime_state here and state in corresponding task.
             update_fields = ('ram', 'cores', 'disk', 'internal_ips',
-                             'external_ips', 'state', 'error_message')
+                             'external_ips', 'runtime_state', 'error_message')
             _update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
@@ -1344,12 +1317,17 @@ class OpenStackBackend(ServiceBackend):
             instance.save(update_fields=['runtime_state'])
 
     @log_backend_action()
-    def attach_volume(self, volume, device=None):
+    def attach_volume(self, volume, instance_uuid, device=None):
+        instance = models.Instance.objects.get(uuid=instance_uuid)
         nova = self.nova_client
         try:
-            nova.volumes.create_server_volume(volume.instance.backend_id, volume.backend_id, device=device)
+            nova.volumes.create_server_volume(instance.backend_id, volume.backend_id, device=device)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+        else:
+            volume.instance = instance
+            volume.device = device
+            volume.save(update_fields=['instance', 'device'])
 
     @log_backend_action()
     def detach_volume(self, volume):
@@ -1361,7 +1339,7 @@ class OpenStackBackend(ServiceBackend):
         else:
             volume.instance = None
             volume.device = ''
-            volume.save()
+            volume.save(update_fields=['instance', 'device'])
 
     @log_backend_action()
     def extend_volume(self, volume, new_size):
@@ -1772,15 +1750,14 @@ class OpenStackBackend(ServiceBackend):
         nova = self.nova_client
         try:
             backend_instance = nova.servers.find(id=instance.backend_id)
-            backend_instance_state = self._get_instance_state(backend_instance)
 
-            if backend_instance_state == models.Instance.States.ONLINE:
+            if backend_instance.status == models.Instance.RuntimeStates.ACTIVE:
                 logger.warning('Instance %s is already started', instance.uuid)
                 return
 
             nova.servers.start(instance.backend_id)
 
-            if not self._wait_for_instance_status(instance.backend_id, nova, 'ACTIVE'):
+            if not self._wait_for_instance_status(instance, nova, 'ACTIVE'):
                 raise OpenStackBackendError('Timed out waiting for instance %s to start' % instance.uuid)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
@@ -1790,15 +1767,14 @@ class OpenStackBackend(ServiceBackend):
         nova = self.nova_client
         try:
             backend_instance = nova.servers.find(id=instance.backend_id)
-            backend_instance_state = self._get_instance_state(backend_instance)
 
-            if backend_instance_state == models.Instance.States.OFFLINE:
+            if backend_instance.status == models.Instance.RuntimeStates.SHUTOFF:
                 logger.warning('Instance %s is already stopped', instance.uuid)
                 return
 
             nova.servers.stop(instance.backend_id)
 
-            if not self._wait_for_instance_status(instance.backend_id, nova, 'SHUTOFF'):
+            if not self._wait_for_instance_status(instance, nova, 'SHUTOFF'):
                 raise OpenStackBackendError('Timed out waiting for instance %s to stop' % instance.uuid)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
@@ -1812,7 +1788,7 @@ class OpenStackBackend(ServiceBackend):
         try:
             nova.servers.reboot(instance.backend_id)
 
-            if not self._wait_for_instance_status(instance.backend_id, nova, 'ACTIVE', retries=80):
+            if not self._wait_for_instance_status(instance, nova, 'ACTIVE', retries=80):
                 raise OpenStackBackendError('Timed out waiting for instance %s to restart' % instance.uuid)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
@@ -1941,13 +1917,16 @@ class OpenStackBackend(ServiceBackend):
         return volume
 
     @log_backend_action()
-    def pull_volume(self, volume):
+    def pull_volume(self, volume, update_fields=None):
         import_time = timezone.now()
         imported_volume = self.import_volume(volume.backend_id, save=False)
 
         volume.refresh_from_db()
         if volume.modified < import_time:
-            update_fields = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state')
+            if not update_fields:
+                update_fields = ('name', 'description', 'size', 'metadata',
+                                 'type', 'bootable', 'runtime_state', 'device')
+
             _update_pulled_fields(volume, imported_volume, update_fields)
 
     @log_backend_action()

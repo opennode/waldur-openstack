@@ -222,7 +222,29 @@ class FloatingIP(core_models.UuidMixin):
 
 class Instance(structure_models.VirtualMachineMixin,
                core_models.RuntimeStateMixin,
-               structure_models.Resource):
+               structure_models.NewResource):
+
+    class RuntimeStates(object):
+        # All possible OpenStack Instance states on backend.
+        # See http://developer.openstack.org/api-ref-compute-v2.html
+        ACTIVE = 'ACTIVE'
+        BUILDING = 'BUILDING'
+        DELETED = 'DELETED'
+        SOFT_DELETED = 'SOFT_DELETED'
+        ERROR = 'ERROR'
+        UNKNOWN = 'UNKNOWN'
+        HARD_REBOOT = 'HARD_REBOOT'
+        REBOOT = 'REBOOT'
+        REBUILD = 'REBUILD'
+        PASSWORD = 'PASSWORD'
+        PAUSED = 'PAUSED'
+        RESCUED = 'RESCUED'
+        RESIZED = 'RESIZED'
+        REVERT_RESIZE = 'REVERT_RESIZE'
+        SHUTOFF = 'SHUTOFF'
+        STOPPED = 'STOPPED'
+        SUSPENDED = 'SUSPENDED'
+        VERIFY_RESIZE = 'VERIFY_RESIZE'
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='instances', on_delete=models.PROTECT)

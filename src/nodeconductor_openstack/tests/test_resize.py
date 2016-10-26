@@ -13,8 +13,14 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
 
         # User admins managed_instance through its project
         # User manages managed_instance through its project group
-        self.admined_instance = factories.InstanceFactory(state=Instance.States.OFFLINE)
-        self.managed_instance = factories.InstanceFactory(state=Instance.States.OFFLINE)
+        self.admined_instance = factories.InstanceFactory(
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
+        )
+        self.managed_instance = factories.InstanceFactory(
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
+        )
 
         admined_project = self.admined_instance.service_project_link.project
         admined_project.add_user(self.user, ProjectRole.ADMINISTRATOR)
@@ -43,7 +49,7 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
 
         self.assertEqual(reread_instance.system_volume_size, self.admined_instance.system_volume_size,
                          'Instance system_volume_size should not have changed')
-        self.assertEqual(reread_instance.state, Instance.States.RESIZING_SCHEDULED,
+        self.assertEqual(reread_instance.state, Instance.States.UPDATE_SCHEDULED,
                          'Instance should have been scheduled to resize')
 
     def test_user_can_change_flavor_to_flavor_with_less_cpu_if_result_cpu_quota_usage_is_less_then_cpu_limit(self):
@@ -68,7 +74,7 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
         reread_instance = Instance.objects.get(pk=self.admined_instance.pk)
-        self.assertEqual(reread_instance.state, Instance.States.RESIZING_SCHEDULED,
+        self.assertEqual(reread_instance.state, Instance.States.UPDATE_SCHEDULED,
                          'Instance should have been scheduled to resize')
 
     def test_user_cannot_resize_instance_without_flavor_and_disk_size_in_request(self):
@@ -99,7 +105,7 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
         reread_instance = Instance.objects.get(pk=self.admined_instance.pk)
-        self.assertEqual(reread_instance.state, Instance.States.RESIZING_SCHEDULED,
+        self.assertEqual(reread_instance.state, Instance.States.UPDATE_SCHEDULED,
                          'Instance should have been scheduled to resize')
 
     def test_user_cannot_change_flavor_of_stopped_instance_he_is_administrator_of_if_quota_would_be_exceeded(self):
@@ -198,10 +204,10 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         self.assertEqual(reread_instance.system_volume_size, inaccessible_instance.system_volume_size,
                          'Instance system_volume_size not have changed')
 
-    def test_user_cannot_resize_instance_in_provisioning_scheduled_state(self):
+    def test_user_cannot_resize_instance_in_creation_scheduled_state(self):
         self.client.force_authenticate(user=self.user)
 
-        instance = factories.InstanceFactory(state=Instance.States.PROVISIONING_SCHEDULED)
+        instance = factories.InstanceFactory(state=Instance.States.CREATION_SCHEDULED)
         project = instance.service_project_link.project
         project.add_user(self.user, ProjectRole.ADMINISTRATOR)
 
@@ -215,7 +221,7 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
         forbidden_states = [
             state
             for (state, _) in Instance.States.CHOICES
-            if state not in (Instance.States.DELETING, Instance.States.OFFLINE)
+            if state not in (Instance.States.DELETING, Instance.States.OK)
         ]
 
         for state in forbidden_states:
@@ -261,7 +267,10 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
     def test_user_cannot_change_flavor_and_disk_size_simultaneously(self):
         self.client.force_authenticate(user=self.user)
 
-        instance = factories.InstanceFactory(state=Instance.States.OFFLINE)
+        instance = factories.InstanceFactory(
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
+        )
 
         project = instance.service_project_link.project
         project.add_user(self.user, ProjectRole.MANAGER)
@@ -283,7 +292,10 @@ class ResizeInstanceTestCase(test.APITransactionTestCase):
     def test_user_cannot_resize_with_empty_parameters(self):
         self.client.force_authenticate(user=self.user)
 
-        instance = factories.InstanceFactory(state=Instance.States.OFFLINE)
+        instance = factories.InstanceFactory(
+            state=Instance.States.OK,
+            runtime_state=Instance.RuntimeStates.SHUTOFF,
+        )
         project = instance.service_project_link.project
 
         project.add_user(self.user, ProjectRole.MANAGER)

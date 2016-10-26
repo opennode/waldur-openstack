@@ -550,7 +550,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
-        _tasks = [tasks.ThrottleProvisionStateTask().si(serialized_instance, state_transition='begin_provisioning')]
+        _tasks = [tasks.ThrottleProvisionStateTask().si(serialized_instance, state_transition='begin_creating')]
         # Create volumes
         for serialized_volume in serialized_volumes:
             _tasks.append(tasks.ThrottleProvisionTask().si(
@@ -580,12 +580,15 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance', **kwargs).set(countdown=10))
 
-        return chain(*_tasks)
+        # Update volumes runtime state and device name
+        for serialized_volume in serialized_volumes:
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                serialized_volume,
+                backend_method='pull_volume',
+                update_fields=['runtime_state', 'device']
+            ))
 
-    @classmethod
-    def get_success_signature(cls, instance, serialized_instance, **kwargs):
-        # XXX: This method is overridden to support old-style states.
-        return core_tasks.StateTransitionTask().si(serialized_instance, state_transition='set_online')
+        return chain(*_tasks)
 
     @classmethod
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
@@ -607,11 +610,6 @@ class InstanceUpdateExecutor(core_executors.BaseExecutor):
 
 
 class InstanceDeleteExecutor(core_executors.DeleteExecutor):
-
-    @classmethod
-    def pre_apply(cls, instance, **kwargs):
-        instance.schedule_deletion()
-        instance.save(update_fields=['state'])
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
@@ -676,12 +674,11 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
         return detach_volumes + check_volumes
 
 
-class InstanceFlavorChangeExecutor(core_executors.BaseExecutor):
+class InstanceFlavorChangeExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def pre_apply(cls, instance, **kwargs):
-        instance.schedule_resizing()
-        instance.save(update_fields=['state'])
+        super(InstanceFlavorChangeExecutor, cls).pre_apply(instance, **kwargs)
 
         event_logger.openstack_flavor.info(
             'Virtual machine {resource_name} has been scheduled to change flavor.',
@@ -696,7 +693,7 @@ class InstanceFlavorChangeExecutor(core_executors.BaseExecutor):
             core_tasks.BackendMethodTask().si(
                 serialized_instance,
                 backend_method='resize_instance',
-                state_transition='begin_resizing',
+                state_transition='begin_updating',
                 flavor_id=flavor.backend_id
             ),
             tasks.PollRuntimeStateTask().si(
@@ -721,7 +718,7 @@ class InstanceFlavorChangeExecutor(core_executors.BaseExecutor):
     def get_success_signature(cls, instance, serialized_instance, **kwargs):
         flavor = kwargs.pop('flavor')
         return tasks.LogFlavorChangeSucceeded().si(
-            serialized_instance, core_utils.serialize_instance(flavor), state_transition='set_resized')
+            serialized_instance, core_utils.serialize_instance(flavor), state_transition='set_ok')
 
     @classmethod
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
@@ -759,7 +756,7 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
         new_size = kwargs.pop('new_size')
 
         if volume.instance:
-            volume.instance.schedule_resizing()
+            volume.instance.schedule_updating()
             volume.instance.save(update_fields=['state'])
 
             event_logger.openstack_volume.info(
@@ -775,7 +772,32 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
 
-        extend = [
+        if volume.instance is None:
+            return chain(
+                core_tasks.BackendMethodTask().si(
+                    serialized_volume,
+                    backend_method='extend_volume',
+                    state_transition='begin_updating',
+                    new_size=new_size
+                ),
+                tasks.PollRuntimeStateTask().si(
+                    serialized_volume,
+                    backend_pull_method='pull_volume_runtime_state',
+                    success_state='available',
+                    erred_state='error'
+                )
+            )
+
+        return chain(
+            core_tasks.StateTransitionTask().si(
+                core_utils.serialize_instance(volume.instance),
+                state_transition='begin_resizing'
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_volume,
+                backend_method='detach_volume',
+                state_transition='begin_updating'
+            ),
             tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
@@ -786,36 +808,26 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                 serialized_volume,
                 backend_method='extend_volume',
                 new_size=new_size,
-                state_transition='begin_updating'
             ),
             tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
                 erred_state='error'
-            )
-        ]
-
-        check = tasks.PollRuntimeStateTask().si(
-            serialized_volume,
-            backend_pull_method='pull_volume_runtime_state',
-            success_state='in-use',
-            erred_state='error'
-        )
-
-        if volume.instance:
-            detach = core_tasks.BackendMethodTask().si(
+            ),
+            core_tasks.BackendMethodTask().si(
                 serialized_volume,
-                backend_method='detach_volume',
-                state_transition='begin_resizing',
-            )
-            attach = core_tasks.BackendMethodTask().si(
-                serialized_volume,
+                instance_uuid=volume.instance.uuid.hex,
+                device=volume.device,
                 backend_method='attach_volume',
-            )
-            return chain([detach] + extend + [attach, check])
-
-        return chain(extend + [check])
+            ),
+            tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='in-use',
+                erred_state='error'
+            ),
+        )
 
     @classmethod
     def get_success_signature(cls, volume, serialized_volume, **kwargs):
@@ -825,7 +837,8 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
     @classmethod
     def get_failure_signature(cls, volume, serialized_volume, **kwargs):
         new_size = kwargs.pop('new_size')
-        return tasks.LogVolumeExtendFailed().s(serialized_volume, new_size=new_size)
+        instance_uuid = volume.instance.uuid.hex if volume.instance else None
+        return tasks.LogVolumeExtendFailed().s(serialized_volume, instance_uuid=instance_uuid, new_size=new_size)
 
 
 class VolumeAttachExecutor(core_executors.ActionExecutor):
@@ -834,7 +847,12 @@ class VolumeAttachExecutor(core_executors.ActionExecutor):
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         return chain(
             core_tasks.BackendMethodTask().si(
-                serialized_volume, backend_method='attach_volume', state_transition='begin_updating'),
+                serialized_volume,
+                instance_uuid=volume.instance.uuid.hex,
+                device=volume.device,
+                backend_method='attach_volume',
+                state_transition='begin_updating'
+            ),
             tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',

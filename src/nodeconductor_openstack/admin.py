@@ -63,8 +63,8 @@ class InstanceAdmin(structure_admin.VirtualMachineAdmin):
         short_description = 'Pull'
 
         def validate(self, instance):
-            if instance.state not in (models.Instance.States.ONLINE, models.Instance.States.OFFLINE, models.Instance.States.ERRED):
-                raise ValidationError('Instance has to be in ONLINE, OFFLINE or ERRED state.')
+            if instance.state not in (models.Instance.States.OK, models.Instance.States.ERRED):
+                raise ValidationError('Instance has to be in OK or ERRED state.')
 
     pull = Pull()
 

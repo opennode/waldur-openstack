@@ -34,7 +34,10 @@ class InstanceSecurityGroupsTest(test.APISimpleTestCase):
         self.user = structure_factories.UserFactory.create()
         self.client.force_authenticate(self.user)
 
-        self.instance = factories.InstanceFactory(state=models.Instance.States.OFFLINE)
+        self.instance = factories.InstanceFactory(
+            state=models.Instance.States.OK,
+            runtime_state=models.Instance.RuntimeStates.SHUTOFF,
+        )
         self.spl = self.instance.service_project_link
         self.spl.project.add_user(self.user, structure_models.ProjectRole.ADMINISTRATOR)
 

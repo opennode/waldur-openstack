@@ -19,7 +19,7 @@ class InstanceFilter(structure_filters.BaseResourceFilter):
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Instance
-        fields = structure_filters.BaseResourceFilter.Meta.fields + ('tenant_uuid',)
+        fields = structure_filters.BaseResourceFilter.Meta.fields + ('tenant_uuid', 'runtime_state')
         order_by = structure_filters.BaseResourceFilter.Meta.order_by + [
             'ram',
             '-ram',
@@ -29,6 +29,8 @@ class InstanceFilter(structure_filters.BaseResourceFilter):
             '-system_volume_size',
             'data_volume_size',
             '-data_volume_size',
+            'runtime_state',
+            '-runtime_state',
         ]
         order_by_mapping = dict(
             # Backwards compatibility
