@@ -14,6 +14,7 @@ from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
 from nodeconductor.core.views import StateExecutorViewSet, UpdateOnlyStateExecutorViewSet
+from nodeconductor.structure import models as structure_models
 from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import executors as structure_executors
 from nodeconductor.structure import filters as structure_filters, models as structure_models
