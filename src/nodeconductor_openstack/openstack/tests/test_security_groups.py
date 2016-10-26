@@ -74,7 +74,7 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
     def test_security_group_creation_starts_sync_task(self):
         self.client.force_authenticate(self.admin)
 
-        with patch('nodeconductor_openstack.executors.SecurityGroupCreateExecutor.execute') as mocked_execute:
+        with patch('nodeconductor_openstack.openstack.executors.SecurityGroupCreateExecutor.execute') as mocked_execute:
             response = self.client.post(self.url, data=self.valid_data)
 
             self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -172,7 +172,7 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
     def test_security_group_update_starts_sync_task(self):
         self.client.force_authenticate(self.admin)
 
-        with patch('nodeconductor_openstack.executors.SecurityGroupUpdateExecutor.execute') as mocked_execute:
+        with patch('nodeconductor_openstack.openstack.executors.SecurityGroupUpdateExecutor.execute') as mocked_execute:
             response = self.client.patch(self.url, data={'name': 'new_name'})
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -220,7 +220,7 @@ class SecurityGroupDeleteTest(BaseSecurityGroupTest):
     def test_project_administrator_can_delete_security_group(self):
         self.client.force_authenticate(self.admin)
 
-        with patch('nodeconductor_openstack.executors.SecurityGroupDeleteExecutor.execute') as mocked_execute:
+        with patch('nodeconductor_openstack.openstack.executors.SecurityGroupDeleteExecutor.execute') as mocked_execute:
             response = self.client.delete(self.url)
             self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 

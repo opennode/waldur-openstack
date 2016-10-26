@@ -40,7 +40,7 @@ setup(
     },
     entry_points={
         'nodeconductor_extensions': (
-            'nodeconductor_openstack = nodeconductor_openstack.extension:OpenStackExtension',
+            'openstack = nodeconductor_openstack.openstack.extension:OpenStackExtension',
         ),
     },
     include_package_data=True,

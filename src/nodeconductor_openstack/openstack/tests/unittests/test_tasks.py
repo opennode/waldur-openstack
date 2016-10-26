@@ -20,7 +20,7 @@ class DeleteExpiredBackupsTaskTest(TestCase):
         self.expired_backup2 = factories.BackupFactory(
             state=models.Backup.States.OK, kept_until=timezone.now() - timedelta(minutes=10))
 
-    @mock.patch('nodeconductor_openstack.executors.BackupDeleteExecutor.execute')
+    @mock.patch('nodeconductor_openstack.openstack.executors.BackupDeleteExecutor.execute')
     def test_command_starts_backend_deletion(self, mocked_execute):
         tasks.delete_expired_backups()
         mocked_execute.assert_has_calls([

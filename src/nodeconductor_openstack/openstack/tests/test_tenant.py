@@ -2,7 +2,7 @@ from mock import patch
 
 from rest_framework import test, status
 from nodeconductor.structure.tests import factories as structure_factories
-from nodeconductor_openstack.models import Tenant, OpenStackService
+from nodeconductor_openstack.openstack.models import Tenant, OpenStackService
 
 from . import factories
 
@@ -16,7 +16,7 @@ class BaseTenantActionsTest(test.APISimpleTestCase):
         self.client.force_authenticate(user=staff)
 
 
-@patch('nodeconductor_openstack.executors.TenantPushQuotasExecutor.execute')
+@patch('nodeconductor_openstack.openstack.executors.TenantPushQuotasExecutor.execute')
 class TenantQuotasTest(BaseTenantActionsTest):
     def test_non_staff_user_cannot_set_tenant_quotas(self, mocked_task):
         self.client.force_authenticate(user=structure_factories.UserFactory())
@@ -36,7 +36,7 @@ class TenantQuotasTest(BaseTenantActionsTest):
         return factories.TenantFactory.get_url(self.tenant, 'set_quotas')
 
 
-@patch('nodeconductor_openstack.executors.TenantDeleteExternalNetworkExecutor.execute')
+@patch('nodeconductor_openstack.openstack.executors.TenantDeleteExternalNetworkExecutor.execute')
 class TenantDeleteExternalNetworkTest(BaseTenantActionsTest):
     def test_staff_user_can_delete_existing_external_network(self, mocked_task):
         self.tenant.external_network_id = 'abcd1234'
@@ -58,7 +58,7 @@ class TenantDeleteExternalNetworkTest(BaseTenantActionsTest):
         return factories.TenantFactory.get_url(self.tenant, 'external_network')
 
 
-@patch('nodeconductor_openstack.executors.TenantCreateExternalNetworkExecutor.execute')
+@patch('nodeconductor_openstack.openstack.executors.TenantCreateExternalNetworkExecutor.execute')
 class TenantCreateExternalNetworkTest(BaseTenantActionsTest):
 
     def test_staff_user_can_create_external_network(self, mocked_task):
@@ -75,7 +75,7 @@ class TenantCreateExternalNetworkTest(BaseTenantActionsTest):
         mocked_task.assert_called_once_with(self.tenant, external_network_data=payload)
 
 
-@patch('nodeconductor_openstack.executors.TenantAllocateFloatingIPExecutor.execute')
+@patch('nodeconductor_openstack.openstack.executors.TenantAllocateFloatingIPExecutor.execute')
 class TenantFloatingIPTest(BaseTenantActionsTest):
     def test_staff_cannot_allocate_floating_ip_from_tenant_without_external_network_id(self, mocked_task):
         self.tenant.external_network_id = ''
@@ -106,7 +106,7 @@ class TenantFloatingIPTest(BaseTenantActionsTest):
         mocked_task.assert_called_once_with(tenant)
 
 
-@patch('nodeconductor_openstack.executors.TenantPullExecutor.execute')
+@patch('nodeconductor_openstack.openstack.executors.TenantPullExecutor.execute')
 class TenantPullTest(BaseTenantActionsTest):
     def test_staff_can_pull_tenant(self, mocked_task):
         response = self.client.post(self.get_url())
@@ -126,7 +126,7 @@ class TenantPullTest(BaseTenantActionsTest):
         return factories.TenantFactory.get_url(self.tenant, 'pull')
 
 
-@patch('nodeconductor_openstack.executors.TenantDeleteExecutor.execute')
+@patch('nodeconductor_openstack.openstack.executors.TenantDeleteExecutor.execute')
 class TenantDeleteTest(BaseTenantActionsTest):
     def test_staff_can_delete_tenant(self, mocked_task):
         response = self.client.delete(self.get_url())

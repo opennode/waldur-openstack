@@ -11,7 +11,7 @@ class BaseBackendTestCase(test.APITransactionTestCase):
         self.session_patcher = mock.patch('keystoneauth1.session.Session', MockedSession)
         self.session_patcher.start()
 
-        self.session_recover_patcher = mock.patch('nodeconductor_openstack.backend.OpenStackSession.recover')
+        self.session_recover_patcher = mock.patch('nodeconductor_openstack.openstack.backend.OpenStackSession.recover')
         self.session_recover_patcher.start()
 
         self.keystone_patcher = mock.patch('keystoneclient.v2_0.client.Client')

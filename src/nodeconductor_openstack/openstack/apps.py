@@ -7,7 +7,7 @@ class OpenStackConfig(AppConfig):
         This application adds support for managing OpenStack deployments -
         tenants, instances, security groups and networks.
     """
-    name = 'nodeconductor_openstack'
+    name = 'nodeconductor_openstack.openstack'
     label = 'openstack'
     verbose_name = 'OpenStack'
     service_name = 'OpenStack'
@@ -40,36 +40,36 @@ class OpenStackConfig(AppConfig):
         signals.post_save.connect(
             handlers.create_initial_security_groups,
             sender=Tenant,
-            dispatch_uid='nodeconductor_openstack.handlers.create_initial_security_groups',
+            dispatch_uid='openstack.handlers.create_initial_security_groups',
         )
 
         signals.post_save.connect(
             handlers.change_floating_ip_quota_on_status_change,
             sender=FloatingIP,
-            dispatch_uid='nodeconductor_openstack.handlers.change_floating_ip_quota_on_status_change',
+            dispatch_uid='openstack.handlers.change_floating_ip_quota_on_status_change',
         )
 
         signals.post_save.connect(
             handlers.log_backup_schedule_save,
             sender=BackupSchedule,
-            dispatch_uid='nodeconductor_openstack.handlers.log_backup_schedule_save',
+            dispatch_uid='openstack.handlers.log_backup_schedule_save',
         )
 
         signals.post_delete.connect(
             handlers.log_backup_schedule_delete,
             sender=BackupSchedule,
-            dispatch_uid='nodeconductor_openstack.handlers.log_backup_schedule_delete',
+            dispatch_uid='openstack.handlers.log_backup_schedule_delete',
         )
 
         for model in (structure_models.Project, structure_models.Customer):
             structure_signals.structure_role_revoked.connect(
                 handlers.remove_ssh_key_from_tenants,
                 sender=model,
-                dispatch_uid='nodeconductor_openstack.handlers.remove_ssh_key_from_tenants__%s' % model.__name__,
+                dispatch_uid='openstack.handlers.remove_ssh_key_from_tenants__%s' % model.__name__,
             )
 
         signals.pre_delete.connect(
             handlers.remove_ssh_key_from_all_tenants_on_it_deletion,
             sender=core_models.SshPublicKey,
-            dispatch_uid='nodeconductor_openstack.handlers.remove_ssh_key_from_all_tenants_on_it_deletion',
+            dispatch_uid='openstack.handlers.remove_ssh_key_from_all_tenants_on_it_deletion',
         )
