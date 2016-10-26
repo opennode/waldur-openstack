@@ -313,6 +313,8 @@ class InstanceViewSet(TelemetryMixin,
             raise IncorrectStateException('Instance state has to be active and in state OK.')
         if action == 'change_flavor' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
             raise IncorrectStateException('Instance state has to be shutoff and in state OK.')
+        if action == 'resize' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
+            raise IncorrectStateException('Instance state has to be shutoff and in state OK.')
         if action == 'destroy':
             if instance.state not in (States.OK, States.ERRED):
                 raise IncorrectStateException('Instance state has to be OK or erred.')
