@@ -24,7 +24,7 @@ install_requires = [
 
 setup(
     name='nodeconductor-openstack',
-    version='0.8.0',
+    version='0.9.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://nodeconductor.com',
@@ -40,7 +40,8 @@ setup(
     },
     entry_points={
         'nodeconductor_extensions': (
-            'nodeconductor_openstack = nodeconductor_openstack.extension:OpenStackExtension',
+            'openstack = nodeconductor_openstack.openstack.extension:OpenStackExtension',
+            'openstack_tenant = nodeconductor_openstack.openstack_tenant.extension:OpenStackTenantExtension',
         ),
     },
     include_package_data=True,

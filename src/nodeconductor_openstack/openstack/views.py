@@ -14,11 +14,11 @@ from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
 from nodeconductor.core.views import StateExecutorViewSet, UpdateOnlyStateExecutorViewSet
+from nodeconductor.structure import models as structure_models
 from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import executors as structure_executors
-from nodeconductor.structure import filters as structure_filters
+from nodeconductor.structure import filters as structure_filters, models as structure_models
 from nodeconductor.structure.managers import filter_queryset_for_user
-from nodeconductor.structure.views import safe_operation
 
 from . import Types, models, filters, serializers, executors
 from .log import event_logger
@@ -312,6 +312,8 @@ class InstanceViewSet(TelemetryMixin,
         if action == 'restart' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.ACTIVE):
             raise IncorrectStateException('Instance state has to be active and in state OK.')
         if action == 'change_flavor' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
+            raise IncorrectStateException('Instance state has to be shutoff and in state OK.')
+        if action == 'resize' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
             raise IncorrectStateException('Instance state has to be shutoff and in state OK.')
         if action == 'destroy':
             if instance.state not in (States.OK, States.ERRED):
@@ -1079,7 +1081,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             raise IncorrectStateException()
 
         if not request.user.is_staff and \
-                not tenant.customer.has_user(request.user, models.CustomerRole.OWNER):
+                not tenant.customer.has_user(request.user, structure_models.CustomerRole.OWNER):
             raise exceptions.PermissionDenied()
 
         service = tenant.create_service(name)

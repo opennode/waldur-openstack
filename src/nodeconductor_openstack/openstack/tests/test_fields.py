@@ -3,7 +3,7 @@ import unittest
 from rest_framework import serializers
 
 from nodeconductor.core import utils as core_utils
-from nodeconductor_openstack.fields import StringTimestampField
+from nodeconductor_openstack.openstack.fields import StringTimestampField
 
 
 class StringTimestampFieldTest(unittest.TestCase):

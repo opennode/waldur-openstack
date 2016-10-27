@@ -49,8 +49,8 @@ class BackupScheduleTest(TestCase):
         self.assertFalse(backup.kept_until is None)
         self.assertGreater(backup.kept_until, now - timedelta(days=schedule.retention_time))
 
-    @patch('nodeconductor_openstack.executors.BackupCreateExecutor.execute')
-    @patch('nodeconductor_openstack.executors.BackupDeleteExecutor.execute')
+    @patch('nodeconductor_openstack.openstack.executors.BackupCreateExecutor.execute')
+    @patch('nodeconductor_openstack.openstack.executors.BackupDeleteExecutor.execute')
     def test_execute(self, mocked_delete, mocked_create):
         # we have schedule
         schedule = factories.BackupScheduleFactory(maximal_number_of_backups=1, instance=self.instance)

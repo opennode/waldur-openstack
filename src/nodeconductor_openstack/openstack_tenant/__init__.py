@@ -1,0 +1,1 @@
+default_app_config = 'nodeconductor_openstack.openstack_tenant.apps.OpenStackTenantConfig'
