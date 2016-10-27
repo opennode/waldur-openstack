@@ -17,7 +17,7 @@ from nodeconductor.core.views import StateExecutorViewSet, UpdateOnlyStateExecut
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure import views as structure_views, SupportedServices
 from nodeconductor.structure import executors as structure_executors
-from nodeconductor.structure import filters as structure_filters
+from nodeconductor.structure import filters as structure_filters, models as structure_models
 from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import Types, models, filters, serializers, executors

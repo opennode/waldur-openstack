@@ -64,31 +64,31 @@ class TenantBackgroundPullTask(structure_tasks.BackgroundPullTask):
 
 
 class TenantListPullTask(structure_tasks.BackgroundListPullTask):
-    name = 'nodeconductor_openstack.TenantListPullTask'
+    name = 'openstack.TenantListPullTask'
     model = models.Tenant
     pull_task = TenantBackgroundPullTask
 
 
 class InstanceListPullTask(structure_tasks.BackgroundListPullTask):
-    name = 'nodeconductor_openstack.InstanceListPullTask'
+    name = 'openstack.InstanceListPullTask'
     model = models.Instance
     pull_task = InstanceBackgroundPullTask
 
 
 class VolumeListPullTask(structure_tasks.BackgroundListPullTask):
-    name = 'nodeconductor_openstack.VolumeListPullTask'
+    name = 'openstack.VolumeListPullTask'
     model = models.Volume
     pull_task = VolumeBackgroundPullTask
 
 
-@shared_task(name='nodeconductor.openstack.schedule_backups')
+@shared_task(name='openstack.schedule_backups')
 def schedule_backups():
     for schedule in models.BackupSchedule.objects.filter(is_active=True, next_trigger_at__lt=timezone.now()):
         backend = schedule.get_backend()
         backend.execute()
 
 
-@shared_task(name='nodeconductor.openstack.delete_expired_backups')
+@shared_task(name='openstack.delete_expired_backups')
 def delete_expired_backups():
     from .. import executors  # import here to avoid circular imports
     for backup in models.Backup.objects.filter(kept_until__lt=timezone.now(), state=models.Backup.States.OK):
@@ -97,7 +97,7 @@ def delete_expired_backups():
         executors.DRBackupDeleteExecutor.execute(dr_backup)
 
 
-@shared_task(name='nodeconductor.openstack.set_erred_stuck_resources')
+@shared_task(name='openstack.set_erred_stuck_resources')
 def set_erred_stuck_resources():
     for model in (models.Instance, models.Volume, models.Snapshot):
         cutoff = timezone.now() - timedelta(minutes=30)

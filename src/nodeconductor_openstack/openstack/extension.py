@@ -34,7 +34,7 @@ class OpenStackExtension(NodeConductorExtension):
 
     @staticmethod
     def django_app():
-        return 'nodeconductor_openstack'
+        return 'nodeconductor_openstack.openstack'
 
     @staticmethod
     def rest_urls():
@@ -46,37 +46,37 @@ class OpenStackExtension(NodeConductorExtension):
         from datetime import timedelta
         return {
             'openstack-schedule-backups': {
-                'task': 'nodeconductor.openstack.schedule_backups',
+                'task': 'openstack.schedule_backups',
                 'schedule': timedelta(minutes=10),
                 'args': (),
             },
 
             'openstack-delete-expired-backups': {
-                'task': 'nodeconductor.openstack.delete_expired_backups',
+                'task': 'openstack.delete_expired_backups',
                 'schedule': timedelta(minutes=10),
                 'args': (),
             },
 
             'openstack-set-erred-stuck-resources': {
-                'task': 'nodeconductor.openstack.set_erred_stuck_resources',
+                'task': 'openstack.set_erred_stuck_resources',
                 'schedule': timedelta(minutes=10),
                 'args': (),
             },
 
             'openstack-pull-tenants': {
-                'task': 'nodeconductor_openstack.TenantListPullTask',
+                'task': 'openstack.openstack.TenantListPullTask',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },
 
             'openstack-pull-instances': {
-                'task': 'nodeconductor_openstack.InstanceListPullTask',
+                'task': 'openstack.InstanceListPullTask',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },
 
             'openstack-pull-volumes': {
-                'task': 'nodeconductor_openstack.VolumeListPullTask',
+                'task': 'openstack.VolumeListPullTask',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },

@@ -3,7 +3,7 @@ import logging
 from nodeconductor.core.tasks import ErrorStateTransitionTask, StateTransitionTask
 from nodeconductor.structure.log import event_logger
 
-from nodeconductor_openstack import models
+from .. import models
 
 logger = logging.getLogger(__name__)
 

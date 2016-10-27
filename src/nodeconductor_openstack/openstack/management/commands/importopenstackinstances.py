@@ -7,7 +7,7 @@ from django.core.urlresolvers import reverse
 from rest_framework.exceptions import ValidationError
 
 from nodeconductor.structure import models as structure_models
-from nodeconductor_openstack import models, serializers
+from ... import models, serializers
 
 
 class Command(BaseCommand):
