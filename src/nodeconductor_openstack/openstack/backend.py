@@ -47,6 +47,11 @@ def _update_pulled_fields(instance, imported_instance, fields):
 
 class OpenStackBackend(BaseOpenStackBackend):
 
+    DEFAULTS = {
+        'tenant_name': 'admin',
+        'is_admin': True,
+    }
+
     def check_admin_tenant(self):
         try:
             self.keystone_admin_client
