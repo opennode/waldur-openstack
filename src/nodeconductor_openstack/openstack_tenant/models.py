@@ -92,3 +92,22 @@ class Volume(structure_models.Storage):
     # def decrease_backend_quotas_usage(self):
     #     self.tenant.add_quota_usage(Tenant.Quotas.volumes, -1)
     #     self.tenant.add_quota_usage(Tenant.Quotas.storage, -self.size)
+
+
+class Snapshot(structure_models.Storage):
+    service_project_link = models.ForeignKey(
+        OpenStackTenantServiceProjectLink, related_name='snapshots', on_delete=models.PROTECT)
+    source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.PROTECT)
+    metadata = JSONField(blank=True)
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    # TODO: change service settings quotas
+    # def increase_backend_quotas_usage(self, validate=True):
+    #     self.tenant.add_quota_usage(Tenant.Quotas.snapshots, 1, validate=validate)
+    #     self.tenant.add_quota_usage(Tenant.Quotas.storage, self.size, validate=validate)
+
+    # def decrease_backend_quotas_usage(self):
+    #     self.tenant.add_quota_usage(Tenant.Quotas.snapshots, -1)
+    #     self.tenant.add_quota_usage(Tenant.Quotas.storage, -self.size)
