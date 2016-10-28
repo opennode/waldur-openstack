@@ -64,7 +64,7 @@ class OpenStackExtension(NodeConductorExtension):
             },
 
             'openstack-pull-tenants': {
-                'task': 'openstack.openstack.TenantListPullTask',
+                'task': 'openstack.TenantListPullTask',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },
