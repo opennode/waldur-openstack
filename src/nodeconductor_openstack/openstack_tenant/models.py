@@ -39,14 +39,24 @@ class Flavor(LoggableMixin, structure_models.ServiceProperty):
     ram = models.PositiveIntegerField(help_text='Memory size in MiB')
     disk = models.PositiveIntegerField(help_text='Root disk size in MiB')
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-flavor'
+
 
 class Image(structure_models.ServiceProperty):
     min_disk = models.PositiveIntegerField(default=0, help_text='Minimum disk size in MiB')
     min_ram = models.PositiveIntegerField(default=0, help_text='Minimum memory size in MiB')
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-image'
+
 
 class SecurityGroup(core_models.DescribableMixin, structure_models.ServiceProperty):
-    pass
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-sgp'
 
 
 class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):
@@ -62,3 +72,7 @@ class FloatingIP(structure_models.ServiceProperty):
 
     def __str__(self):
         return '%s:%s | %s' % (self.address, self.status, self.settings)
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-fip'
