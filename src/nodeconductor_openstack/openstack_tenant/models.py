@@ -96,16 +96,17 @@ class Volume(structure_models.Storage):
     source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', null=True, on_delete=models.SET_NULL)
 
     def get_backend(self):
-        return self.tenant.get_backend()
+        return self.service_project_link.service.settings.get_backend()
 
-    # TODO: change service settings quotas
-    # def increase_backend_quotas_usage(self, validate=True):
-    #     self.tenant.add_quota_usage(Tenant.Quotas.volumes, 1, validate=validate)
-    #     self.tenant.add_quota_usage(Tenant.Quotas.storage, self.size, validate=validate)
+    def increase_backend_quotas_usage(self, validate=True):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.volumes, 1, validate=validate)
+        settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
 
-    # def decrease_backend_quotas_usage(self):
-    #     self.tenant.add_quota_usage(Tenant.Quotas.volumes, -1)
-    #     self.tenant.add_quota_usage(Tenant.Quotas.storage, -self.size)
+    def decrease_backend_quotas_usage(self):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.volumes, -1)
+        settings.add_quota_usage(settings.Quotas.storage, -self.size)
 
 
 class Snapshot(structure_models.Storage):
@@ -115,13 +116,14 @@ class Snapshot(structure_models.Storage):
     metadata = JSONField(blank=True)
 
     def get_backend(self):
-        return self.tenant.get_backend()
+        return self.service_project_link.service.settings.get_backend()
 
-    # TODO: change service settings quotas
-    # def increase_backend_quotas_usage(self, validate=True):
-    #     self.tenant.add_quota_usage(Tenant.Quotas.snapshots, 1, validate=validate)
-    #     self.tenant.add_quota_usage(Tenant.Quotas.storage, self.size, validate=validate)
+    def increase_backend_quotas_usage(self, validate=True):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.snapshots, 1, validate=validate)
+        settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
 
-    # def decrease_backend_quotas_usage(self):
-    #     self.tenant.add_quota_usage(Tenant.Quotas.snapshots, -1)
-    #     self.tenant.add_quota_usage(Tenant.Quotas.storage, -self.size)
+    def decrease_backend_quotas_usage(self):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.snapshots, -1)
+        settings.add_quota_usage(settings.Quotas.storage, -self.size)

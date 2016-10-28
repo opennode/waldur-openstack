@@ -19,6 +19,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         self._pull_images()
         self._pull_floating_ips()
         self._pull_security_groups()
+        self._pull_quotas()
 
     def _pull_flavors(self):
         nova = self.nova_client
@@ -124,6 +125,12 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     'cidr': backend_rule['ip_range']['cidr'],
                 })
         security_group.rules.filter(backend_id__in=cur_rules.keys()).delete()
+
+    def _pull_quotas(self):
+        for quota_name, limit in self.get_tenant_quotas_limits(self.tenant_id).items():
+            self.settings.set_quota_limit(quota_name, limit)
+        for quota_name, usage in self.get_tenant_quotas_usage(self.tenant_id).items():
+            self.settings.set_quota_usage(quota_name, limit, fail_silently=True)
 
     def _normalize_security_group_rule(self, rule):
         if rule['ip_protocol'] is None:

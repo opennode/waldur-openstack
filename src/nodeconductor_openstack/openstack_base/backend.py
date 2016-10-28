@@ -25,6 +25,8 @@ from novaclient import exceptions as nova_exceptions
 
 from nodeconductor.structure import ServiceBackend, ServiceBackendError
 
+from nodeconductor_openstack.openstack.models import Tenant
+
 
 logger = logging.getLogger(__name__)
 
@@ -232,3 +234,69 @@ class BaseOpenStackBackend(ServiceBackend):
             return False
         else:
             return True
+
+    def get_tenant_quotas_limits(self, tenant_backend_id):
+        nova = self.nova_client
+        neutron = self.neutron_client
+        cinder = self.cinder_client
+
+        try:
+            nova_quotas = nova.quotas.get(tenant_id=tenant_backend_id)
+            cinder_quotas = cinder.quotas.get(tenant_id=tenant_backend_id)
+            neutron_quotas = neutron.show_quota(tenant_id=tenant_backend_id)['quota']
+        except (nova_exceptions.ClientException,
+                cinder_exceptions.ClientException,
+                neutron_exceptions.NeutronClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return {
+            Tenant.Quotas.ram: nova_quotas.ram,
+            Tenant.Quotas.vcpu: nova_quotas.cores,
+            Tenant.Quotas.storage: self.gb2mb(cinder_quotas.gigabytes),
+            Tenant.Quotas.snapshots: cinder_quotas.snapshots,
+            Tenant.Quotas.volumes: cinder_quotas.volumes,
+            Tenant.Quotas.instances: nova_quotas.instances,
+            Tenant.Quotas.security_group_count: neutron_quotas['security_group'],
+            Tenant.Quotas.security_group_rule_count: neutron_quotas['security_group_rule'],
+            Tenant.Quotas.floating_ip_count: neutron_quotas['floatingip'],
+        }
+
+    def get_tenant_quotas_usage(self, tenant_backend_id):
+        nova = self.nova_client
+        neutron = self.neutron_client
+        cinder = self.cinder_client
+        try:
+            volumes = cinder.volumes.list()
+            snapshots = cinder.volume_snapshots.list()
+            instances = nova.servers.list()
+            security_groups = nova.security_groups.list()
+            floating_ips = neutron.list_floatingips(tenant_id=tenant_backend_id)['floatingips']
+
+            flavors = {flavor.id: flavor for flavor in nova.flavors.list()}
+
+            ram, vcpu = 0, 0
+            for flavor_id in (instance.flavor['id'] for instance in instances):
+                try:
+                    flavor = flavors.get(flavor_id, nova.flavors.get(flavor_id))
+                except nova_exceptions.NotFound:
+                    logger.warning('Cannot find flavor with id %s', flavor_id)
+                    continue
+
+                ram += getattr(flavor, 'ram', 0)
+                vcpu += getattr(flavor, 'vcpus', 0)
+
+        except (nova_exceptions.ClientException,
+                cinder_exceptions.ClientException,
+                neutron_exceptions.NeutronClientException) as e:
+            six.reraise(OpenStackBackendError, e)
+        return {
+            Tenant.Quotas.ram: ram,
+            Tenant.Quotas.vcpu: vcpu,
+            Tenant.Quotas.storage: sum(self.gb2mb(v.size) for v in volumes + snapshots),
+            Tenant.Quotas.volumes: len(volumes),
+            Tenant.Quotas.snapshots: len(snapshots),
+            Tenant.Quotas.instances: len(instances),
+            Tenant.Quotas.security_group_count: len(security_groups),
+            Tenant.Quotas.security_group_rule_count: len(sum([sg.rules for sg in security_groups], [])),
+            Tenant.Quotas.floating_ip_count: len(floating_ips),
+        }

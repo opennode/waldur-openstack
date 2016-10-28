@@ -296,63 +296,10 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action('pull quotas for tenant')
     def pull_tenant_quotas(self, tenant):
-        nova = self.nova_client
-        neutron = self.neutron_client
-        cinder = self.cinder_client
-
-        try:
-            nova_quotas = nova.quotas.get(tenant_id=tenant.backend_id)
-            cinder_quotas = cinder.quotas.get(tenant_id=tenant.backend_id)
-            neutron_quotas = neutron.show_quota(tenant_id=tenant.backend_id)['quota']
-        except (nova_exceptions.ClientException,
-                cinder_exceptions.ClientException,
-                neutron_exceptions.NeutronClientException) as e:
-            six.reraise(OpenStackBackendError, e)
-
-        tenant.set_quota_limit('ram', nova_quotas.ram)
-        tenant.set_quota_limit('vcpu', nova_quotas.cores)
-        tenant.set_quota_limit('storage', self.gb2mb(cinder_quotas.gigabytes))
-        tenant.set_quota_limit('snapshots', cinder_quotas.snapshots)
-        tenant.set_quota_limit('volumes', cinder_quotas.volumes)
-        tenant.set_quota_limit('instances', nova_quotas.instances)
-        tenant.set_quota_limit('security_group_count', neutron_quotas['security_group'])
-        tenant.set_quota_limit('security_group_rule_count', neutron_quotas['security_group_rule'])
-        tenant.set_quota_limit('floating_ip_count', neutron_quotas['floatingip'])
-
-        try:
-            volumes = cinder.volumes.list()
-            snapshots = cinder.volume_snapshots.list()
-            instances = nova.servers.list()
-            security_groups = nova.security_groups.list()
-            floating_ips = neutron.list_floatingips(tenant_id=tenant.backend_id)['floatingips']
-
-            flavors = {flavor.id: flavor for flavor in nova.flavors.list()}
-
-            ram, vcpu = 0, 0
-            for flavor_id in (instance.flavor['id'] for instance in instances):
-                try:
-                    flavor = flavors.get(flavor_id, nova.flavors.get(flavor_id))
-                except nova_exceptions.NotFound:
-                    logger.warning('Cannot find flavor with id %s', flavor_id)
-                    continue
-
-                ram += getattr(flavor, 'ram', 0)
-                vcpu += getattr(flavor, 'vcpus', 0)
-
-        except (nova_exceptions.ClientException,
-                cinder_exceptions.ClientException,
-                neutron_exceptions.NeutronClientException) as e:
-            six.reraise(OpenStackBackendError, e)
-
-        tenant.set_quota_usage('ram', ram)
-        tenant.set_quota_usage('vcpu', vcpu)
-        tenant.set_quota_usage('storage', sum(self.gb2mb(v.size) for v in volumes + snapshots))
-        tenant.set_quota_usage('volumes', len(volumes))
-        tenant.set_quota_usage('snapshots', len(snapshots))
-        tenant.set_quota_usage('instances', len(instances), fail_silently=True)
-        tenant.set_quota_usage('security_group_count', len(security_groups))
-        tenant.set_quota_usage('security_group_rule_count', len(sum([sg.rules for sg in security_groups], [])))
-        tenant.set_quota_usage('floating_ip_count', len(floating_ips))
+        for quota_name, limit in self.get_tenant_quotas_limits(tenant.backend_id).items():
+            tenant.set_quota_limit(quota_name, limit)
+        for quota_name, usage in self.get_tenant_quotas_usage(tenant.backend_id).items():
+            tenant.set_quota_usage(quota_name, limit, fail_silently=True)
 
     @log_backend_action('pull floating IPs for tenant')
     def pull_tenant_floating_ips(self, tenant):

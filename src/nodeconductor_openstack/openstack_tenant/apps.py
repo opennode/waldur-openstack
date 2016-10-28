@@ -16,6 +16,16 @@ class OpenStackTenantConfig(AppConfig):
         from .backend import OpenStackTenantBackend
         SupportedServices.register_backend(OpenStackTenantBackend)
 
-        # from nodeconductor.structure.models import ServiceSettings
-        # from nodeconductor.quotas.fields import QuotaField
-        # TODO: initialize service settings quotas based on tenant.
+        # Initialize service settings quotas based on tenant.
+        from nodeconductor.structure.models import ServiceSettings
+        from nodeconductor.quotas.fields import QuotaField
+        from nodeconductor_openstack.openstack.models import Tenant
+        for quota_name in Tenant.get_quotas_names():
+            ServiceSettings.add_quota_field(
+                name=quota_name,
+                quota_field=QuotaField(
+                    is_backend=True,
+                    creation_condition=lambda service_settings:
+                        service_settings.type == OpenStackTenantConfig.service_name
+                )
+            )
