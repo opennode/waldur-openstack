@@ -1,5 +1,7 @@
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
+from jsonfield import JSONField
 
 from nodeconductor.core import models as core_models
 from nodeconductor.logging.loggers import LoggableMixin
@@ -76,3 +78,52 @@ class FloatingIP(structure_models.ServiceProperty):
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-fip'
+
+
+class Volume(structure_models.Storage):
+    service_project_link = models.ForeignKey(
+        OpenStackTenantServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
+    instance = None  # TODO: add FK to Instance WAL-119
+    device = models.CharField(
+        max_length=50, blank=True,
+        validators=[RegexValidator('^/dev/[a-zA-Z0-9]+$', message='Device should match pattern "/dev/alphanumeric+"')],
+        help_text='Name of volume as instance device e.g. /dev/vdb.')
+    bootable = models.BooleanField(default=False)
+    metadata = JSONField(blank=True)
+    image = models.ForeignKey(Image, null=True)
+    image_metadata = JSONField(blank=True)
+    type = models.CharField(max_length=100, blank=True)
+    source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', null=True, on_delete=models.SET_NULL)
+
+    def get_backend(self):
+        return self.service_project_link.service.settings.get_backend()
+
+    def increase_backend_quotas_usage(self, validate=True):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.volumes, 1, validate=validate)
+        settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.volumes, -1)
+        settings.add_quota_usage(settings.Quotas.storage, -self.size)
+
+
+class Snapshot(structure_models.Storage):
+    service_project_link = models.ForeignKey(
+        OpenStackTenantServiceProjectLink, related_name='snapshots', on_delete=models.PROTECT)
+    source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.PROTECT)
+    metadata = JSONField(blank=True)
+
+    def get_backend(self):
+        return self.service_project_link.service.settings.get_backend()
+
+    def increase_backend_quotas_usage(self, validate=True):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.snapshots, 1, validate=validate)
+        settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.snapshots, -1)
+        settings.add_quota_usage(settings.Quotas.storage, -self.size)
