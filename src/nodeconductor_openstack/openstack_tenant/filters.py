@@ -30,4 +30,16 @@ class FlavorFilter(structure_filters.ServicePropertySettingsFilter):
         ]
 
 
+class VolumeFilter(structure_filters.BaseResourceStateFilter):
+    # TODO: Add filtration by source instance.
+    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+        model = models.Volume
 
+
+class SnapshotFilter(structure_filters.BaseResourceFilter):
+    source_volume_uuid = core_filters.UUIDFilter(name='source_volume__uuid')
+    source_volume = core_filters.URLFilter(view_name='openstacktenant-volume-detail', name='source_volume__uuid')
+
+    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+        model = models.Snapshot
+        fields = structure_filters.BaseResourceStateFilter.Meta.fields + ('source_volume_uuid', 'source_volume')

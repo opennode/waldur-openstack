@@ -83,7 +83,7 @@ class FloatingIP(structure_models.ServiceProperty):
 class Volume(structure_models.Storage):
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
-    # TODO: add FK to Instance WAL-119
+    instance = None  # TODO: add FK to Instance WAL-119
     device = models.CharField(
         max_length=50, blank=True,
         validators=[RegexValidator('^/dev/[a-zA-Z0-9]+$', message='Device should match pattern "/dev/alphanumeric+"')],
