@@ -2,11 +2,9 @@ from __future__ import unicode_literals
 
 from django.db import models
 from django.conf import settings
-from django.core.validators import MaxValueValidator, RegexValidator
-from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.utils.encoding import python_2_unicode_compatible, force_text
 from jsonfield import JSONField
-from iptools.ipv4 import validate_cidr
 from model_utils import FieldTracker
 from model_utils.models import TimeStampedModel
 from urlparse import urlparse
@@ -18,6 +16,7 @@ from nodeconductor.quotas.models import QuotaModelMixin
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.utils import get_coordinates_by_ip, Coordinates
 
+from nodeconductor_openstack.openstack_base import models as openstack_base_models
 from .backup import BackupScheduleBackend
 
 
@@ -120,66 +119,8 @@ class SecurityGroup(core_models.UuidMixin,
         return 'openstack-sgp'
 
 
-@python_2_unicode_compatible
-class SecurityGroupRule(models.Model):
-    TCP = 'tcp'
-    UDP = 'udp'
-    ICMP = 'icmp'
-
-    CHOICES = (
-        (TCP, 'tcp'),
-        (UDP, 'udp'),
-        (ICMP, 'icmp'),
-    )
-
+class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):
     security_group = models.ForeignKey(SecurityGroup, related_name='rules')
-    protocol = models.CharField(max_length=4, blank=True, choices=CHOICES)
-    from_port = models.IntegerField(validators=[MaxValueValidator(65535)], null=True)
-    to_port = models.IntegerField(validators=[MaxValueValidator(65535)], null=True)
-    cidr = models.CharField(max_length=32, blank=True)
-
-    backend_id = models.CharField(max_length=128, blank=True)
-
-    def validate_icmp(self):
-        if self.from_port is not None and not -1 <= self.from_port <= 255:
-            raise ValidationError('Wrong value for "from_port": '
-                                  'expected value in range [-1, 255], found %d' % self.from_port)
-        if self.to_port is not None and not -1 <= self.to_port <= 255:
-            raise ValidationError('Wrong value for "to_port": '
-                                  'expected value in range [-1, 255], found %d' % self.to_port)
-
-    def validate_port(self):
-        if self.from_port is not None and self.to_port is not None:
-            if self.from_port > self.to_port:
-                raise ValidationError('"from_port" should be less or equal to "to_port"')
-        if self.from_port is not None and self.from_port < 1:
-            raise ValidationError('Wrong value for "from_port": '
-                                  'expected value in range [1, 65535], found %d' % self.from_port)
-        if self.to_port is not None and self.to_port < 1:
-            raise ValidationError('Wrong value for "to_port": '
-                                  'expected value in range [1, 65535], found %d' % self.to_port)
-
-    def validate_cidr(self):
-        if not self.cidr:
-            return
-
-        if not validate_cidr(self.cidr):
-            raise ValidationError(
-                'Wrong cidr value. Expected cidr format: <0-255>.<0-255>.<0-255>.<0-255>/<0-32>')
-
-    def clean(self):
-        if self.protocol == 'icmp':
-            self.validate_icmp()
-        elif self.protocol in ('tcp', 'udp'):
-            self.validate_port()
-        else:
-            raise ValidationError('Wrong value for "protocol": '
-                                  'expected one of (tcp, udp, icmp), found %s' % self.protocol)
-        self.validate_cidr()
-
-    def __str__(self):
-        return '%s (%s): %s (%s -> %s)' % \
-               (self.security_group, self.protocol, self.cidr, self.from_port, self.to_port)
 
 
 class IpMapping(core_models.UuidMixin):

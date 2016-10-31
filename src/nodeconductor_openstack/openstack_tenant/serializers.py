@@ -1,3 +1,5 @@
+from rest_framework import serializers
+
 from nodeconductor.core import serializers as core_serializers
 from nodeconductor.structure import serializers as structure_serializers
 
@@ -42,5 +44,61 @@ class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkS
         model = models.OpenStackTenantServiceProjectLink
         extra_kwargs = {
             'url': {'view_name': 'openstacktenant-spl-detail'},
-            'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},
+            'service': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-detail'},
         }
+
+
+class ImageSerializer(structure_serializers.BasePropertySerializer):
+
+    class Meta(structure_serializers.BasePropertySerializer.Meta):
+        model = models.Image
+        fields = ('url', 'uuid', 'name', 'settings', 'min_disk', 'min_ram',)
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-image-detail'},
+            'settings': {'lookup_field': 'uuid'},
+        }
+
+
+class FlavorSerializer(structure_serializers.BasePropertySerializer):
+
+    class Meta(structure_serializers.BasePropertySerializer.Meta):
+        model = models.Flavor
+        fields = ('url', 'uuid', 'name', 'settings', 'cores', 'ram', 'disk',)
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-flavor-detail'},
+            'settings': {'lookup_field': 'uuid'},
+        }
+
+
+class FloatingIPSerializer(structure_serializers.BasePropertySerializer):
+
+    class Meta(structure_serializers.BasePropertySerializer.Meta):
+        model = models.FloatingIP
+        fields = ('url', 'uuid', 'settings', 'address', 'status', 'is_booked',)
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-fip-detail'},
+            'settings': {'lookup_field': 'uuid'},
+        }
+
+
+class SecurityGroupSerializer(structure_serializers.BasePropertySerializer):
+    rules = serializers.SerializerMethodField()
+
+    class Meta(structure_serializers.BasePropertySerializer.Meta):
+        model = models.SecurityGroup
+        fields = ('url', 'uuid', 'name', 'settings', 'description', 'rules')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-sgp-detail'},
+            'settings': {'lookup_field': 'uuid'},
+        }
+
+    def get_rules(self, security_group):
+        rules = []
+        for rule in security_group.rules.all():
+            rules.append({
+                'protocol': rule.protocol,
+                'from_port': rule.from_port,
+                'to_port': rule.to_port,
+                'cidr': rule.cidr,
+            })
+        return rules

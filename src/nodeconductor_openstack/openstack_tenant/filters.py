@@ -9,3 +9,25 @@ class OpenStackTenantServiceProjectLinkFilter(structure_filters.BaseServiceProje
 
     class Meta(object):
         model = models.OpenStackTenantServiceProjectLink
+
+
+class FlavorFilter(structure_filters.ServicePropertySettingsFilter):
+
+    class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
+        model = models.Flavor
+        fields = dict({
+            'cores': ['exact', 'gte', 'lte'],
+            'ram': ['exact', 'gte', 'lte'],
+            'disk': ['exact', 'gte', 'lte'],
+        }, **{field: ['exact'] for field in structure_filters.ServicePropertySettingsFilter.Meta.fields})
+        order_by = [
+            'cores',
+            '-cores',
+            'ram',
+            '-ram',
+            'disk',
+            '-disk',
+        ]
+
+
+
