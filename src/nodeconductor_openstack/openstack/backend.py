@@ -20,29 +20,12 @@ from nodeconductor.core.models import StateMixin
 from nodeconductor.core.tasks import send_task
 from nodeconductor.structure import log_backend_action, SupportedServices
 
-from nodeconductor_openstack.openstack_base.backend import OpenStackBackendError, BaseOpenStackBackend
+from nodeconductor_openstack.openstack_base.backend import (
+    OpenStackBackendError, BaseOpenStackBackend, update_pulled_fields)
 from . import models
 
 
 logger = logging.getLogger(__name__)
-
-
-def _update_pulled_fields(instance, imported_instance, fields):
-    """ Update instance fields based on imported from backend data.
-
-        Save changes to DB only one or more fields were changed.
-    """
-    modified = False
-    for field in fields:
-        pulled_value = getattr(imported_instance, field)
-        current_value = getattr(instance, field)
-        if current_value != pulled_value:
-            setattr(instance, field, pulled_value)
-            logger.info("%s's with uuid %s %s field updated from value '%s' to value '%s'",
-                        instance.__class__.__name__, instance.uuid.hex, field, current_value, pulled_value)
-            modified = True
-    if modified:
-        instance.save()
 
 
 class OpenStackBackend(BaseOpenStackBackend):
@@ -299,7 +282,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         for quota_name, limit in self.get_tenant_quotas_limits(tenant.backend_id).items():
             tenant.set_quota_limit(quota_name, limit)
         for quota_name, usage in self.get_tenant_quotas_usage(tenant.backend_id).items():
-            tenant.set_quota_usage(quota_name, limit, fail_silently=True)
+            tenant.set_quota_usage(quota_name, usage, fail_silently=True)
 
     @log_backend_action('pull floating IPs for tenant')
     def pull_tenant_floating_ips(self, tenant):
@@ -567,7 +550,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         tenant.refresh_from_db()
         # if tenant was not modified in NC database after import.
         if tenant.modified < import_time:
-            _update_pulled_fields(tenant, imported_tenant, ('name', 'description'))
+            update_pulled_fields(tenant, imported_tenant, ('name', 'description'))
 
     @log_backend_action()
     def add_admin_user_to_tenant(self, tenant):
@@ -900,7 +883,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         if instance.modified < import_time:
             update_fields = ('ram', 'cores', 'disk', 'internal_ips',
                              'external_ips', 'runtime_state', 'error_message')
-            _update_pulled_fields(instance, imported_instance, update_fields)
+            update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
     def cleanup_tenant(self, tenant, dryrun=True):
@@ -1659,7 +1642,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 update_fields = ('name', 'description', 'size', 'metadata',
                                  'type', 'bootable', 'runtime_state', 'device')
 
-            _update_pulled_fields(volume, imported_volume, update_fields)
+            update_pulled_fields(volume, imported_volume, update_fields)
 
     @log_backend_action()
     def create_snapshot(self, snapshot, force=False):
@@ -1715,7 +1698,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         snapshot.refresh_from_db()
         if snapshot.modified < import_time:
             update_fields = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
-            _update_pulled_fields(snapshot, imported_snapshot, update_fields)
+            update_pulled_fields(snapshot, imported_snapshot, update_fields)
 
     @log_backend_action()
     def pull_snapshot_runtime_state(self, snapshot):
