@@ -108,6 +108,10 @@ class Volume(structure_models.Storage):
         settings.add_quota_usage(settings.Quotas.volumes, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-volume'
+
 
 class Snapshot(structure_models.Storage):
     service_project_link = models.ForeignKey(
@@ -127,3 +131,7 @@ class Snapshot(structure_models.Storage):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.snapshots, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-snapshot'
