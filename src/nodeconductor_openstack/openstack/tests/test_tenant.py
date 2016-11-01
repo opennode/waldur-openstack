@@ -22,7 +22,7 @@ class TenantQuotasTest(BaseTenantActionsTest):
         self.client.force_authenticate(user=structure_factories.UserFactory())
         response = self.client.post(self.get_url())
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertFalse(mocked_task.called)
 
     def test_staff_can_set_tenant_quotas(self, mocked_task):

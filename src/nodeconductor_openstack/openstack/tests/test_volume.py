@@ -90,7 +90,7 @@ class VolumeAttachTestCase(test.APITransactionTestCase):
         self.volume.save()
 
         response = self.get_response()
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_user_can_not_attach_used_volume_to_instance(self):
         self.volume.state = models.Volume.States.OK
