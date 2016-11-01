@@ -12,8 +12,6 @@ from .. import models, views
 from . import factories
 from .test_backend import BaseBackendTestCase
 
-views.InstanceViewSet.async_executor = False
-
 
 class BaseInstanceDeletionTest(BaseBackendTestCase):
     def setUp(self):
@@ -25,6 +23,11 @@ class BaseInstanceDeletionTest(BaseBackendTestCase):
         )
         self.instance.increase_backend_quotas_usage()
         self.mocked_nova().servers.get.side_effect = nova_exceptions.NotFound(code=404)
+        views.InstanceViewSet.async_executor = False
+
+    def tearDown(self):
+        super(BaseInstanceDeletionTest, self).tearDown()
+        views.InstanceViewSet.async_executor = True
 
     def mock_volumes(self, delete_data_volume=True):
         self.data_volume = self.instance.volumes.get(bootable=False)
