@@ -1309,14 +1309,14 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     def check_operation(self, request, resource, action):
         volume = resource
         if action == 'attach' and volume.runtime_state != 'available':
-            raise ValidationError('Volume runtime state should be "available".')
+            raise IncorrectStateException('Volume runtime state should be "available".')
         elif action == 'detach':
             if volume.runtime_state != 'in-use':
-                raise ValidationError('Volume runtime state should be "in-use".')
+                raise IncorrectStateException('Volume runtime state should be "in-use".')
             if not volume.instance:
-                raise ValidationError('Volume is not attached to any instance.')
+                raise IncorrectStateException('Volume is not attached to any instance.')
             if volume.instance.state != models.Instance.States.OK:
-                raise ValidationError('Volume can be detached only if instance is offline.')
+                raise IncorrectStateException('Volume can be detached only if instance is offline.')
         return super(VolumeViewSet, self).check_operation(request, resource, action)
 
 
