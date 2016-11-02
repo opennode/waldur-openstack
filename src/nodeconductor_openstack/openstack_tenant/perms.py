@@ -9,6 +9,7 @@ PERMISSION_LOGICS = (
     ('openstack_tenant.Image', StaffPermissionLogic(any_permission=True)),
     ('openstack_tenant.FloatingIP', StaffPermissionLogic(any_permission=True)),
     ('openstack_tenant.SecurityGroup', StaffPermissionLogic(any_permission=True)),
+    ('openstack_tenant.SecurityGroupRule', StaffPermissionLogic(any_permission=True)),
     ('openstack_tenant.Volume', structure_perms.resource_permission_logic),
     ('openstack_tenant.Snapshot', structure_perms.resource_permission_logic),
     ('openstack_tenant.Instance', structure_perms.resource_permission_logic),
