@@ -1,10 +1,14 @@
-from django.db import transaction
-from django.utils import six, timezone
+import logging
+import time
 
+from django.db import transaction
+from django.utils import six, timezone, dateparse
+
+from cinderclient import exceptions as cinder_exceptions
 from glanceclient import exc as glance_exceptions
+from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
-from cinderclient import exceptions as cinder_exceptions
 
 from nodeconductor.structure import log_backend_action
 
@@ -13,9 +17,14 @@ from nodeconductor_openstack.openstack_base.backend import (
 from . import models
 
 
+logger = logging.getLogger(__name__)
+
+
 class OpenStackTenantBackend(BaseOpenStackBackend):
 
     def __init__(self, settings):
+        self.external_network_id = settings.options['external_network_id']
+        self.internal_network_id = settings.options['internal_network_id']
         super(OpenStackTenantBackend, self).__init__(settings, settings.options['tenant_id'])
 
     def sync(self):
@@ -86,9 +95,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     settings=self.settings,
                     backend_id=backend_ip['id'],
                     defaults={
-                        'status': ip['status'],
-                        'address': ip['floating_ip_address'],
-                        'backend_network_id': ip['floating_network_id'],
+                        'status': backend_ip['status'],
+                        'address': backend_ip['floating_ip_address'],
+                        'backend_network_id': backend_ip['floating_network_id'],
                     })
 
             models.FloatingIP.objects.filter(backend_id__in=cur_ips.keys()).delete()
@@ -387,4 +396,438 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except cinder_exceptions.NotFound:
             return True
         except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def create_instance(self, instance, backend_flavor_id=None,
+                        skip_external_ip_assignment=False, public_key=None, floating_ip_uuid=None):
+        nova = self.nova_client
+
+        floating_ip = None
+        if floating_ip_uuid:
+            floating_ip = models.FloatingIP.objects.get(uuid=floating_ip_uuid)
+        elif not skip_external_ip_assignment:
+            floating_ip = self._get_or_create_floating_ip()
+
+        if floating_ip:
+            floating_ip.status = 'BOOKED'
+            floating_ip.save(update_fields=['status'])
+
+        try:
+            backend_flavor = nova.flavors.get(backend_flavor_id)
+
+            # instance key name and fingerprint are optional
+            if instance.key_name:
+                backend_public_key = self._get_or_create_ssh_key(
+                    instance.key_name, instance.key_fingerprint, public_key)
+            else:
+                backend_public_key = None
+
+            if instance.volumes.count() != 2:
+                raise OpenStackBackendError('Current installation can create instance with 2 volumes only.')
+            try:
+                system_volume = instance.volumes.get(bootable=True)
+                data_volume = instance.volumes.get(bootable=False)
+            except models.Volume.DoesNotExist:
+                raise OpenStackBackendError(
+                    'Current installation can create only instance with 1 system volume and 1 data volume.')
+
+            security_group_ids = instance.security_groups.values_list('backend_id', flat=True)
+
+            server_create_parameters = dict(
+                name=instance.name,
+                image=None,  # Boot from volume, see boot_index below
+                flavor=backend_flavor,
+                block_device_mapping_v2=[
+                    {
+                        'boot_index': 0,
+                        'destination_type': 'volume',
+                        'device_type': 'disk',
+                        'source_type': 'volume',
+                        'uuid': system_volume.backend_id,
+                        'delete_on_termination': True,
+                    },
+                    {
+                        'destination_type': 'volume',
+                        'device_type': 'disk',
+                        'source_type': 'volume',
+                        'uuid': data_volume.backend_id,
+                        'delete_on_termination': True,
+                    },
+                ],
+                nics=[
+                    {'net-id': self.internal_network_id}
+                ],
+                key_name=backend_public_key.name if backend_public_key is not None else None,
+                security_groups=security_group_ids,
+            )
+            availability_zone = self.settings.options['availability_zone']
+            if availability_zone:
+                server_create_parameters['availability_zone'] = availability_zone
+            if instance.user_data:
+                server_create_parameters['userdata'] = instance.user_data
+
+            server = nova.servers.create(**server_create_parameters)
+
+            instance.backend_id = server.id
+            instance.save()
+
+            if not self._wait_for_instance_status(instance, nova, 'ACTIVE', 'ERROR'):
+                logger.error(
+                    "Failed to provision instance %s: timed out waiting "
+                    "for instance to become online",
+                    instance.uuid)
+                raise OpenStackBackendError("Timed out waiting for instance %s to provision" % instance.uuid)
+
+            logger.debug("About to infer internal ip addresses of instance %s", instance.uuid)
+            try:
+                server = nova.servers.get(server.id)
+                fixed_address = server.addresses.values()[0][0]['addr']
+            except (nova_exceptions.ClientException, KeyError, IndexError):
+                logger.exception(
+                    "Failed to infer internal ip addresses of instance %s", instance.uuid)
+            else:
+                instance.internal_ips = fixed_address
+                instance.save()
+                logger.info(
+                    "Successfully inferred internal ip addresses of instance %s", instance.uuid)
+
+            if floating_ip:
+                self.assign_floating_ip_to_instance(instance, floating_ip.uuid)
+            else:
+                logger.info("Skipping floating IP assignment for instance %s", instance.uuid)
+
+            backend_security_groups = server.list_security_group()
+            for bsg in backend_security_groups:
+                if instance.security_groups.filter(name=bsg.name).exists():
+                    continue
+                try:
+                    security_group = models.SecurityGroup.objects.get(name=bsg.name)
+                except models.SecurityGroup.DoesNotExist:
+                    logger.error(
+                        'Security group "%s" does not exist, but instance %s (PK: %s) has it.' %
+                        (bsg.name, instance, instance.pk)
+                    )
+                else:
+                    instance.security_groups.add(security_group)
+
+        except nova_exceptions.ClientException as e:
+            logger.exception("Failed to provision instance %s", instance.uuid)
+            six.reraise(OpenStackBackendError, e)
+        else:
+            logger.info("Successfully provisioned instance %s", instance.uuid)
+
+    def _get_or_create_floating_ip(self):
+        # TODO: check availability and quota
+        if not models.FloatingIP.objects.filter(
+            status='DOWN',
+            backend_network_id=self.external_network_id,
+        ).exists():
+            self._allocate_floating_ip_address()
+        return models.FloatingIP.objects.filter(
+            status='DOWN',
+            backend_network_id=self.external_network_id,
+        ).first()
+
+    @log_backend_action()
+    def _allocate_floating_ip_address(self):
+        neutron = self.neutron_client
+        try:
+            ip_address = neutron.create_floatingip({
+                'floatingip': {
+                    'floating_network_id': self.external_network_id,
+                    'tenant_id': self.tenant_id,
+                }
+            })['floatingip']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            models.FloatingIP.objects.create(
+                status='DOWN',
+                address=ip_address['floating_ip_address'],
+                backend_id=ip_address['id'],
+                backend_network_id=ip_address['floating_network_id'],
+            )
+
+    @log_backend_action()
+    def assign_floating_ip_to_instance(self, instance, floating_ip_uuid):
+        nova = self.nova_client
+        floating_ip = models.FloatingIP.objects.get(uuid=floating_ip_uuid)
+        try:
+            nova.servers.add_floating_ip(
+                server=instance.backend_id,
+                address=floating_ip.address,
+                fixed_address=instance.internal_ips
+            )
+        except nova_exceptions.ClientException as e:
+            floating_ip.status = 'DOWN'
+            floating_ip.save(update_fields=['status'])
+            six.reraise(OpenStackBackendError, e)
+        else:
+            floating_ip.status = 'ACTIVE'
+            floating_ip.save(update_fields=['status'])
+            instance.external_ips = floating_ip.address
+            instance.save(update_fields=['external_ips'])
+
+    def _get_or_create_ssh_key(self, key_name, fingerprint, public_key):
+        nova = self.nova_client
+
+        try:
+            return nova.keypairs.find(fingerprint=fingerprint)
+        except nova_exceptions.NotFound:
+            # Fine, it's a new key, let's add it
+            try:
+                logger.info('Propagating ssh public key %s to backend', key_name)
+                return nova.keypairs.create(name=key_name, public_key=public_key)
+            except nova_exceptions.ClientException as e:
+                six.reraise(OpenStackBackendError, e)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    def _wait_for_instance_status(self, instance, nova, complete_status,
+                                  error_status=None, retries=300, poll_interval=3):
+        complete_state_predicate = lambda o: o.status == complete_status
+        if error_status is not None:
+            error_state_predicate = lambda o: o.status == error_status
+        else:
+            error_state_predicate = lambda _: False
+
+        for _ in range(retries):
+            obj = nova.servers.get(instance.backend_id)
+            logger.debug('Instance %s status: "%s"' % (obj, obj.status))
+            if instance.runtime_state != obj.status:
+                instance.runtime_state = obj.status
+                instance.save(update_fields=['runtime_state'])
+
+            if complete_state_predicate(obj):
+                return True
+
+            if error_state_predicate(obj):
+                return False
+
+            time.sleep(poll_interval)
+        else:
+            return False
+
+    @log_backend_action()
+    def update_instance(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.update(instance.backend_id, name=instance.name)
+        except keystone_exceptions.NotFound as e:
+            six.reraise(OpenStackBackendError, e)
+
+    def import_instance(self, backend_instance_id, save=True, service_project_link=None):
+        nova = self.nova_client
+        try:
+            backend_instance = nova.servers.get(backend_instance_id)
+            flavor = nova.flavors.get(backend_instance.flavor['id'])
+            attached_volume_ids = [v.volumeId for v in nova.volumes.get_server_volumes(backend_instance_id)]
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        # import and parse IPs.
+        ips = {}
+        for net_conf in backend_instance.addresses.values():
+            for ip in net_conf:
+                if ip['OS-EXT-IPS:type'] == 'fixed':
+                    ips['internal'] = ip['addr']
+                if ip['OS-EXT-IPS:type'] == 'floating':
+                    ips['external'] = ip['addr']
+
+        # import launch time.
+        try:
+            d = dateparse.parse_datetime(backend_instance.to_dict()['OS-SRV-USG:launched_at'])
+        except (KeyError, ValueError, TypeError):
+            launch_time = None
+        else:
+            # At the moment OpenStack does not provide any timezone info,
+            # but in future it might do.
+            if timezone.is_naive(d):
+                launch_time = timezone.make_aware(d, timezone.utc)
+
+        with transaction.atomic():
+            # import instance volumes, or use existed if they already exist in NodeConductor.
+            volumes = []
+            for backend_volume_id in attached_volume_ids:
+                try:
+                    volumes.append(models.Volume.objects.get(
+                        service_project_link__service__settings=self.settings, backend_id=backend_volume_id))
+                except models.Volume.DoesNotExist:
+                    volumes.append(self.import_volume(backend_volume_id, save=save))
+
+            # security groups should exist in NodeConductor.
+            security_groups_names = [sg['name'] for sg in getattr(backend_instance, 'security_groups', [])]
+            security_groups = models.SecurityGroup.objects.filter(
+                settings=self.settings, name__in=security_groups_names)
+            if security_groups.count() != len(security_groups_names):
+                self._pull_security_groups()
+            security_groups = []
+            for name in security_groups_names:
+                try:
+                    security_groups.append(models.SecurityGroup.objects.get(settings=self.settings, name=name))
+                except models.SecurityGroup.DoesNotExist:
+                    raise OpenStackBackendError('Security group with name "%s" does not exist in NodeConductor.' % name)
+
+            instance = models.Instance(
+                name=backend_instance.name or backend_instance.id,
+                key_name=backend_instance.key_name or '',
+                start_time=launch_time,
+                state=models.Instance.States.OK,
+                runtime_state=backend_instance.status,
+                created=dateparse.parse_datetime(backend_instance.created),
+
+                flavor_name=flavor.name,
+                flavor_disk=flavor.disk,
+                cores=flavor.vcpus,
+                ram=flavor.ram,
+                disk=sum([v.size for v in volumes]),
+
+                internal_ips=ips.get('internal', ''),
+                external_ips=ips.get('external', ''),
+                backend_id=backend_instance_id,
+            )
+
+            if service_project_link:
+                instance.service_project_link = service_project_link
+            if hasattr(backend_instance, 'fault'):
+                instance.error_message = backend_instance.fault['message']
+            if save:
+                instance.save()
+                instance.volumes.add(*volumes)
+                instance.security_groups.add(*security_groups)
+
+        return instance
+
+    @log_backend_action()
+    def pull_instance(self, instance):
+        import_time = timezone.now()
+        imported_instance = self.import_instance(instance.backend_id, save=False)
+
+        instance.refresh_from_db()
+        if instance.modified < import_time:
+            update_fields = ('ram', 'cores', 'disk', 'internal_ips',
+                             'external_ips', 'runtime_state', 'error_message')
+            update_pulled_fields(instance, imported_instance, update_fields)
+
+    @log_backend_action()
+    def push_instance_security_groups(self, instance):
+        nova = self.nova_client
+        server_id = instance.backend_id
+        try:
+            backend_ids = set(g.id for g in nova.servers.list_security_group(server_id))
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        nc_ids = set(
+            models.SecurityGroup.objects
+            .filter(instances=instance)
+            .exclude(backend_id='')
+            .values_list('backend_id', flat=True)
+        )
+
+        # remove stale groups
+        for group_id in backend_ids - nc_ids:
+            try:
+                nova.servers.remove_security_group(server_id, group_id)
+            except nova_exceptions.ClientException:
+                logger.exception('Failed to remove security group %s from instance %s', group_id, server_id)
+            else:
+                logger.info('Removed security group %s from instance %s', group_id, server_id)
+
+        # add missing groups
+        for group_id in nc_ids - backend_ids:
+            try:
+                nova.servers.add_security_group(server_id, group_id)
+            except nova_exceptions.ClientException:
+                logger.exception('Failed to add security group %s to instance %s', group_id, server_id)
+            else:
+                logger.info('Added security group %s to instance %s', group_id, server_id)
+
+    @log_backend_action()
+    def delete_instance(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.delete(instance.backend_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        floating_ips = models.FloatingIP.objects.filter(
+            settings=instance.service_project_link.service.settings, address=instance.external_ips)
+        if floating_ips.update(status='DOWN'):
+            logger.info('Successfully released floating ip %s from instance %s',
+                        instance.external_ips, instance.uuid)
+        instance.decrease_backend_quotas_usage()
+
+    @log_backend_action('check is instance deleted')
+    def is_instance_deleted(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.get(instance.backend_id)
+            return False
+        except nova_exceptions.NotFound:
+            return True
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def pull_instance_volumes(self, instance):
+        for volume in instance.volumes.all():
+            if self.is_volume_deleted(volume):
+                with transaction.atomic():
+                    volume.decrease_backend_quotas_usage()
+                    volume.delete()
+
+    @log_backend_action()
+    def start_instance(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.start(instance.backend_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def stop_instance(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.stop(instance.backend_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            instance.start_time = None
+            instance.save(update_fields=['start_time'])
+
+    @log_backend_action()
+    def restart_instance(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.reboot(instance.backend_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def resize_instance(self, instance, flavor_id):
+        nova = self.nova_client
+        try:
+            nova.servers.resize(instance.backend_id, flavor_id, 'MANUAL')
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def pull_instance_runtime_state(self, instance):
+        nova = self.nova_client
+        try:
+            backend_instance = nova.servers.get(instance.backend_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        if backend_instance.status != instance.runtime_state:
+            instance.runtime_state = backend_instance.status
+            instance.save(update_fields=['runtime_state'])
+
+    @log_backend_action()
+    def confirm_instance_resize(self, instance):
+        nova = self.nova_client
+        try:
+            nova.servers.confirm_resize(instance.backend_id)
+        except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)

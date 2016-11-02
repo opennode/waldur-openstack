@@ -1,11 +1,14 @@
+from urlparse import urlparse
+
 from django.core.validators import RegexValidator
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
 from jsonfield import JSONField
+from model_utils import FieldTracker
 
 from nodeconductor.core import models as core_models
 from nodeconductor.logging.loggers import LoggableMixin
-from nodeconductor.structure import models as structure_models
+from nodeconductor.structure import models as structure_models, utils as structure_utils
 
 from nodeconductor_openstack.openstack_base import models as openstack_base_models
 
@@ -83,7 +86,7 @@ class FloatingIP(structure_models.ServiceProperty):
 class Volume(structure_models.Storage):
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
-    instance = None  # TODO: add FK to Instance WAL-119
+    instance = models.ForeignKey('Instance', related_name='volumes', blank=True, null=True)
     device = models.CharField(
         max_length=50, blank=True,
         validators=[RegexValidator('^/dev/[a-zA-Z0-9]+$', message='Device should match pattern "/dev/alphanumeric+"')],
@@ -119,6 +122,10 @@ class Snapshot(structure_models.Storage):
     source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.PROTECT)
     metadata = JSONField(blank=True)
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-snapshot'
+
     def get_backend(self):
         return self.service_project_link.service.settings.get_backend()
 
@@ -132,6 +139,74 @@ class Snapshot(structure_models.Storage):
         settings.add_quota_usage(settings.Quotas.snapshots, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
 
+
+class Instance(structure_models.VirtualMachineMixin,
+               core_models.RuntimeStateMixin,
+               structure_models.NewResource):
+
+    class RuntimeStates(object):
+        # All possible OpenStack Instance states on backend.
+        # See http://developer.openstack.org/api-ref-compute-v2.html
+        ACTIVE = 'ACTIVE'
+        BUILDING = 'BUILDING'
+        DELETED = 'DELETED'
+        SOFT_DELETED = 'SOFT_DELETED'
+        ERROR = 'ERROR'
+        UNKNOWN = 'UNKNOWN'
+        HARD_REBOOT = 'HARD_REBOOT'
+        REBOOT = 'REBOOT'
+        REBUILD = 'REBUILD'
+        PASSWORD = 'PASSWORD'
+        PAUSED = 'PAUSED'
+        RESCUED = 'RESCUED'
+        RESIZED = 'RESIZED'
+        REVERT_RESIZE = 'REVERT_RESIZE'
+        SHUTOFF = 'SHUTOFF'
+        STOPPED = 'STOPPED'
+        SUSPENDED = 'SUSPENDED'
+        VERIFY_RESIZE = 'VERIFY_RESIZE'
+
+    service_project_link = models.ForeignKey(
+        OpenStackTenantServiceProjectLink, related_name='instances', on_delete=models.PROTECT)
+
+    flavor_name = models.CharField(max_length=255, blank=True)
+    flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
+    security_groups = models.ManyToManyField(SecurityGroup, related_name='instances')
+
+    tracker = FieldTracker()
+
+    @property
+    def size(self):
+        return self.volumes.aggregate(models.Sum('size'))['size']
+
+    def get_backend(self):
+        return self.service_project_link.service.settings.get_backend()
+
     @classmethod
     def get_url_name(cls):
-        return 'openstacktenant-snapshot'
+        return 'openstacktenant-instance'
+
+    def get_log_fields(self):
+        return ('uuid', 'name', 'type', 'service_project_link', 'ram', 'cores',)
+
+    def detect_coordinates(self):
+        settings = self.service_project_link.service.settings
+        options = settings.options or {}
+        if 'latitude' in options and 'longitude' in options:
+            return structure_utils.Coordinates(latitude=settings['latitude'], longitude=settings['longitude'])
+        else:
+            hostname = urlparse(settings.backend_url).hostname
+            if hostname:
+                return structure_utils.get_coordinates_by_ip(hostname)
+
+    def increase_backend_quotas_usage(self, validate=True):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.instances, 1)
+        settings.add_quota_usage(settings.Quotas.ram, self.ram)
+        settings.add_quota_usage(settings.Quotas.vcpu, self.cores)
+
+    def decrease_backend_quotas_usage(self):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.instances, -1)
+        settings.add_quota_usage(settings.Quotas.ram, -self.ram)
+        settings.add_quota_usage(settings.Quotas.vcpu, -self.cores)

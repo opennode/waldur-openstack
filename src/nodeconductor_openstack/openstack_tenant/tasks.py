@@ -3,6 +3,8 @@ from django.conf import settings
 from nodeconductor.core import tasks as core_tasks, models as core_models
 from nodeconductor.structure import SupportedServices
 
+from . import models
+
 
 class RuntimeStateException(Exception):
     pass
@@ -99,3 +101,22 @@ class ThrottleProvisionTask(BaseThrottleProvisionTask, core_tasks.BackendMethodT
 
 class ThrottleProvisionStateTask(BaseThrottleProvisionTask, core_tasks.StateTransitionTask):
     pass
+
+
+class SetInstanceErredTask(core_tasks.ErrorStateTransitionTask):
+    """ Mark instance as erred and delete resources that were not created. """
+
+    def execute(self, instance):
+        super(SetInstanceErredTask, self).execute(instance)
+
+        # delete volumes if they were not created on backend,
+        # mark as erred if creation was started, but not ended,
+        # leave as is, if they are OK.
+        for volume in instance.volumes.all():
+            if volume.state == models.Volume.States.CREATION_SCHEDULED:
+                volume.delete()
+            elif volume.state == models.Volume.States.OK:
+                pass
+            else:
+                volume.set_erred()
+                volume.save(update_fields=['state'])
