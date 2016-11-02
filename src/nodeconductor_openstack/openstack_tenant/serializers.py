@@ -191,6 +191,52 @@ class VolumeExtendSerializer(serializers.Serializer):
         return instance
 
 
+class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin,
+                             serializers.HyperlinkedModelSerializer):
+    class Meta(object):
+        model = models.Volume
+        fields = ('instance', 'device')
+        extra_kwargs = dict(
+            instance={
+                'required': True,
+                'allow_null': False,
+                'view_name': 'openstack-instance-detail',
+                'lookup_field': 'uuid',
+            }
+        )
+
+    def get_fields(self):
+        fields = super(VolumeAttachSerializer, self).get_fields()
+        volume = self.instance
+        if volume:
+            fields['instance'].display_name_field = 'name'
+            fields['instance'].query_params = {
+                'project_uuid': volume.service_project_link.project.uuid.hex,
+                'service_uuid': volume.service_project_link.service.uuid.hex,
+            }
+        return fields
+
+    def get_filtered_field_names(self):
+        return ('instance',)
+
+    def validate_instance(self, instance):
+        States, RuntimeStates = models.Instance.States, models.Instance.RuntimeStates
+        if instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF:
+            raise serializers.ValidationError(
+                'Volume can be attached only to instance that is shutoff and in state OK.')
+        volume = self.instance
+        if instance.service_project_link != volume.service_project_link:
+            raise serializers.ValidationError('Volume and instance should belong to the same service and project.')
+        return instance
+
+    def validate(self, attrs):
+        instance = attrs['instance']
+        device = attrs.get('device')
+        if device and instance.volumes.filter(device=device).exists():
+            raise serializers.ValidationError({'device': 'The supplied device path (%s) is in use.' % device})
+        return attrs
+
+
 class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
 
     service = serializers.HyperlinkedRelatedField(

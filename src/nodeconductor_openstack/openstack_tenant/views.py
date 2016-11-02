@@ -65,8 +65,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     actions_serializers = {
         'extend': serializers.VolumeExtendSerializer,
         'snapshot': serializers.SnapshotSerializer,
-        # TODO: uncomment after instance implementation
-        # 'attach': serializers.VolumeAttachSerializer,
+        'attach': serializers.VolumeAttachSerializer,
     }
 
     def get_serializer_class(self):
@@ -100,42 +99,39 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.SnapshotCreateExecutor().execute(snapshot)
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    # TODO: uncomment after instance implementation
-    # @decorators.detail_route(methods=['post'])
-    # @structure_views.safe_operation(valid_state=models.Volume.States.OK)
-    # def attach(self, request, volume, uuid=None):
-    #     """ Attach volume to instance """
-    #     serializer = self.get_serializer(volume, data=request.data)
-    #     serializer.is_valid(raise_exception=True)
-    #     serializer.save()
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def attach(self, request, volume, uuid=None):
+        """ Attach volume to instance """
+        serializer = self.get_serializer(volume, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
 
-    #     executors.VolumeAttachExecutor().execute(volume)
+        executors.VolumeAttachExecutor().execute(volume)
 
-    # @decorators.detail_route(methods=['post'])
-    # @structure_views.safe_operation(valid_state=models.Volume.States.OK)
-    # def detach(self, request, volume, uuid=None):
-    #     """ Detach instance from volume """
-    #     executors.VolumeDetachExecutor().execute(volume)
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    def detach(self, request, volume, uuid=None):
+        """ Detach instance from volume """
+        executors.VolumeDetachExecutor().execute(volume)
 
     def check_operation(self, request, resource, action):
         volume = resource
-        # TODO: uncomment after instance implementation
-        # if action == 'attach' and volume.runtime_state != 'available':
-        #     raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
-        # elif action == 'detach':
-        #     if volume.runtime_state != 'in-use':
-        #         raise core_exceptions.IncorrectStateException('Volume runtime state should be "in-use".')
-        #     if not volume.instance:
-        #         raise core_exceptions.IncorrectStateException('Volume is not attached to any instance.')
-        #     if volume.instance.state != models.Instance.States.OK:
-        #         raise core_exceptions.IncorrectStateException('Volume can be detached only if instance is offline.')
+        if action == 'attach' and volume.runtime_state != 'available':
+            raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
+        elif action == 'detach':
+            if volume.runtime_state != 'in-use':
+                raise core_exceptions.IncorrectStateException('Volume runtime state should be "in-use".')
+            if not volume.instance:
+                raise core_exceptions.IncorrectStateException('Volume is not attached to any instance.')
+            if volume.instance.state != models.Instance.States.OK:
+                raise core_exceptions.IncorrectStateException('Volume can be detached only if instance is offline.')
         if action == 'extend':
             if not volume.backend_id:
                 raise core_exceptions.IncorrectStateException('Unable to extend volume without backend_id.')
-            # TODO: uncomment after instance implementation
-            # if volume.instance and (volume.instance.state != models.Instance.States.OK or
-            #                         volume.instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF):
-            #     raise core_exceptions.IncorrectStateException('Volume instance should be shutoff and in OK state.')
+            if volume.instance and (volume.instance.state != models.Instance.States.OK or
+                                    volume.instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF):
+                raise core_exceptions.IncorrectStateException('Volume instance should be shutoff and in OK state.')
             if volume.bootable:
                 raise core_exceptions.IncorrectStateException("Can't detach root device volume.")
         if action == 'destroy':

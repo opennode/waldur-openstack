@@ -91,7 +91,7 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
         return chain(
             core_tasks.StateTransitionTask().si(
                 core_utils.serialize_instance(volume.instance),
-                state_transition='begin_resizing'
+                state_transition='begin_updating'
             ),
             core_tasks.BackendMethodTask().si(
                 serialized_volume,
@@ -127,6 +127,45 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                 success_state='in-use',
                 erred_state='error'
             ),
+        )
+
+
+class VolumeAttachExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_volume,
+                instance_uuid=volume.instance.uuid.hex,
+                device=volume.device,
+                backend_method='attach_volume',
+                state_transition='begin_updating'
+            ),
+            tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='in-use',
+                erred_state='error',
+            ),
+            # additional pull to populate field "device".
+            core_tasks.BackendMethodTask().si(serialized_volume, backend_method='pull_volume'),
+        )
+
+
+class VolumeDetachExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, volume, serialized_volume, **kwargs):
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_volume, backend_method='detach_volume', state_transition='begin_updating'),
+            tasks.PollRuntimeStateTask().si(
+                serialized_volume,
+                backend_pull_method='pull_volume_runtime_state',
+                success_state='available',
+                erred_state='error',
+            )
         )
 
 
