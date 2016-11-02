@@ -11,3 +11,4 @@ def register_in(router):
     router.register(r'openstacktenant-security-groups', views.SecurityGroupViewSet, base_name='openstacktenant-sgp')
     router.register(r'openstacktenant-volumes', views.VolumeViewSet, base_name='openstacktenant-volume')
     router.register(r'openstacktenant-snapshots', views.SnapshotViewSet, base_name='openstacktenant-snapshot')
+    router.register(r'openstacktenant-instances', views.InstanceViewSet, base_name='openstacktenant-instance')

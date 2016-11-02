@@ -1,3 +1,6 @@
+import logging
+import re
+
 from django.db import transaction
 from rest_framework import serializers
 
@@ -5,6 +8,9 @@ from nodeconductor.core import serializers as core_serializers
 from nodeconductor.structure import serializers as structure_serializers
 
 from . import models
+
+
+logger = logging.getLogger(__name__)
 
 
 class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
@@ -158,7 +164,6 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
                 raise serializers.ValidationError({
                     'size': 'Volume size should be equal or greater than %s for selected image' % image.min_disk
                 })
-            # TODO: add tenant quota validation (NC-1405)
         return attrs
 
     def create(self, validated_data):
@@ -221,3 +226,335 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         validated_data['service_project_link'] = source_volume.service_project_link
         validated_data['size'] = source_volume.size
         return super(SnapshotSerializer, self).create(validated_data)
+
+
+class NestedVolumeSerializer(serializers.HyperlinkedModelSerializer, structure_serializers.BasicResourceSerializer):
+    state = serializers.ReadOnlyField(source='get_state_display')
+
+    class Meta:
+        model = models.Volume
+        fields = 'url', 'uuid', 'name', 'state', 'bootable', 'size', 'resource_type'
+        view_name = 'openstacktenant-volume-detail'
+        lookup_field = 'uuid'
+
+
+class NestedSecurityGroupRuleSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = models.SecurityGroupRule
+        fields = ('id', 'protocol', 'from_port', 'to_port', 'cidr')
+
+    def to_internal_value(self, data):
+        # Return exist security group as internal value if id is provided
+        if 'id' in data:
+            try:
+                return models.SecurityGroupRule.objects.get(id=data['id'])
+            except models.SecurityGroup:
+                raise serializers.ValidationError('Security group with id %s does not exist' % data['id'])
+        else:
+            internal_data = super(NestedSecurityGroupRuleSerializer, self).to_internal_value(data)
+            return models.SecurityGroupRule(**internal_data)
+
+
+class NestedSecurityGroupSerializer(core_serializers.HyperlinkedRelatedModelSerializer):
+    rules = NestedSecurityGroupRuleSerializer(
+        many=True,
+        read_only=True,
+    )
+    state = serializers.ReadOnlyField(source='human_readable_state')
+
+    class Meta(object):
+        model = models.SecurityGroup
+        fields = ('url', 'name', 'rules', 'description', 'state')
+        read_only_fields = ('name', 'rules', 'description', 'state')
+        view_name = 'openstacktenant-sgp-detail'
+        lookup_field = 'uuid'
+
+
+class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
+
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstacktenant-detail',
+        read_only=True,
+        lookup_field='uuid')
+
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstacktenant-spl-detail',
+        queryset=models.OpenStackTenantServiceProjectLink.objects.all())
+
+    flavor = serializers.HyperlinkedRelatedField(
+        view_name='openstacktenant-flavor-detail',
+        lookup_field='uuid',
+        queryset=models.Flavor.objects.all().select_related('settings'),
+        write_only=True)
+
+    image = serializers.HyperlinkedRelatedField(
+        view_name='openstacktenant-image-detail',
+        lookup_field='uuid',
+        queryset=models.Image.objects.all().select_related('settings'),
+        write_only=True)
+
+    security_groups = NestedSecurityGroupSerializer(many=True, read_only=True)
+
+    skip_external_ip_assignment = serializers.BooleanField(write_only=True, default=False)
+    system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
+    data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024, write_only=True)
+
+    floating_ip = serializers.HyperlinkedRelatedField(
+        label='Floating IP',
+        required=False,
+        allow_null=True,
+        view_name='openstacktenant-fip-detail',
+        lookup_field='uuid',
+        queryset=models.FloatingIP.objects.all(),
+        write_only=True
+    )
+    volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
+
+    class Meta(structure_serializers.VirtualMachineSerializer.Meta):
+        model = models.Instance
+        view_name = 'openstacktenant-instance-detail'
+        fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
+            'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
+            'floating_ip', 'volumes', 'runtime_state',
+        )
+        protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
+            'floating_ip'
+        )
+        read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
+            'flavor_disk', 'runtime_state', 'flavor_name',
+        )
+
+    def get_fields(self):
+        fields = super(InstanceSerializer, self).get_fields()
+        field = fields.get('floating_ip')
+        if field:
+            field.query_params = {'status': 'DOWN'}
+            field.value_field = 'url'
+            field.display_name_field = 'address'
+
+        return fields
+
+    @staticmethod
+    def eager_load(queryset):
+        queryset = structure_serializers.VirtualMachineSerializer.eager_load(queryset)
+        return queryset.prefetch_related(
+            'security_groups',
+            'security_groups__rules',
+            'volumes',
+        )
+
+    def validate(self, attrs):
+        # skip validation on object update
+        if self.instance is not None:
+            return attrs
+
+        service_project_link = attrs['service_project_link']
+        settings = service_project_link.service.settings
+        flavor = attrs['flavor']
+        image = attrs['image']
+
+        if any([flavor.settings != settings, image.settings != settings]):
+            raise serializers.ValidationError(
+                "Flavor and image must belong to the same service settings as service project link.")
+
+        if image.min_ram > flavor.ram:
+            raise serializers.ValidationError(
+                {'flavor': "RAM of flavor is not enough for selected image %s" % image.min_ram})
+
+        if image.min_disk > flavor.disk:
+            raise serializers.ValidationError({
+                'flavor': "Flavor's disk is too small for the selected image."
+            })
+
+        if image.min_disk > attrs['system_volume_size']:
+            raise serializers.ValidationError(
+                {'system_volume_size': "System volume size has to be greater than %s" % image.min_disk})
+
+        for security_group in attrs.get('security_groups', []):
+            if security_group.service_project_link != attrs['service_project_link']:
+                raise serializers.ValidationError(
+                    "Security group {} has wrong service or project. New instance and its "
+                    "security groups have to belong to same project and service".format(security_group.name))
+
+        self._validate_external_ip(attrs)
+
+        return attrs
+
+    def _validate_external_ip(self, attrs):
+        floating_ip = attrs.get('floating_ip')
+        spl = attrs['service_project_link']
+        skip_external_ip_assignment = attrs['skip_external_ip_assignment']
+
+        # Case 1. If floating_ip!=None then requested floating IP is assigned to the instance.
+        if floating_ip:
+
+            if floating_ip.status != 'DOWN':
+                raise serializers.ValidationError({'floating_ip': 'Floating IP status must be DOWN.'})
+
+        # Case 2. If floating_ip=None and skip_external_ip_assignment=False
+        # then new floating IP is allocated and assigned to the instance.
+        elif not skip_external_ip_assignment:
+
+            floating_ip_count_quota = spl.service.settings.quotas.get(name='floating_ip_count')
+            if floating_ip_count_quota.is_exceeded(delta=1):
+                raise serializers.ValidationError({
+                    'skip_external_ip_assignment': 'Can not allocate floating IP - quota has been filled.'
+                })
+
+        # Case 3. If floating_ip=None and skip_external_ip_assignment=True
+        # floating IP allocation is not attempted, only internal IP is created.
+        else:
+            logger.debug('Floating IP allocation is not attempted.')
+
+    @transaction.atomic
+    def create(self, validated_data):
+        """ Store flavor, ssh_key and image details into instance model.
+            Create volumes and security groups for instance.
+        """
+        security_groups = validated_data.pop('security_groups', [])
+        spl = validated_data['service_project_link']
+        ssh_key = validated_data.get('ssh_public_key')
+        if ssh_key:
+            # We want names to be human readable in backend.
+            # OpenStack only allows latin letters, digits, dashes, underscores and spaces
+            # as key names, thus we mangle the original name.
+            safe_name = re.sub(r'[^-a-zA-Z0-9 _]+', '_', ssh_key.name)[:17]
+            validated_data['key_name'] = '{0}-{1}'.format(ssh_key.uuid.hex, safe_name)
+            validated_data['key_fingerprint'] = ssh_key.fingerprint
+
+        flavor = validated_data['flavor']
+        validated_data['flavor_name'] = flavor.name
+        validated_data['cores'] = flavor.cores
+        validated_data['ram'] = flavor.ram
+        validated_data['flavor_disk'] = flavor.disk
+
+        image = validated_data['image']
+        validated_data['image_name'] = image.name
+        validated_data['min_disk'] = image.min_disk
+        validated_data['min_ram'] = image.min_ram
+
+        system_volume_size = validated_data['system_volume_size']
+        data_volume_size = validated_data['data_volume_size']
+        validated_data['disk'] = data_volume_size + system_volume_size
+
+        instance = super(InstanceSerializer, self).create(validated_data)
+
+        instance.security_groups.add(*security_groups)
+
+        system_volume = models.Volume.objects.create(
+            name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
+            service_project_link=spl,
+            size=system_volume_size,
+            image=image,
+            bootable=True,
+        )
+        system_volume.increase_backend_quotas_usage()
+        data_volume = models.Volume.objects.create(
+            name='{0}-data'.format(instance.name[:145]),  # volume name cannot be longer than 150 symbols
+            service_project_link=spl,
+            size=data_volume_size,
+        )
+        data_volume.increase_backend_quotas_usage()
+        instance.volumes.add(system_volume, data_volume)
+
+        return instance
+
+    def update(self, instance, validated_data):
+        # DRF adds data_volume_size to validated_data, because it has default value.
+        # This field is protected, so it should not be used for update.
+        del validated_data['data_volume_size']
+        return super(InstanceSerializer, self).update(instance, validated_data)
+
+
+class AssignFloatingIpSerializer(serializers.Serializer):
+    floating_ip = serializers.HyperlinkedRelatedField(
+        label='Floating IP',
+        required=True,
+        view_name='openstack-fip-detail',
+        lookup_field='uuid',
+        queryset=models.FloatingIP.objects.all()
+    )
+
+    def get_fields(self):
+        fields = super(AssignFloatingIpSerializer, self).get_fields()
+        if self.instance:
+            query_params = {
+                'status': 'DOWN',
+                'settings_uuid': self.instance.service_project_link.service.settings.uuid.hex,
+            }
+
+            field = fields['floating_ip']
+            field.query_params = query_params
+            field.value_field = 'url'
+            field.display_name_field = 'address'
+        return fields
+
+    def get_floating_ip_uuid(self):
+        return self.validated_data.get('floating_ip').uuid.hex
+
+    def validate_floating_ip(self, floating_ip):
+        if floating_ip is not None:
+            if floating_ip.status != 'DOWN':
+                raise serializers.ValidationError("Floating IP status must be DOWN.")
+            elif floating_ip.settings != self.instance.service_project_link.service.settings:
+                raise serializers.ValidationError("Floating IP must belong to same settings as instance.")
+        return floating_ip
+
+
+class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.Serializer):
+    flavor = serializers.HyperlinkedRelatedField(
+        view_name='openstack-flavor-detail',
+        lookup_field='uuid',
+        queryset=models.Flavor.objects.all(),
+    )
+
+    def get_fields(self):
+        fields = super(InstanceFlavorChangeSerializer, self).get_fields()
+        if self.instance:
+            fields['flavor'].query_params = {
+                'settings_uuid': self.instance.service_project_link.service.settings.uuid
+            }
+        return fields
+
+    def get_filtered_field_names(self):
+        return ('flavor',)
+
+    def validate_flavor(self, value):
+        if value is not None:
+            spl = self.instance.service_project_link
+
+            if value.name == self.instance.flavor_name:
+                raise serializers.ValidationError(
+                    "New flavor is the same as current.")
+
+            if value.settings != spl.service.settings:
+                raise serializers.ValidationError(
+                    "New flavor is not within the same service settings")
+
+            if value.disk < self.instance.flavor_disk:
+                raise serializers.ValidationError(
+                    "New flavor disk should be greater than the previous value")
+        return value
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        flavor = validated_data.get('flavor')
+
+        settings = instance.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.ram, flavor.ram - instance.ram, validate=True)
+        settings.add_quota_usage(settings.Quotas.vcpu, flavor.cores - instance.cores, validate=True)
+
+        instance.ram = flavor.ram
+        instance.cores = flavor.cores
+        instance.flavor_disk = flavor.disk
+        instance.flavor_name = flavor.name
+        instance.save(update_fields=['ram', 'cores', 'flavor_name', 'flavor_disk'])
+        return instance
+
+
+class InstanceDeleteSerializer(serializers.Serializer):
+    delete_volumes = serializers.BooleanField(default=True)
