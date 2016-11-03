@@ -23,9 +23,15 @@ logger = logging.getLogger(__name__)
 class OpenStackTenantBackend(BaseOpenStackBackend):
 
     def __init__(self, settings):
-        self.external_network_id = settings.options['external_network_id']
-        self.internal_network_id = settings.options['internal_network_id']
         super(OpenStackTenantBackend, self).__init__(settings, settings.options['tenant_id'])
+
+    @property
+    def external_network_id(self):
+        return self.settings.options['external_network_id']
+
+    @property
+    def internal_network_id(self):
+        return self.settings.options['internal_network_id']
 
     def sync(self):
         self._pull_flavors()
