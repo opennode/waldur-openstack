@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 class OpenStackTenantBackend(BaseOpenStackBackend):
     VOLUME_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'device')
     SNAPSHOT_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
-    INSTANCE_UPDATE_FIELDS = ('ram', 'cores', 'disk', 'internal_ips', 'external_ips', 'runtime_state', 'error_message')
+    INSTANCE_UPDATE_FIELDS = ('name', 'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk', 'internal_ips',
+                              'external_ips', 'runtime_state', 'error_message')
 
     def __init__(self, settings):
         super(OpenStackTenantBackend, self).__init__(settings, settings.options['tenant_id'])
@@ -659,26 +660,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        # import and parse IPs.
-        ips = {}
-        for net_conf in backend_instance.addresses.values():
-            for ip in net_conf:
-                if ip['OS-EXT-IPS:type'] == 'fixed':
-                    ips['internal'] = ip['addr']
-                if ip['OS-EXT-IPS:type'] == 'floating':
-                    ips['external'] = ip['addr']
-
-        # import launch time.
-        try:
-            d = dateparse.parse_datetime(backend_instance.to_dict()['OS-SRV-USG:launched_at'])
-        except (KeyError, ValueError, TypeError):
-            launch_time = None
-        else:
-            # At the moment OpenStack does not provide any timezone info,
-            # but in future it might do.
-            if timezone.is_naive(d):
-                launch_time = timezone.make_aware(d, timezone.utc)
-
+        instance = self._backend_instance_to_instance(backend_instance, flavor)
         with transaction.atomic():
             # import instance volumes, or use existed if they already exist in NodeConductor.
             volumes = []
@@ -702,25 +684,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 except models.SecurityGroup.DoesNotExist:
                     raise OpenStackBackendError('Security group with name "%s" does not exist in NodeConductor.' % name)
 
-            instance = models.Instance(
-                name=backend_instance.name or backend_instance.id,
-                key_name=backend_instance.key_name or '',
-                start_time=launch_time,
-                state=models.Instance.States.OK,
-                runtime_state=backend_instance.status,
-                created=dateparse.parse_datetime(backend_instance.created),
-
-                flavor_name=flavor.name,
-                flavor_disk=flavor.disk,
-                cores=flavor.vcpus,
-                ram=flavor.ram,
-                disk=sum([v.size for v in volumes]),
-
-                internal_ips=ips.get('internal', ''),
-                external_ips=ips.get('external', ''),
-                backend_id=backend_instance_id,
-            )
-
             if service_project_link:
                 instance.service_project_link = service_project_link
             if hasattr(backend_instance, 'fault'):
@@ -731,6 +694,61 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 instance.security_groups.add(*security_groups)
 
         return instance
+
+    def _backend_instance_to_instance(self, backend_instance, backend_flavor):
+        # TODO: add security groups and volume definition
+        # parse IPs
+        ips = {}
+        for net_conf in backend_instance.addresses.values():
+            for ip in net_conf:
+                if ip['OS-EXT-IPS:type'] == 'fixed':
+                    ips['internal'] = ip['addr']
+                if ip['OS-EXT-IPS:type'] == 'floating':
+                    ips['external'] = ip['addr']
+
+        # parse launch time
+        try:
+            d = dateparse.parse_datetime(backend_instance.to_dict()['OS-SRV-USG:launched_at'])
+        except (KeyError, ValueError, TypeError):
+            launch_time = None
+        else:
+            # At the moment OpenStack does not provide any timezone info,
+            # but in future it might do.
+            if timezone.is_naive(d):
+                launch_time = timezone.make_aware(d, timezone.utc)
+
+        return models.Instance(
+            name=backend_instance.name or backend_instance.id,
+            key_name=backend_instance.key_name or '',
+            start_time=launch_time,
+            state=models.Instance.States.OK,
+            runtime_state=backend_instance.status,
+            created=dateparse.parse_datetime(backend_instance.created),
+
+            flavor_name=backend_flavor.name,
+            flavor_disk=backend_flavor.disk,
+            cores=backend_flavor.vcpus,
+            ram=backend_flavor.ram,
+
+            internal_ips=ips.get('internal', ''),
+            external_ips=ips.get('external', ''),
+            backend_id=backend_instance.id,
+        )
+
+    def get_instances(self):
+        nova = self.nova_client
+        try:
+            backend_instances = nova.servers.list()
+            backend_flavors = nova.flavors.list()
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        backend_flavors_map = {flavor.id: flavor for flavor in backend_flavors}
+        instances = []
+        for backend_instance in backend_instances:
+            instance_flavor = backend_flavors_map[backend_instance.flavor['id']]
+            instances.append(self._backend_instance_to_instance(backend_instance, instance_flavor))
+        return instances
 
     @log_backend_action()
     def pull_instance(self, instance, update_fields=None):

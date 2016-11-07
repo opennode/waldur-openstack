@@ -189,8 +189,6 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
             else:
                 self._update(snapshot, backend_snapshot, backend.SNAPSHOT_UPDATE_FIELDS)
 
-    # TODO: provide backend method to get instances.
-
     def pull_instances(self, service_settings, backend):
         backend_instances = backend.get_instances()
         instances = models.Volume.objects.filter(
