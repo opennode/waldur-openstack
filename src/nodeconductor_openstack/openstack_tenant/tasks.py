@@ -156,6 +156,8 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
         backend = service_settings.get_backend()
         try:
             self.pull_volumes(service_settings, backend)
+            self.pull_snapshots(service_settings, backend)
+            self.pull_instances(service_settings, backend)
         except ServiceBackendError as e:
             logger.error('Failed to pull resources for service settings: %s. Error: %s' % service_settings, e)
             service_settings.set_erred()
@@ -177,7 +179,7 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
 
     def pull_snapshots(self, service_settings, backend):
         backend_snapshots = backend.get_snapshots()
-        snapshots = models.Volume.objects.filter(
+        snapshots = models.Snapshot.objects.filter(
             service_project_link__service__settings=service_settings, state__in=self.stable_states)
         backend_snapshots_map = {backend_snapshot.backend_id: backend_snapshot
                                  for backend_snapshot in backend_snapshots}
@@ -191,7 +193,7 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
 
     def pull_instances(self, service_settings, backend):
         backend_instances = backend.get_instances()
-        instances = models.Volume.objects.filter(
+        instances = models.Instance.objects.filter(
             service_project_link__service__settings=service_settings, state__in=self.stable_states)
         backend_instances_map = {backend_instance.backend_id: backend_instance
                                  for backend_instance in backend_instances}
