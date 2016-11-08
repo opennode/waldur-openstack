@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 class OpenStackTenantBackend(BaseOpenStackBackend):
+    VOLUME_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'device')
+    SNAPSHOT_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
+    INSTANCE_UPDATE_FIELDS = ('name', 'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk', 'internal_ips',
+                              'external_ips', 'runtime_state', 'error_message')
 
     def __init__(self, settings):
         super(OpenStackTenantBackend, self).__init__(settings, settings.options['tenant_id'])
@@ -246,19 +250,25 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             backend_volume = cinder.volumes.get(backend_volume_id)
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+        volume = self._backend_volume_to_volume(backend_volume)
+        if service_project_link is not None:
+            volume.service_project_link = service_project_link
+        if save:
+            volume.save()
+        return volume
+
+    def _backend_volume_to_volume(self, backend_volume):
         volume = models.Volume(
             name=backend_volume.name,
             description=backend_volume.description or '',
             size=self.gb2mb(backend_volume.size),
             metadata=backend_volume.metadata,
-            backend_id=backend_volume_id,
+            backend_id=backend_volume.id,
             type=backend_volume.volume_type or '',
             bootable=backend_volume.bootable == 'true',
             runtime_state=backend_volume.status,
             state=models.Volume.States.OK,
         )
-        if service_project_link is not None:
-            volume.service_project_link = service_project_link
         if hasattr(backend_volume, 'volume_image_metadata'):
             volume.image_metadata = backend_volume.volume_image_metadata
             try:
@@ -270,9 +280,15 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         if getattr(backend_volume, 'attachments', False):
             if 'device' in backend_volume.attachments[0]:
                 volume.device = backend_volume.attachments[0]['device']
-        if save:
-            volume.save()
         return volume
+
+    def get_volumes(self):
+        cinder = self.cinder_client
+        try:
+            backend_volumes = cinder.volumes.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        return [self._backend_volume_to_volume(backend_volume) for backend_volume in backend_volumes]
 
     @log_backend_action()
     def pull_volume(self, volume, update_fields=None):
@@ -282,8 +298,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         volume.refresh_from_db()
         if volume.modified < import_time:
             if not update_fields:
-                update_fields = ('name', 'description', 'size', 'metadata',
-                                 'type', 'bootable', 'runtime_state', 'device')
+                update_fields = self.VOLUME_UPDATE_FIELDS
 
             update_pulled_fields(volume, imported_volume, update_fields)
 
@@ -335,32 +350,45 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             backend_snapshot = cinder.volume_snapshots.get(backend_snapshot_id)
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+        snapshot = self._backend_snapshot_to_snapshot(backend_snapshot)
+        if service_project_link is not None:
+            snapshot.service_project_link = service_project_link
+        if save:
+            snapshot.save()
+        return snapshot
+
+    def _backend_snapshot_to_snapshot(self, backend_snapshot):
         snapshot = models.Snapshot(
             name=backend_snapshot.name,
             description=backend_snapshot.description or '',
             size=self.gb2mb(backend_snapshot.size),
             metadata=backend_snapshot.metadata,
-            backend_id=backend_snapshot_id,
+            backend_id=backend_snapshot.id,
             runtime_state=backend_snapshot.status,
             state=models.Snapshot.States.OK,
         )
-        if service_project_link is not None:
-            snapshot.service_project_link = service_project_link
         if hasattr(backend_snapshot, 'volume_id'):
-            snapshot.source_volume = models.Volume.objects.filter(backend_id=backend_snapshot.volume_id).first()
-
-        if save:
-            snapshot.save()
+            snapshot.source_volume = models.Volume.objects.filter(
+                service_project_link__service__settings=self.settings, backend_id=backend_snapshot.volume_id).first()
         return snapshot
 
+    def get_snapshots(self):
+        cinder = self.cinder_client
+        try:
+            backend_snapshots = cinder.volume_snapshots.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        return [self._backend_snapshot_to_snapshot(backend_snapshot) for backend_snapshot in backend_snapshots]
+
     @log_backend_action()
-    def pull_snapshot(self, snapshot):
+    def pull_snapshot(self, snapshot, update_fields=None):
         import_time = timezone.now()
         imported_snapshot = self.import_snapshot(snapshot.backend_id, save=False)
 
         snapshot.refresh_from_db()
         if snapshot.modified < import_time:
-            update_fields = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
+            if update_fields is None:
+                update_fields = self.SNAPSHOT_UPDATE_FIELDS
             update_pulled_fields(snapshot, imported_snapshot, update_fields)
 
     @log_backend_action()
@@ -632,26 +660,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        # import and parse IPs.
-        ips = {}
-        for net_conf in backend_instance.addresses.values():
-            for ip in net_conf:
-                if ip['OS-EXT-IPS:type'] == 'fixed':
-                    ips['internal'] = ip['addr']
-                if ip['OS-EXT-IPS:type'] == 'floating':
-                    ips['external'] = ip['addr']
-
-        # import launch time.
-        try:
-            d = dateparse.parse_datetime(backend_instance.to_dict()['OS-SRV-USG:launched_at'])
-        except (KeyError, ValueError, TypeError):
-            launch_time = None
-        else:
-            # At the moment OpenStack does not provide any timezone info,
-            # but in future it might do.
-            if timezone.is_naive(d):
-                launch_time = timezone.make_aware(d, timezone.utc)
-
+        instance = self._backend_instance_to_instance(backend_instance, flavor)
         with transaction.atomic():
             # import instance volumes, or use existed if they already exist in NodeConductor.
             volumes = []
@@ -675,25 +684,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 except models.SecurityGroup.DoesNotExist:
                     raise OpenStackBackendError('Security group with name "%s" does not exist in NodeConductor.' % name)
 
-            instance = models.Instance(
-                name=backend_instance.name or backend_instance.id,
-                key_name=backend_instance.key_name or '',
-                start_time=launch_time,
-                state=models.Instance.States.OK,
-                runtime_state=backend_instance.status,
-                created=dateparse.parse_datetime(backend_instance.created),
-
-                flavor_name=flavor.name,
-                flavor_disk=flavor.disk,
-                cores=flavor.vcpus,
-                ram=flavor.ram,
-                disk=sum([v.size for v in volumes]),
-
-                internal_ips=ips.get('internal', ''),
-                external_ips=ips.get('external', ''),
-                backend_id=backend_instance_id,
-            )
-
             if service_project_link:
                 instance.service_project_link = service_project_link
             if hasattr(backend_instance, 'fault'):
@@ -705,15 +695,70 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
         return instance
 
+    def _backend_instance_to_instance(self, backend_instance, backend_flavor):
+        # TODO: add security groups and volume definition
+        # parse IPs
+        ips = {}
+        for net_conf in backend_instance.addresses.values():
+            for ip in net_conf:
+                if ip['OS-EXT-IPS:type'] == 'fixed':
+                    ips['internal'] = ip['addr']
+                if ip['OS-EXT-IPS:type'] == 'floating':
+                    ips['external'] = ip['addr']
+
+        # parse launch time
+        try:
+            d = dateparse.parse_datetime(backend_instance.to_dict()['OS-SRV-USG:launched_at'])
+        except (KeyError, ValueError, TypeError):
+            launch_time = None
+        else:
+            # At the moment OpenStack does not provide any timezone info,
+            # but in future it might do.
+            if timezone.is_naive(d):
+                launch_time = timezone.make_aware(d, timezone.utc)
+
+        return models.Instance(
+            name=backend_instance.name or backend_instance.id,
+            key_name=backend_instance.key_name or '',
+            start_time=launch_time,
+            state=models.Instance.States.OK,
+            runtime_state=backend_instance.status,
+            created=dateparse.parse_datetime(backend_instance.created),
+
+            flavor_name=backend_flavor.name,
+            flavor_disk=backend_flavor.disk,
+            cores=backend_flavor.vcpus,
+            ram=backend_flavor.ram,
+
+            internal_ips=ips.get('internal', ''),
+            external_ips=ips.get('external', ''),
+            backend_id=backend_instance.id,
+        )
+
+    def get_instances(self):
+        nova = self.nova_client
+        try:
+            backend_instances = nova.servers.list()
+            backend_flavors = nova.flavors.list()
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        backend_flavors_map = {flavor.id: flavor for flavor in backend_flavors}
+        instances = []
+        for backend_instance in backend_instances:
+            instance_flavor = backend_flavors_map[backend_instance.flavor['id']]
+            instances.append(self._backend_instance_to_instance(backend_instance, instance_flavor))
+        return instances
+
     @log_backend_action()
-    def pull_instance(self, instance):
+    def pull_instance(self, instance, update_fields=None):
         import_time = timezone.now()
         imported_instance = self.import_instance(instance.backend_id, save=False)
 
         instance.refresh_from_db()
         if instance.modified < import_time:
-            update_fields = ('ram', 'cores', 'disk', 'internal_ips',
-                             'external_ips', 'runtime_state', 'error_message')
+            if update_fields is None:
+                update_fields = self.INSTANCE_UPDATE_FIELDS
             update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
