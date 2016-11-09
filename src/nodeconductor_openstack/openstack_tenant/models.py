@@ -13,13 +13,18 @@ from nodeconductor.structure import models as structure_models, utils as structu
 from nodeconductor_openstack.openstack_base import models as openstack_base_models
 
 
+# XXX: This method is temporary. We need to choose one place for action definition
+#      and allow to define action as process there. WAL-152
 def _action_to_process(action):
-    """ Pull -> Pulling, Allocate IP -> Allocating IP """
-    first, others = instance.action.split(' ', 1)
-    if first.endswith('e'):
-        first = first[:-1]
-    first += 'ing'
-    return first + others
+    """ Pull -> Pulling, Assign IP -> Assigning IP, Stop -> Stopping """
+    exceptions = {
+        'Stop': 'Stopping',
+        'Change': 'Changing',
+    }
+    words = action.split(' ')
+    first, others = words[0], words[1:]
+    first = exceptions.get(first, first + 'ing')
+    return first + ' '.join(others) if others else first
 
 
 class OpenStackTenantService(structure_models.Service):
@@ -112,10 +117,10 @@ class Volume(structure_models.Storage):
 
     # TODO: Move this field to resource model.
     @property
-    def action_as_process(self, instance):
-        if not instance.action:
+    def action_as_process(self):
+        if not self.action:
             return ''
-        return _action_to_process(instance.action)
+        return _action_to_process(self.action)
 
     def get_backend(self):
         return self.service_project_link.service.settings.get_backend()
@@ -146,10 +151,10 @@ class Snapshot(structure_models.Storage):
 
     # TODO: Move this field to resource model.
     @property
-    def action_as_process(self, instance):
-        if not instance.action:
+    def action_as_process(self):
+        if not self.action:
             return ''
-        return _action_to_process(instance.action)
+        return _action_to_process(self.action)
 
     @classmethod
     def get_url_name(cls):
@@ -209,10 +214,10 @@ class Instance(structure_models.VirtualMachineMixin,
 
     # TODO: Move this field to resource model.
     @property
-    def action_as_process(self, instance):
-        if not instance.action:
+    def action_as_process(self):
+        if not self.action:
             return ''
-        return _action_to_process(instance.action)
+        return _action_to_process(self.action)
 
     @property
     def size(self):
