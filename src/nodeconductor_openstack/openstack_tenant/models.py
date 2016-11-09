@@ -13,6 +13,15 @@ from nodeconductor.structure import models as structure_models, utils as structu
 from nodeconductor_openstack.openstack_base import models as openstack_base_models
 
 
+def _action_to_process(action):
+    """ Pull -> Pulling, Allocate IP -> Allocating IP """
+    first, others = instance.action.split(' ', 1)
+    if first.endswith('e'):
+        first = first[:-1]
+    first += 'ing'
+    return first + others
+
+
 class OpenStackTenantService(structure_models.Service):
     projects = models.ManyToManyField(
         structure_models.Project, related_name='openstack_tenant_services', through='OpenStackTenantServiceProjectLink')
@@ -97,6 +106,16 @@ class Volume(structure_models.Storage):
     image_metadata = JSONField(blank=True)
     type = models.CharField(max_length=100, blank=True)
     source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', null=True, on_delete=models.SET_NULL)
+    # TODO: Move this fields to resource model.
+    action = models.CharField(max_length=50, blank=True)
+    action_details = models.TextField(blank=True)
+
+    # TODO: Move this field to resource model.
+    @property
+    def action_as_process(self, instance):
+        if not instance.action:
+            return ''
+        return _action_to_process(instance.action)
 
     def get_backend(self):
         return self.service_project_link.service.settings.get_backend()
@@ -121,6 +140,16 @@ class Snapshot(structure_models.Storage):
         OpenStackTenantServiceProjectLink, related_name='snapshots', on_delete=models.PROTECT)
     source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.PROTECT)
     metadata = JSONField(blank=True)
+    # TODO: Move this fields to resource model.
+    action = models.CharField(max_length=50, blank=True)
+    action_details = models.TextField(blank=True)
+
+    # TODO: Move this field to resource model.
+    @property
+    def action_as_process(self, instance):
+        if not instance.action:
+            return ''
+        return _action_to_process(instance.action)
 
     @classmethod
     def get_url_name(cls):
@@ -172,8 +201,18 @@ class Instance(structure_models.VirtualMachineMixin,
     flavor_name = models.CharField(max_length=255, blank=True)
     flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
     security_groups = models.ManyToManyField(SecurityGroup, related_name='instances')
+    # TODO: Move this fields to resource model.
+    action = models.CharField(max_length=50, blank=True)
+    action_details = models.TextField(blank=True)
 
     tracker = FieldTracker()
+
+    # TODO: Move this field to resource model.
+    @property
+    def action_as_process(self, instance):
+        if not instance.action:
+            return ''
+        return _action_to_process(instance.action)
 
     @property
     def size(self):

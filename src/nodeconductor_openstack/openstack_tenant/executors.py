@@ -2,7 +2,7 @@ from celery import chain
 
 from nodeconductor.core import executors as core_executors, tasks as core_tasks, utils as core_utils
 
-from . import tasks
+from . import tasks, models
 
 
 class VolumeCreateExecutor(core_executors.CreateExecutor):
@@ -51,6 +51,7 @@ class VolumeDeleteExecutor(core_executors.DeleteExecutor):
 
 
 class VolumePullExecutor(core_executors.ActionExecutor):
+    action = 'Pull'
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
@@ -60,25 +61,20 @@ class VolumePullExecutor(core_executors.ActionExecutor):
 
 
 class VolumeExtendExecutor(core_executors.ActionExecutor):
+    action = 'Extend'
 
     @classmethod
-    def pre_apply(cls, volume, **kwargs):
-        super(VolumeExtendExecutor, cls).pre_apply(volume, **kwargs)
-        if volume.instance:
-            volume.instance.schedule_updating()
-            volume.instance.save(update_fields=['state'])
+    def get_action_details(cls, volume, **kwargs):
+        return 'Extending volume from %s MB to %s MB' % (kwargs.get('old_size'), volume.size)
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
-        new_size = kwargs.pop('new_size')
-
         if volume.instance is None:
             return chain(
                 core_tasks.BackendMethodTask().si(
                     serialized_volume,
                     backend_method='extend_volume',
                     state_transition='begin_updating',
-                    new_size=new_size
                 ),
                 tasks.PollRuntimeStateTask().si(
                     serialized_volume,
@@ -107,7 +103,6 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
             core_tasks.BackendMethodTask().si(
                 serialized_volume,
                 backend_method='extend_volume',
-                new_size=new_size,
             ),
             tasks.PollRuntimeStateTask().si(
                 serialized_volume,
@@ -131,6 +126,11 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
 
 
 class VolumeAttachExecutor(core_executors.ActionExecutor):
+    action = 'Attach'
+
+    @classmethod
+    def get_action_details(cls, volume, **kwargs):
+        return 'Attach volume to instance %s' % volume.instance.name
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
@@ -154,6 +154,11 @@ class VolumeAttachExecutor(core_executors.ActionExecutor):
 
 
 class VolumeDetachExecutor(core_executors.ActionExecutor):
+    action = 'Detach'
+
+    @classmethod
+    def get_action_details(cls, volume, **kwargs):
+        return 'Detach volume from instance %s' % volume.instance.name
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
@@ -216,6 +221,7 @@ class SnapshotDeleteExecutor(core_executors.DeleteExecutor):
 
 
 class SnapshotPullExecutor(core_executors.ActionExecutor):
+    action = 'Pull'
 
     @classmethod
     def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
@@ -291,6 +297,12 @@ class InstanceUpdateExecutor(core_executors.UpdateExecutor):
 
 
 class InstanceUpdateSecurityGroupsExecutor(core_executors.ActionExecutor):
+    action = 'Update security groups'
+
+    @classmethod
+    def get_action_details(cls, instance, **kwargs):
+        names = ', '.join(instance.security_groups.values_list('name', flat=True))
+        return 'Update security groups. New groups: %s' % names
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
@@ -363,6 +375,11 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
 
 
 class InstanceFlavorChangeExecutor(core_executors.ActionExecutor):
+    action = 'Change flavor'
+
+    @classmethod
+    def get_action_details(cls, instance, **kwargs):
+        return 'Change flavor from %s to %s' % (kwargs.get('old_flavor_name'), kwargs.get('flavor').name)
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
@@ -394,6 +411,8 @@ class InstanceFlavorChangeExecutor(core_executors.ActionExecutor):
 
 
 class InstancePullExecutor(core_executors.ActionExecutor):
+    action = 'Pull'
+
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
         return core_tasks.BackendMethodTask().si(
@@ -402,6 +421,13 @@ class InstancePullExecutor(core_executors.ActionExecutor):
 
 
 class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
+    action = 'Assign floating IP'
+
+    @classmethod
+    def get_action_details(cls, instance, **kwargs):
+        floating_ip = models.FloatingIP.objects.get(uuid=kwargs.get('floating_ip_uuid'))
+        return 'Assign floating IP %s' % floating_ip.address
+
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, floating_ip_uuid, **kwargs):
         return core_tasks.BackendMethodTask().si(
@@ -412,6 +438,8 @@ class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
 
 
 class InstanceStopExecutor(core_executors.ActionExecutor):
+    action = 'Stop'
+
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
         return chain(
@@ -428,6 +456,8 @@ class InstanceStopExecutor(core_executors.ActionExecutor):
 
 
 class InstanceStartExecutor(core_executors.ActionExecutor):
+    action = 'Start'
+
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
         return chain(
@@ -444,6 +474,8 @@ class InstanceStartExecutor(core_executors.ActionExecutor):
 
 
 class InstanceRestartExecutor(core_executors.ActionExecutor):
+    action = 'Restart'
+
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
         return chain(

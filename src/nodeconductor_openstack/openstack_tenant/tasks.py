@@ -217,6 +217,7 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
         update_pulled_fields(resource, backend_resource, fields)
         if resource.state == core_models.StateMixin.States.ERRED:
             resource.recover()
-            resource.save(update_fields=['state'])
+            resource.error_message = ''
+            resource.save(update_fields=['state', 'error_message'])
         logger.info('%s %s (PK: %s) successfully pulled from backend.' % (
             resource.__class__.__name__, resource, resource.pk))

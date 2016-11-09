@@ -129,10 +129,11 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_snapshot', 'size', 'bootable', 'metadata',
             'image', 'image_metadata', 'type', 'runtime_state',
-            'device',
+            'device', 'action', 'action_details',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'device', 'metadata',
+            'action', 'action_details', 'action_as_process',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'size', 'type', 'image',
@@ -364,7 +365,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
-            'floating_ip', 'volumes', 'runtime_state',
+            'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details', 'action_as_process',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',

@@ -81,12 +81,13 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
     def extend(self, request, volume, uuid=None):
         """ Increase volume size """
+        old_size = volume.size
         serializer = self.get_serializer(volume, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        new_size = serializer.validated_data.get('disk_size')
-        executors.VolumeExtendExecutor().execute(volume, new_size=new_size)
+        volume.refresh_from_db()
+        executors.VolumeExtendExecutor().execute(volume, old_size=old_size, new_size=volume.size)
 
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Volume.States.OK)
@@ -301,12 +302,13 @@ class InstanceViewSet(structure_views.PullMixin,
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Instance.States.OK)
     def change_flavor(self, request, instance, uuid=None):
+        old_flavor_name = instance.flavor_name
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
         flavor = serializer.validated_data.get('flavor')
-        executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor)
+        executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor, old_flavor_name=old_flavor_name)
 
     @decorators.detail_route(methods=['post'])
     @structure_views.safe_operation(valid_state=models.Instance.States.OK)
