@@ -228,7 +228,7 @@ class InstanceViewSet(structure_views.PullMixin,
 
         .. code-block:: http
 
-            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
+            DELETE /api/openstacktenant-instances/abceed63b8e844afacd63daeac855474/ HTTP/1.1
             Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
             Host: example.com
 
@@ -243,7 +243,7 @@ class InstanceViewSet(structure_views.PullMixin,
 
         .. code-block:: http
 
-            DELETE /api/openstack-instances/abceed63b8e844afacd63daeac855474/?delete_volumes=false HTTP/1.1
+            DELETE /api/openstacktenant-instances/abceed63b8e844afacd63daeac855474/?delete_volumes=false HTTP/1.1
             Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
             Host: example.com
 
@@ -274,7 +274,7 @@ class InstanceViewSet(structure_views.PullMixin,
     def assign_floating_ip(self, request, instance, uuid=None):
         """
         To assign floating IP to the instance, make **POST** request to
-        */api/openstack-instances/<uuid>/assign_floating_ip/* with link to the floating IP.
+        */api/openstacktenant-instances/<uuid>/assign_floating_ip/* with link to the floating IP.
         Note that instance should be in stable state, service project link of the instance should be in stable state
         and have external network.
 
@@ -282,7 +282,7 @@ class InstanceViewSet(structure_views.PullMixin,
 
         .. code-block:: http
 
-            POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/assign_floating_ip/ HTTP/1.1
+            POST /api/openstacktenant-instances/6c9b01c251c24174a6691a1f894fae31/assign_floating_ip/ HTTP/1.1
             Content-Type: application/json
             Accept: application/json
             Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
