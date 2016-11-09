@@ -269,7 +269,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             runtime_state=backend_volume.status,
             state=models.Volume.States.OK,
         )
-        if getattr(backend_volume, 'volume_image_metadata'):
+        if getattr(backend_volume, 'volume_image_metadata', False):
             volume.image_metadata = backend_volume.volume_image_metadata
             try:
                 volume.image = models.Image.objects.get(
