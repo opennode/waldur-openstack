@@ -236,10 +236,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             volume.save(update_fields=['instance', 'device'])
 
     @log_backend_action()
-    def extend_volume(self, volume, new_size):
+    def extend_volume(self, volume):
         cinder = self.cinder_client
         try:
-            cinder.volumes.extend(volume.backend_id, self.mb2gb(new_size))
+            cinder.volumes.extend(volume.backend_id, self.mb2gb(volume.size))
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
