@@ -200,7 +200,7 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
             instance={
                 'required': True,
                 'allow_null': False,
-                'view_name': 'openstack-instance-detail',
+                'view_name': 'openstacktenant-instance-detail',
                 'lookup_field': 'uuid',
             }
         )
@@ -520,7 +520,7 @@ class AssignFloatingIpSerializer(serializers.Serializer):
     floating_ip = serializers.HyperlinkedRelatedField(
         label='Floating IP',
         required=True,
-        view_name='openstack-fip-detail',
+        view_name='openstacktenant-fip-detail',
         lookup_field='uuid',
         queryset=models.FloatingIP.objects.all()
     )
@@ -553,7 +553,7 @@ class AssignFloatingIpSerializer(serializers.Serializer):
 
 class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.Serializer):
     flavor = serializers.HyperlinkedRelatedField(
-        view_name='openstack-flavor-detail',
+        view_name='openstacktenant-flavor-detail',
         lookup_field='uuid',
         queryset=models.Flavor.objects.all(),
     )
