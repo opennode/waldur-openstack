@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 from celery import chain
 
 from nodeconductor.core import executors as core_executors, tasks as core_tasks, utils as core_utils
