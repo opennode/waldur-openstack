@@ -563,7 +563,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             backend_network_id=self.external_network_id,
         ).first()
 
-    @log_backend_action()
     def _allocate_floating_ip_address(self):
         neutron = self.neutron_client
         try:
