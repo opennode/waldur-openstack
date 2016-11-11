@@ -124,6 +124,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
     )
     action_details = core_serializers.JSONField(read_only=True)
+    instance_name = serializers.SerializerMethodField()
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Volume
@@ -131,7 +132,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_snapshot', 'size', 'bootable', 'metadata',
             'image', 'image_metadata', 'type', 'runtime_state',
-            'device', 'action', 'action_details', 'instance',
+            'device', 'action', 'action_details', 'instance', 'instance_name',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'device', 'metadata',
@@ -147,6 +148,10 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
             size={'required': False, 'allow_null': True},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
+
+    def get_instance_name(self, volume):
+        if volume.instance:
+            return volume.instance.name
 
     def validate(self, attrs):
         if self.instance is None:
