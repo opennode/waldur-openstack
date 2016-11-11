@@ -15,12 +15,14 @@ class BaseSecurityGroupTest(test.APITransactionTestCase):
         self.staff = structure_factories.UserFactory(is_staff=True)
         self.owner = structure_factories.UserFactory()
         self.admin = structure_factories.UserFactory()
+        self.manager = structure_factories.UserFactory()
 
         self.customer = structure_factories.CustomerFactory()
         self.customer.add_user(self.owner, structure_models.CustomerRole.OWNER)
         self.service = factories.OpenStackServiceFactory(customer=self.customer)
         self.project = structure_factories.ProjectFactory(customer=self.customer)
         self.project.add_user(self.admin, structure_models.ProjectRole.ADMINISTRATOR)
+        self.project.add_user(self.manager, structure_models.ProjectRole.MANAGER)
         self.service_project_link = factories.OpenStackServiceProjectLinkFactory(
             service=self.service, project=self.project)
         self.tenant = factories.TenantFactory(service_project_link=self.service_project_link)
@@ -45,7 +47,7 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
         }
         self.url = factories.SecurityGroupFactory.get_list_url()
 
-    @data('owner', 'admin')
+    @data('owner', 'admin', 'manager')
     def test_user_with_access_can_create_security_group(self, user):
         self.client.force_authenticate(getattr(self, user))
         response = self.client.post(self.url, self.valid_data)
@@ -111,7 +113,8 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
             state=SynchronizationStates.IN_SYNC)
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
-    def test_project_administrator_can_update_security_group_rules(self):
+    @data('admin', 'manager')
+    def test_user_with_access_can_update_security_group_rules(self, user):
         rules = [
             {
                 'protocol': 'udp',
@@ -121,7 +124,7 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
             }
         ]
 
-        self.client.force_authenticate(self.admin)
+        self.client.force_authenticate(getattr(self, user))
         response = self.client.patch(self.url, data={'rules': rules})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -217,8 +220,9 @@ class SecurityGroupDeleteTest(BaseSecurityGroupTest):
             state=SynchronizationStates.IN_SYNC)
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
-    def test_project_administrator_can_delete_security_group(self):
-        self.client.force_authenticate(self.admin)
+    @data('admin', 'manager')
+    def test_project_administrator_can_delete_security_group(self, user):
+        self.client.force_authenticate(getattr(self, user))
 
         with patch('nodeconductor_openstack.openstack.executors.SecurityGroupDeleteExecutor.execute') as mocked_execute:
             response = self.client.delete(self.url)
@@ -247,8 +251,9 @@ class SecurityGroupRetreiveTest(BaseSecurityGroupTest):
 
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
-    def test_user_can_access_security_groups_of_project_instances_he_is_admin_of(self):
-        self.client.force_authenticate(user=self.admin)
+    @data('admin', 'manager')
+    def test_user_can_access_security_groups_of_project_instances_he_has_role_in(self, user):
+        self.client.force_authenticate(getattr(self, user))
 
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)

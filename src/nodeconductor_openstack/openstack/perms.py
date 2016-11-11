@@ -7,6 +7,7 @@ def openstack_permission_logic(prefix):
         collaborators_query=[
             '%s__service_project_link__project__customer__roles__permission_group__user' % prefix,
             '%s__service_project_link__project__roles__permission_group__user' % prefix,
+            '%s__service_project_link__project__roles__permission_group__user' % prefix,
             '%s__service_project_link__project__project_groups__roles__permission_group__user' % prefix,
         ],
         collaborators_filter=[
@@ -14,6 +15,8 @@ def openstack_permission_logic(prefix):
              structure_models.CustomerRole.OWNER},
             {'%s__service_project_link__project__roles__role_type' % prefix:
              structure_models.ProjectRole.ADMINISTRATOR},
+            {'%s__service_project_link__project__roles__role_type' % prefix:
+             structure_models.ProjectRole.MANAGER},
             {'%s__service_project_link__project__project_groups__roles__permission_group__user' % prefix:
              structure_models.ProjectGroupRole.MANAGER},
         ],

@@ -100,6 +100,8 @@ class BackupPermissionsTest(helpers.PermissionsTest):
         self.regular_user = structure_factories.UserFactory(username='regular user')
         self.project_admin = structure_factories.UserFactory(username='admin')
         self.project.add_user(self.project_admin, structure_models.ProjectRole.ADMINISTRATOR)
+        self.project_manager = structure_factories.UserFactory(username='manager')
+        self.project.add_user(self.project_manager, structure_models.ProjectRole.MANAGER)
         self.customer_owner = structure_factories.UserFactory(username='owner')
         self.customer.add_user(self.customer_owner, structure_models.CustomerRole.OWNER)
         self.project_group_manager = structure_factories.UserFactory(username='manager')
@@ -107,9 +109,9 @@ class BackupPermissionsTest(helpers.PermissionsTest):
 
     def get_users_with_permission(self, url, method):
         if method == 'GET':
-            return [self.staff, self.project_admin, self.project_group_manager]
+            return [self.staff, self.project_admin, self.project_manager, self.project_group_manager]
         else:
-            return [self.staff, self.project_admin, self.customer_owner]
+            return [self.staff, self.project_admin, self.project_manager, self.customer_owner]
 
     def get_users_without_permissions(self, url, method):
         if method == 'GET':
