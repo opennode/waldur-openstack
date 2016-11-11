@@ -67,7 +67,11 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_action_details(cls, volume, **kwargs):
-        return 'Extending volume from %s MB to %s MB' % (kwargs.get('old_size'), volume.size)
+        return {
+            'message': 'Extend volume from %s MB to %s MB' % (kwargs.get('old_size'), volume.size),
+            'old_size': kwargs.get('old_size'),
+            'new_size': volume.size,
+        }
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
@@ -132,7 +136,7 @@ class VolumeAttachExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_action_details(cls, volume, **kwargs):
-        return 'Attach volume to instance %s' % volume.instance.name
+        return {'message': 'Attach volume to instance %s' % volume.instance.name}
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
@@ -160,7 +164,7 @@ class VolumeDetachExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_action_details(cls, volume, **kwargs):
-        return 'Detach volume from instance %s' % volume.instance.name
+        return {'message': 'Detach volume from instance %s' % volume.instance.name}
 
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
@@ -302,11 +306,6 @@ class InstanceUpdateSecurityGroupsExecutor(core_executors.ActionExecutor):
     action = 'Update security groups'
 
     @classmethod
-    def get_action_details(cls, instance, **kwargs):
-        names = ', '.join(instance.security_groups.values_list('name', flat=True))
-        return 'Update security groups. New groups: %s' % names
-
-    @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
         core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_security_groups')
 
@@ -381,7 +380,13 @@ class InstanceFlavorChangeExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_action_details(cls, instance, **kwargs):
-        return 'Change flavor from %s to %s' % (kwargs.get('old_flavor_name'), kwargs.get('flavor').name)
+        old_flavor_name = kwargs.get('old_flavor_name')
+        new_flavor_name = kwargs.get('flavor').name
+        return {
+            'message': 'Change flavor from %s to %s' % (old_flavor_name, new_flavor_name),
+            'old_flavor_name': old_flavor_name,
+            'new_flavor_name': new_flavor_name,
+        }
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
@@ -427,8 +432,11 @@ class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_action_details(cls, instance, **kwargs):
-        floating_ip = models.FloatingIP.objects.get(uuid=kwargs.get('floating_ip_uuid'))
-        return 'Assign floating IP %s' % floating_ip.address
+        floating_ip_address = models.FloatingIP.objects.get(uuid=kwargs.get('floating_ip_uuid')).address
+        return {
+            'message': 'Assign floating IP %s' % floating_ip_address,
+            'floating_ip_address': floating_ip_address,
+        }
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, floating_ip_uuid, **kwargs):

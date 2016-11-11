@@ -123,6 +123,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstacktenant-spl-detail',
         queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
     )
+    action_details = core_serializers.JSONField()
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Volume
@@ -130,16 +131,17 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_snapshot', 'size', 'bootable', 'metadata',
             'image', 'image_metadata', 'type', 'runtime_state',
-            'device', 'action', 'action_details',
+            'device', 'action', 'action_details', 'instance',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'device', 'metadata',
-            'action', 'action_details', 'action_as_process',
+            'action', 'action_details', 'instance',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'size', 'type', 'image',
         )
         extra_kwargs = dict(
+            instance={'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
             image={'lookup_field': 'uuid', 'view_name': 'openstacktenant-image-detail'},
             source_snapshot={'lookup_field': 'uuid', 'view_name': 'openstacktenant-snapshot-detail'},
             size={'required': False, 'allow_null': True},
@@ -252,15 +254,16 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         read_only=True)
 
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
+    action_details = core_serializers.JSONField()
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Snapshot
         view_name = 'openstacktenant-snapshot-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'source_volume', 'size', 'metadata', 'runtime_state', 'source_volume_name'
+            'source_volume', 'size', 'metadata', 'runtime_state', 'source_volume_name', 'action', 'action_details',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'size', 'source_volume', 'metadata', 'runtime_state',
+            'size', 'source_volume', 'metadata', 'runtime_state', 'action', 'action_details',
         )
         extra_kwargs = dict(
             source_volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
@@ -359,6 +362,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         write_only=True
     )
     volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
+    action_details = core_serializers.JSONField()
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
@@ -366,7 +370,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
             'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
-            'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details', 'action_as_process',
+            'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',

@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from django.db.models import signals
 
 
 class OpenStackTenantConfig(AppConfig):
@@ -28,4 +29,13 @@ class OpenStackTenantConfig(AppConfig):
                     creation_condition=lambda service_settings:
                         service_settings.type == OpenStackTenantConfig.service_name
                 )
+            )
+
+        from . import handlers, models
+        for Resource in (models.Instance, models.Volume, models.Snapshot):
+            name = Resource.__name__.lower()
+            signals.post_save.connect(
+                handlers.log_action,
+                sender=Resource,
+                dispatch_uid='openstack_tenant.handlers.log_%s_action' % name,
             )
