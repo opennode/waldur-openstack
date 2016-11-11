@@ -42,6 +42,15 @@ def _get_action_event_type(class_name, action, event_state):
 
 
 def log_action(sender, instance, created=False, **kwargs):
+    """ Log any resource action.
+
+        Example of logged volume extend action:
+        {
+            'event_type': 'volume_extend_succeeded',
+            'message': 'Successfully executed "Extend volume from 1024 MB to 2048 MB" operation for volume "pavel-test"',
+            'action_details': {'old_size': 1024, 'new_size': 2048}
+        }
+    """
     resource = instance
     if created or not resource.tracker.has_changed('action'):
         return
