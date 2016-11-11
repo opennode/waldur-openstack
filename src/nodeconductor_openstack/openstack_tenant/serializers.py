@@ -123,7 +123,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstacktenant-spl-detail',
         queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
     )
-    action_details = core_serializers.JSONField()
+    action_details = core_serializers.JSONField(read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Volume
@@ -135,7 +135,7 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'device', 'metadata',
-            'action', 'action_details', 'instance',
+            'action', 'instance',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
             'size', 'type', 'image',
@@ -254,7 +254,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         read_only=True)
 
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
-    action_details = core_serializers.JSONField()
+    action_details = core_serializers.JSONField(read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Snapshot
@@ -263,7 +263,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
             'source_volume', 'size', 'metadata', 'runtime_state', 'source_volume_name', 'action', 'action_details',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'size', 'source_volume', 'metadata', 'runtime_state', 'action', 'action_details',
+            'size', 'source_volume', 'metadata', 'runtime_state', 'action',
         )
         extra_kwargs = dict(
             source_volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
@@ -362,7 +362,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         write_only=True
     )
     volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
-    action_details = core_serializers.JSONField()
+    action_details = core_serializers.JSONField(read_only=True)
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
@@ -374,10 +374,10 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
-            'floating_ip'
+            'floating_ip',
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
-            'flavor_disk', 'runtime_state', 'flavor_name',
+            'flavor_disk', 'runtime_state', 'flavor_name', 'action',
         )
 
     def get_fields(self):
