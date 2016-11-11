@@ -61,4 +61,4 @@ class ResourceActionEventLogger(EventLogger):
         )
 
 
-event_logger.register('resource_action', ResourceActionEventLogger)
+event_logger.register('openstack_resource_action', ResourceActionEventLogger)
