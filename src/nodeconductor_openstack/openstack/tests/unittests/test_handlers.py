@@ -41,7 +41,7 @@ class SshKeysHandlersTest(TestCase):
         self.ssh_key = structure_factories.SshPublicKeyFactory(user=self.user)
         self.tenant = factories.TenantFactory()
 
-    def test_ssh_key_will_be_removed_if_user_lost_connection_to_tennant(self, mocked_task_call):
+    def test_ssh_key_will_be_removed_if_user_lost_connection_to_tenant(self, mocked_task_call):
         project = self.tenant.service_project_link.project
         project.add_user(self.user, structure_models.ProjectRole.ADMINISTRATOR)
         project.remove_user(self.user)
@@ -50,7 +50,7 @@ class SshKeysHandlersTest(TestCase):
         mocked_task_call.assert_called_once_with(
             serialized_tenant, 'remove_ssh_key_from_tenant', self.ssh_key.name, self.ssh_key.fingerprint)
 
-    def test_ssh_key_will_not_be_removed_if_user_still_has_connection_to_tennant(self, mocked_task_call):
+    def test_ssh_key_will_not_be_removed_if_user_still_has_connection_to_tenant(self, mocked_task_call):
         project = self.tenant.service_project_link.project
         project.add_user(self.user, structure_models.ProjectRole.ADMINISTRATOR)
         project.customer.add_user(self.user, structure_models.CustomerRole.OWNER)
