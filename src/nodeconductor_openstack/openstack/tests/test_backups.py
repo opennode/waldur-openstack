@@ -104,7 +104,7 @@ class BackupPermissionsTest(helpers.PermissionsTest):
         self.project.add_user(self.project_manager, structure_models.ProjectRole.MANAGER)
         self.customer_owner = structure_factories.UserFactory(username='owner')
         self.customer.add_user(self.customer_owner, structure_models.CustomerRole.OWNER)
-        self.project_group_manager = structure_factories.UserFactory(username='manager')
+        self.project_group_manager = structure_factories.UserFactory(username='project_group_manager')
         self.project_group.add_user(self.project_group_manager, structure_models.ProjectGroupRole.MANAGER)
 
     def get_users_with_permission(self, url, method):

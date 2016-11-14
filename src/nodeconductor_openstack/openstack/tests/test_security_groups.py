@@ -103,6 +103,7 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
         self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
 
+@ddt
 class SecurityGroupUpdateTest(BaseSecurityGroupTest):
 
     def setUp(self):
@@ -210,6 +211,7 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
         self.assertTrue(self.security_group.rules.filter(**new_rule_data).exists())
 
 
+@ddt
 class SecurityGroupDeleteTest(BaseSecurityGroupTest):
 
     def setUp(self):
@@ -240,6 +242,7 @@ class SecurityGroupDeleteTest(BaseSecurityGroupTest):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
 
+@ddt
 class SecurityGroupRetreiveTest(BaseSecurityGroupTest):
 
     def setUp(self):

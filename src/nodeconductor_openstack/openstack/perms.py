@@ -31,11 +31,13 @@ PERMISSION_LOGICS = (
         collaborators_query=[
             'service_project_link__service__customer__roles__permission_group__user',
             'service_project_link__project__roles__permission_group__user',
+            'service_project_link__project__roles__permission_group__user',
             'service_project_link__project__project_groups__roles__permission_group__user',
         ],
         collaborators_filter=[
             {'service_project_link__service__customer__roles__role_type': structure_models.CustomerRole.OWNER},
             {'service_project_link__project__roles__role_type': structure_models.ProjectRole.ADMINISTRATOR},
+            {'service_project_link__project__roles__role_type': structure_models.ProjectRole.MANAGER},
             {'service_project_link__project__project_groups__roles__role_type':
              structure_models.ProjectGroupRole.MANAGER}
         ],
