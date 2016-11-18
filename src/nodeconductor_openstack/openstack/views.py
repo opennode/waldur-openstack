@@ -1047,21 +1047,32 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         'create_service': serializers.ServiceNameSerializer
     }
 
-    def initial(self, request, *args, **kwargs):
-        self.check_admin_action()
-        return super(TenantViewSet, self).initial(request, *args, **kwargs)
-
     def check_operation(self, request, resource, action):
-        self.check_admin_action()
-        return super(TenantViewSet, self).check_operation(request, resource, action)
+        tenant = resource
 
-    def check_admin_action(self):
         admin_actions = ('pull', 'destroy', 'update', 'external_network')
-        if self.action in admin_actions and \
-                not self.get_object().service_project_link.service.is_admin_tenant():
+        if action in admin_actions and not tenant.service_project_link.service.is_admin_tenant():
             raise ValidationError({
-                'non_field_errors': 'Tenant %s is only possible for admin service.' % self.action
+                'non_field_errors': 'Tenant %s is only possible for admin service.' % action
             })
+
+        custom_actions = ('create_service', 'set_quotas', 'allocate_floating_ip', 'external_network')
+        if action in custom_actions and tenant.state != models.Tenant.States.OK:
+            raise IncorrectStateException()
+
+        if action == 'create_service' and not request.user.is_staff and \
+                not tenant.customer.has_user(request.user, structure_models.CustomerRole.OWNER):
+            raise exceptions.PermissionDenied()
+
+        if action == 'set_quotas' and not request.user.is_staff:
+            raise exceptions.PermissionDenied()
+
+        if action == 'allocate_floating_ip' and not tenant.external_network_id:
+            raise ValidationError({
+                'tenant': 'Tenant should have an external network ID.'
+            })
+
+        return super(TenantViewSet, self).check_operation(request, resource, action)
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)
@@ -1076,13 +1087,6 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         name = serializer.validated_data['name']
 
         tenant = self.get_object()
-
-        if tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException()
-
-        if not request.user.is_staff and \
-                not tenant.customer.has_user(request.user, structure_models.CustomerRole.OWNER):
-            raise exceptions.PermissionDenied()
 
         service = tenant.create_service(name)
         structure_executors.ServiceSettingsCreateExecutor.execute(service.settings, async=self.async_executor)
@@ -1140,12 +1144,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         would be **409 CONFLICT**. In this case REST client is advised to repeat the request after some time.
         On successful completion the task will synchronize quotas with the backend.
         """
-        if not request.user.is_staff:
-            raise exceptions.PermissionDenied()
-
         tenant = self.get_object()
-        if tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException("Tenant should be in state OK.")
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1161,15 +1160,6 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     @decorators.detail_route(methods=['post'])
     def allocate_floating_ip(self, request, uuid=None):
         tenant = self.get_object()
-
-        if tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException("Tenant should be in state OK.")
-
-        if not tenant.external_network_id:
-            return response.Response(
-                {'detail': 'Tenant should have an external network ID.'},
-                status=status.HTTP_409_CONFLICT)
-
         executors.TenantAllocateFloatingIPExecutor.execute(tenant)
 
         return response.Response(
@@ -1212,9 +1202,6 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         to */api/openstack-tenants/<uuid>/external_network/* without any parameters in the request body.
         """
         tenant = self.get_object()
-
-        if tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException("Tenant should be in state OK.")
 
         if request.method == 'DELETE':
             return self._delete_external_network(request, tenant)
