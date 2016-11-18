@@ -1058,7 +1058,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         custom_actions = ('create_service', 'set_quotas', 'allocate_floating_ip', 'external_network')
         if action in custom_actions and tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException()
+            raise IncorrectStateException('Tenant should be in state OK.')
 
         if action == 'create_service' and not request.user.is_staff and \
                 not tenant.customer.has_user(request.user, structure_models.CustomerRole.OWNER):
@@ -1068,9 +1068,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             raise exceptions.PermissionDenied()
 
         if action == 'allocate_floating_ip' and not tenant.external_network_id:
-            raise ValidationError({
-                'tenant': 'Tenant should have an external network ID.'
-            })
+            raise IncorrectStateException('Tenant should have an external network ID.')
 
         return super(TenantViewSet, self).check_operation(request, resource, action)
 
