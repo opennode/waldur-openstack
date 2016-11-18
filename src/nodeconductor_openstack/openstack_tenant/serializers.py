@@ -615,3 +615,29 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 
 class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
+
+
+class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
+    security_groups = NestedSecurityGroupSerializer(
+        queryset=models.SecurityGroup.objects.all(),
+        many=True,
+    )
+
+    def validate_security_groups(self, security_groups):
+        spl = self.instance.service_project_link
+
+        for security_group in security_groups:
+            if security_group.settings != spl.service.settings:
+                raise serializers.ValidationError(
+                    "Security group %s is not within the same service settings" % security_group.name)
+
+        return security_groups
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        security_groups = validated_data.pop('security_groups', None)
+        if security_groups is not None:
+            instance.security_groups.clear()
+            instance.security_groups.add(*security_groups)
+
+        return instance

@@ -38,7 +38,7 @@ def _get_action_message(action, action_details):
 
 
 def _get_action_event_type(class_name, action, event_state):
-    return '%s_%s_%s' % (class_name, action.lower(), event_state)
+    return '%s_%s_%s' % (class_name, action.replace(' ', '_').lower(), event_state)
 
 
 def log_action(sender, instance, created=False, **kwargs):

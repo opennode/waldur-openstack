@@ -179,6 +179,7 @@ class InstanceViewSet(structure_views.PullMixin,
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
         'change_flavor': serializers.InstanceFlavorChangeSerializer,
         'destroy': serializers.InstanceDeleteSerializer,
+        'update_security_groups': serializers.InstanceSecurityGroupsUpdateSerializer
     }
 
     def initial(self, request, *args, **kwargs):
@@ -324,3 +325,12 @@ class InstanceViewSet(structure_views.PullMixin,
     @structure_views.safe_operation(valid_state=models.Instance.States.OK)
     def restart(self, request, instance, uuid=None):
         executors.InstanceRestartExecutor().execute(instance)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OK)
+    def update_security_groups(self, request, instance, uuid=None):
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        executors.InstanceUpdateSecurityGroupsExecutor().execute(instance)

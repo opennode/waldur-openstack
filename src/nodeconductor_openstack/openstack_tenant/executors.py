@@ -307,7 +307,11 @@ class InstanceUpdateSecurityGroupsExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
-        core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_security_groups')
+        return core_tasks.BackendMethodTask().si(
+            serialized_instance,
+            backend_method='push_instance_security_groups',
+            state_transition='begin_updating',
+        )
 
 
 class InstanceDeleteExecutor(core_executors.DeleteExecutor):
