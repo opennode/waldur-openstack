@@ -351,7 +351,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         queryset=models.Image.objects.all().select_related('settings'),
         write_only=True)
 
-    security_groups = NestedSecurityGroupSerializer(many=True, read_only=True)
+    security_groups = NestedSecurityGroupSerializer(
+        queryset=models.SecurityGroup.objects.all(), many=True, required=False)
 
     skip_external_ip_assignment = serializers.BooleanField(write_only=True, default=False)
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
@@ -432,10 +433,10 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                 {'system_volume_size': "System volume size has to be greater than %s" % image.min_disk})
 
         for security_group in attrs.get('security_groups', []):
-            if security_group.service_project_link != attrs['service_project_link']:
+            if security_group.settings != settings:
                 raise serializers.ValidationError(
-                    "Security group {} has wrong service or project. New instance and its "
-                    "security groups have to belong to same project and service".format(security_group.name))
+                    "Security group {} does not belong to the same service settings as service project link.".format(
+                        security_group.name))
 
         self._validate_external_ip(attrs)
 
