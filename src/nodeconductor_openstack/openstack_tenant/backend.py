@@ -536,7 +536,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 if instance.security_groups.filter(name=bsg.name).exists():
                     continue
                 try:
-                    security_group = models.SecurityGroup.objects.get(name=bsg.name)
+                    security_group = models.SecurityGroup.objects.get(name=bsg.name, settings=self.settings)
                 except models.SecurityGroup.DoesNotExist:
                     logger.error(
                         'Security group "%s" does not exist, but instance %s (PK: %s) has it.' %
