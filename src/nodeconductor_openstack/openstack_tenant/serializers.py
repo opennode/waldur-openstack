@@ -525,14 +525,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         # DRF adds data_volume_size to validated_data, because it has default value.
         # This field is protected, so it should not be used for update.
         del validated_data['data_volume_size']
-        security_groups = validated_data.pop('security_groups', None)
-        with transaction.atomic():
-            instance = super(InstanceSerializer, self).update(instance, validated_data)
-            if security_groups is not None:
-                instance.security_groups.clear()
-                instance.security_groups.add(*security_groups)
-
-        return instance
+        return super(InstanceSerializer, self).update(instance, validated_data)
 
 
 class AssignFloatingIpSerializer(serializers.Serializer):
