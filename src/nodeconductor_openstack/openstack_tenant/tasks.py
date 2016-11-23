@@ -159,7 +159,7 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
             self.pull_snapshots(service_settings, backend)
             self.pull_instances(service_settings, backend)
         except ServiceBackendError as e:
-            logger.error('Failed to pull resources for service settings: %s. Error: %s' % service_settings, e)
+            logger.error('Failed to pull resources for service settings: %s. Error: %s' % (service_settings, e))
             service_settings.set_erred()
             service_settings.error_message = str(e)
             service_settings.save()
