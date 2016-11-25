@@ -553,15 +553,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
     def _get_or_create_floating_ip(self):
         # TODO: check availability and quota
-        if not models.FloatingIP.objects.filter(
-            status='DOWN',
-            backend_network_id=self.external_network_id,
-        ).exists():
+        filters = {'status': 'DOWN', 'backend_network_id': self.external_network_id, 'settings': self.settings}
+        if not models.FloatingIP.objects.filter(**filters).exists():
             self._allocate_floating_ip_address()
-        return models.FloatingIP.objects.filter(
-            status='DOWN',
-            backend_network_id=self.external_network_id,
-        ).first()
+        return models.FloatingIP.objects.filter(**filters).first()
 
     def _allocate_floating_ip_address(self):
         neutron = self.neutron_client
@@ -577,6 +572,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         else:
             models.FloatingIP.objects.create(
                 status='DOWN',
+                settings=self.settings,
                 address=ip_address['floating_ip_address'],
                 backend_id=ip_address['id'],
                 backend_network_id=ip_address['floating_network_id'],
