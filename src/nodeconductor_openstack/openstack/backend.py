@@ -887,6 +887,10 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def delete_tenant_floating_ips(self, tenant):
+        if not tenant.backend_id:
+            # This method will remove all floating IPs if tenant `backend_id` is not defined.
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
         neutron = self.neutron_admin_client
 
         try:
@@ -905,6 +909,10 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def delete_tenant_ports(self, tenant):
+        if not tenant.backend_id:
+            # This method will remove all ports if tenant `backend_id` is not defined.
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
         neutron = self.neutron_admin_client
 
         try:
@@ -932,6 +940,10 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def delete_tenant_routers(self, tenant):
+        if not tenant.backend_id:
+            # This method will remove all routers if tenant `backend_id` is not defined.
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
         neutron = self.neutron_admin_client
 
         try:
@@ -950,6 +962,10 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def delete_tenant_networks(self, tenant):
+        if not tenant.backend_id:
+            # This method will remove all networks if tenant `backend_id` is not defined.
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
         neutron = self.neutron_admin_client
 
         try:
@@ -1063,6 +1079,9 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def delete_tenant(self, tenant):
+        if not tenant.backend_id:
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
         keystone = self.keystone_admin_client
 
         logger.info("Deleting tenant %s", tenant.backend_id)
