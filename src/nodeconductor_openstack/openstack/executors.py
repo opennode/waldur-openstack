@@ -148,6 +148,7 @@ class TenantDeleteExecutor(core_executors.DeleteExecutor):
             core_tasks.BackendMethodTask().si(
                 serialized_tenant, backend_method='delete_tenant_snapshots',
             ),
+            # The countdown is needed for volumes to transit into proper state after instances deletion
             core_tasks.BackendMethodTask().si(
                 serialized_tenant, backend_method='delete_tenant_volumes',
             ).set(countdown=30),
