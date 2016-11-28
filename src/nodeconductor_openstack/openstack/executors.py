@@ -109,11 +109,61 @@ class TenantDeleteExecutor(core_executors.DeleteExecutor):
 
     @classmethod
     def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
-        if tenant.backend_id:
-            return core_tasks.BackendMethodTask().si(
-                serialized_tenant, 'cleanup_tenant', dryrun=False, state_transition='begin_deleting')
-        else:
-            return core_tasks.StateTransitionTask().si(serialized_tenant, state_transition='begin_deleting')
+        state_transition = core_tasks.StateTransitionTask().si(serialized_tenant, state_transition='begin_deleting')
+        if not tenant.backend_id:
+            return state_transition
+
+        cleanup_networks = cls.get_networks_cleanup_tasks(serialized_tenant)
+        cleanup_instances = cls.get_instances_cleanup_tasks(serialized_tenant)
+        cleanup_identities = cls.get_identity_cleanup_tasks(serialized_tenant)
+
+        return chain([state_transition] + cleanup_networks + cleanup_instances + cleanup_identities)
+
+    @classmethod
+    def get_networks_cleanup_tasks(cls, serialized_tenant):
+        return [
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_floating_ips',
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_ports',
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_routers',
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_networks',
+            ),
+        ]
+
+    @classmethod
+    def get_instances_cleanup_tasks(cls, serialized_tenant):
+        return [
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_security_groups',
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_instances',
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_snapshots',
+            ),
+            # The countdown is needed for volumes to transit into proper state after instances deletion
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_volumes',
+            ).set(countdown=30),
+        ]
+
+    @classmethod
+    def get_identity_cleanup_tasks(cls, serialized_tenant):
+        return [
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_user',
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant',
+            ),
+        ]
 
 
 class TenantAllocateFloatingIPExecutor(core_executors.ActionExecutor):
