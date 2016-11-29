@@ -8,7 +8,7 @@ def _log_scheduled_action(resource, action, action_details):
     message = _get_action_message(action, action_details)
     log.event_logger.openstack_resource_action.info(
         'Operation "%s" has been scheduled for %s "%s"' % (message, class_name, resource.name),
-        event_type=_get_action_event_type(class_name, action, 'scheduled'),
+        event_type=_get_action_event_type(action, 'scheduled'),
         event_context={'resource': resource, 'action_details': action_details},
     )
 
@@ -18,7 +18,7 @@ def _log_succeeded_action(resource, action, action_details):
     message = _get_action_message(action, action_details)
     log.event_logger.openstack_resource_action.info(
         'Successfully executed "%s" operation for %s "%s"' % (message, class_name, resource.name),
-        event_type=_get_action_event_type(class_name, action, 'succeeded'),
+        event_type=_get_action_event_type(action, 'succeeded'),
         event_context={'resource': resource, 'action_details': action_details},
     )
 
@@ -28,7 +28,7 @@ def _log_failed_action(resource, action, action_details):
     message = _get_action_message(action, action_details)
     log.event_logger.openstack_resource_action.warning(
         'Failed to execute "%s" operation for %s "%s"' % (message, class_name, resource.name),
-        event_type=_get_action_event_type(class_name, action, 'failed'),
+        event_type=_get_action_event_type(action, 'failed'),
         event_context={'resource': resource, 'action_details': action_details},
     )
 
@@ -37,8 +37,8 @@ def _get_action_message(action, action_details):
     return action_details.pop('message', action)
 
 
-def _get_action_event_type(class_name, action, event_state):
-    return '%s_%s_%s' % (class_name, action.replace(' ', '_').lower(), event_state)
+def _get_action_event_type(action, event_state):
+    return 'resource_%s_%s' % (action.replace(' ', '_').lower(), event_state)
 
 
 def log_action(sender, instance, created=False, **kwargs):
