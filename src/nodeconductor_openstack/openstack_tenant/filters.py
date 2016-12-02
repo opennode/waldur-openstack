@@ -46,7 +46,7 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
 
 
 class BackupFilter(structure_filters.BaseResourceFilter):
-    instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='i__uuid')
+    instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='instance__uuid')
     instance_uuid = core_filters.UUIDFilter(name='instance__uuid')
 
     class Meta(structure_filters.BaseResourceStateFilter.Meta):
