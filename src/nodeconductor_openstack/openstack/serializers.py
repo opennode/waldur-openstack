@@ -582,6 +582,8 @@ class BackupRestorationSerializer(BasicBackupRestorationSerializer):
             volume.save()
             volume.increase_backend_quotas_usage()
             instance.volumes.add(volume)
+            # XXX: This should be moved to itacloud assembly
+            self.create_instance_crm(instance, backup)
         return backup_restoration
 
 
