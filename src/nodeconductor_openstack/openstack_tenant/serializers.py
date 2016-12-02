@@ -4,7 +4,7 @@ import re
 from django.db import transaction
 from rest_framework import serializers
 
-from nodeconductor.core import serializers as core_serializers
+from nodeconductor.core import serializers as core_serializers, fields as core_fields
 from nodeconductor.structure import serializers as structure_serializers
 
 from . import models
@@ -642,3 +642,136 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
             instance.security_groups.add(*security_groups)
 
         return instance
+
+
+class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
+    # requires backup in context on creation
+    name = serializers.CharField(
+        required=False, help_text='New instance name. Leave blank to use source instance name.')
+
+    class Meta(object):
+        model = models.BackupRestoration
+        fields = ('uuid', 'instance', 'created', 'flavor', 'name')
+        read_only_fields = ('url', 'uuid', 'instance', 'created', 'backup')
+        extra_kwargs = dict(
+            instance={'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
+            flavor={'lookup_field': 'uuid', 'view_name': 'openstacktenant-flavor-detail', 'allow_null': False,
+                    'required': True},
+        )
+
+    def validate(self, attrs):
+        flavor = attrs['flavor']
+        backup = self.context['backup']
+        if flavor.settings != backup.instance.service_project_link.service.settings:
+            raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        flavor = validated_data['flavor']
+        validated_data['backup'] = backup = self.context['backup']
+        source_instance = backup.instance
+        # instance that will be restored
+        metadata = backup.metadata or {}
+        instance = models.Instance.objects.create(
+            name=validated_data.pop('name', None) or metadata.get('name', source_instance.name),
+            description=metadata.get('description', ''),
+            service_project_link=backup.service_project_link,
+            flavor_disk=flavor.disk,
+            flavor_name=flavor.name,
+            cores=flavor.cores,
+            ram=flavor.ram,
+            min_ram=metadata.get('min_ram', 0),
+            min_disk=metadata.get('min_disk', 0),
+            image_name=metadata.get('image_name', ''),
+            user_data=metadata.get('user_data', ''),
+            disk=sum([snapshot.size for snapshot in backup.snapshots.all()]),
+        )
+        instance.increase_backend_quotas_usage()
+        validated_data['instance'] = instance
+        backup_restoration = super(BackupRestorationSerializer, self).create(validated_data)
+        # restoration for each instance volume from snapshot.
+        for snapshot in backup.snapshots.all():
+            volume = models.Volume(
+                source_snapshot=snapshot,
+                service_project_link=snapshot.service_project_link,
+                name='{0}-volume'.format(instance.name[:143]),
+                description='Restored from backup %s' % backup.uuid.hex,
+                size=snapshot.size,
+            )
+            if 'source_volume_image_metadata' in snapshot.metadata:
+                volume.image_metadata = snapshot.metadata['source_volume_image_metadata']
+            volume.save()
+            volume.increase_backend_quotas_usage()
+            instance.volumes.add(volume)
+        return backup_restoration
+
+
+class BackupSerializer(structure_serializers.BaseResourceSerializer):
+    # Serializer requires OpenStack Instance in context on creation
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstacktenant-detail',
+        read_only=True,
+        lookup_field='uuid')
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstacktenant-spl-detail',
+        read_only=True,
+    )
+    metadata = core_fields.JsonField(read_only=True)
+    instance_name = serializers.ReadOnlyField(source='instance.name')
+    restorations = BackupRestorationSerializer(many=True, read_only=True)
+
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+        model = models.Backup
+        view_name = 'openstacktenant-backup-detail'
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+            'kept_until', 'metadata', 'instance', 'instance_name', 'restorations')
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+            'instance', 'service_project_link')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            # 'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
+        }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        validated_data['instance'] = instance = self.context['instance']
+        validated_data['service_project_link'] = instance.service_project_link
+        validated_data['metadata'] = self.get_backup_metadata(instance)
+        backup = super(BackupSerializer, self).create(validated_data)
+        self.create_backup_snapshots(backup)
+        return backup
+
+    @staticmethod
+    def get_backup_metadata(instance):
+        return {
+            'name': instance.name,
+            'description': instance.description,
+            'min_ram': instance.min_ram,
+            'min_disk': instance.min_disk,
+            'key_name': instance.key_name,
+            'key_fingerprint': instance.key_fingerprint,
+            'user_data': instance.user_data,
+            'flavor_name': instance.flavor_name,
+            'image_name': instance.image_name,
+        }
+
+    @staticmethod
+    def create_backup_snapshots(backup):
+        for volume in backup.instance.volumes.all():
+            snapshot = models.Snapshot.objects.create(
+                name='Snapshot for volume %s' % volume.name,
+                service_project_link=backup.service_project_link,
+                size=volume.size,
+                source_volume=volume,
+                description='Part of backup %s' % backup.uuid.hex,
+                metadata={
+                    'source_volume_name': volume.name,
+                    'source_volume_description': volume.description,
+                    'source_volume_image_metadata': volume.image_metadata,
+                },
+            )
+            snapshot.increase_backend_quotas_usage()
+            backup.snapshots.add(snapshot)

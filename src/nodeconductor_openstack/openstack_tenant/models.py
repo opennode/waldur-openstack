@@ -5,6 +5,7 @@ from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
 from jsonfield import JSONField
 from model_utils import FieldTracker
+from model_utils.models import TimeStampedModel
 
 from nodeconductor.core import models as core_models
 from nodeconductor.logging.loggers import LoggableMixin
@@ -103,9 +104,6 @@ class Volume(structure_models.Storage):
 
     tracker = FieldTracker()
 
-    def get_backend(self):
-        return self.service_project_link.service.settings.get_backend()
-
     def increase_backend_quotas_usage(self, validate=True):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.volumes, 1, validate=validate)
@@ -136,9 +134,6 @@ class Snapshot(structure_models.Storage):
     def get_url_name(cls):
         return 'openstacktenant-snapshot'
 
-    def get_backend(self):
-        return self.service_project_link.service.settings.get_backend()
-
     def increase_backend_quotas_usage(self, validate=True):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.snapshots, 1, validate=validate)
@@ -150,9 +145,7 @@ class Snapshot(structure_models.Storage):
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
 
 
-class Instance(structure_models.VirtualMachineMixin,
-               core_models.RuntimeStateMixin,
-               structure_models.NewResource):
+class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMixin, structure_models.NewResource):
 
     class RuntimeStates(object):
         # All possible OpenStack Instance states on backend.
@@ -192,9 +185,6 @@ class Instance(structure_models.VirtualMachineMixin,
     def size(self):
         return self.volumes.aggregate(models.Sum('size'))['size']
 
-    def get_backend(self):
-        return self.service_project_link.service.settings.get_backend()
-
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-instance'
@@ -223,3 +213,43 @@ class Instance(structure_models.VirtualMachineMixin,
         settings.add_quota_usage(settings.Quotas.instances, -1)
         settings.add_quota_usage(settings.Quotas.ram, -self.ram)
         settings.add_quota_usage(settings.Quotas.vcpu, -self.cores)
+
+
+class Backup(structure_models.NewResource):
+    service_project_link = models.ForeignKey(
+        OpenStackTenantServiceProjectLink, related_name='backups', on_delete=models.PROTECT)
+    instance = models.ForeignKey(Instance, related_name='backups', on_delete=models.PROTECT)
+    # backup_schedule = models.ForeignKey(BackupSchedule, blank=True, null=True,
+    #                                     on_delete=models.SET_NULL,
+    #                                     related_name='backups')
+    kept_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Guaranteed time of backup retention. If null - keep forever.')
+    metadata = JSONField(
+        blank=True,
+        help_text='Additional information about backup, can be used for backup restoration or deletion',
+    )
+    snapshots = models.ManyToManyField('Snapshot', related_name='backups')
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-backup'
+
+
+class BackupRestoration(core_models.UuidMixin, TimeStampedModel):
+    """ This model corresponds to instance restoration from backup. """
+    backup = models.ForeignKey(Backup, related_name='restorations')
+    instance = models.OneToOneField(Instance, related_name='+')
+    flavor = models.ForeignKey(Flavor, related_name='+', null=True, blank=True, on_delete=models.SET_NULL)
+
+    class Permissions(object):
+        customer_path = 'backup__service_project_link__project__customer'
+        project_path = 'backup__service_project_link__project'
+
+    def get_backend(self):
+        return self.backup.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-backup-restoration'

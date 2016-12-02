@@ -153,8 +153,6 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     filter_class = filters.SnapshotFilter
 
 
-# I have tested create, pull and update. Need to test and implement other actions + volume + celerybeat.
-
 class InstanceViewSet(structure_views.PullMixin,
                       core_mixins.UpdateExecutorMixin,
                       structure_views._BaseResourceViewSet):
@@ -171,7 +169,6 @@ class InstanceViewSet(structure_views.PullMixin,
     """
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
-    # filter_class = filters.InstanceFilter
     pull_executor = executors.InstancePullExecutor
     update_executor = executors.InstanceUpdateExecutor
 
@@ -179,8 +176,15 @@ class InstanceViewSet(structure_views.PullMixin,
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
         'change_flavor': serializers.InstanceFlavorChangeSerializer,
         'destroy': serializers.InstanceDeleteSerializer,
-        'update_security_groups': serializers.InstanceSecurityGroupsUpdateSerializer
+        'update_security_groups': serializers.InstanceSecurityGroupsUpdateSerializer,
+        'backup': serializers.BackupSerializer,
     }
+
+    def get_serializer_context(self):
+        context = super(InstanceViewSet, self).get_serializer_context()
+        if self.action == 'backup':
+            context['instance'] = self.get_object()
+        return context
 
     def initial(self, request, *args, **kwargs):
         # Disable old-style checks.
@@ -334,3 +338,49 @@ class InstanceViewSet(structure_views.PullMixin,
         serializer.save()
 
         executors.InstanceUpdateSecurityGroupsExecutor().execute(instance)
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OK)
+    def backup(self, request, instance, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        backup = serializer.save()
+
+        executors.BackupCreateExecutor().execute(backup)
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                       structure_views.ResourceViewMixin,
+                                       core_mixins.DeleteExecutorMixin,
+                                       core_views.UpdateOnlyViewSet)):
+    queryset = models.Backup.objects.all()
+    serializer_class = serializers.BackupSerializer
+    lookup_field = 'uuid'
+    filter_class = filters.BackupFilter
+    delete_executor = executors.BackupDeleteExecutor
+    serializers = {
+        'restore': serializers.BackupRestorationSerializer,
+    }
+
+    def get_serializer_class(self):
+        serializer = self.serializers.get(self.action)
+        return serializer or super(BackupViewSet, self).get_serializer_class()
+
+    def get_serializer_context(self):
+        context = super(BackupViewSet, self).get_serializer_context()
+        if self.action == 'restore':
+            context['backup'] = self.get_object()
+        return context
+
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Backup.States.OK)
+    def restore(self, request, instance, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        backup_restoration = serializer.save()
+
+        executors.BackupRestorationExecutor().execute(backup_restoration)
+        instance_serialiser = serializers.InstanceSerializer(
+            backup_restoration.instance, context={'request': self.request})
+        return response.Response(instance_serialiser.data, status=status.HTTP_201_CREATED)

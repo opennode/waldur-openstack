@@ -5,7 +5,7 @@ from . import models
 
 
 class OpenStackTenantServiceProjectLinkFilter(structure_filters.BaseServiceProjectLinkFilter):
-    service = core_filters.URLFilter(view_name='openstack-detail', name='service__uuid')
+    service = core_filters.URLFilter(view_name='openstacktenant-detail', name='service__uuid')
 
     class Meta(object):
         model = models.OpenStackTenantServiceProjectLink
@@ -43,3 +43,12 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
     class Meta(structure_filters.BaseResourceStateFilter.Meta):
         model = models.Snapshot
         fields = structure_filters.BaseResourceStateFilter.Meta.fields + ('source_volume_uuid', 'source_volume')
+
+
+class BackupFilter(structure_filters.BaseResourceFilter):
+    instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='i__uuid')
+    instance_uuid = core_filters.UUIDFilter(name='instance__uuid')
+
+    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+        model = models.Backup
+        fields = structure_filters.BaseResourceStateFilter.Meta.fields + ('instance', 'instance_uuid')
