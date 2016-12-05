@@ -219,9 +219,9 @@ class Backup(structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='backups', on_delete=models.PROTECT)
     instance = models.ForeignKey(Instance, related_name='backups', on_delete=models.PROTECT)
-    # backup_schedule = models.ForeignKey(BackupSchedule, blank=True, null=True,
-    #                                     on_delete=models.SET_NULL,
-    #                                     related_name='backups')
+    backup_schedule = models.ForeignKey('BackupSchedule', blank=True, null=True,
+                                        on_delete=models.SET_NULL,
+                                        related_name='backups')
     kept_until = models.DateTimeField(
         null=True,
         blank=True,
@@ -253,3 +253,31 @@ class BackupRestoration(core_models.UuidMixin, TimeStampedModel):
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-backup-restoration'
+
+
+class BackupSchedule(core_models.UuidMixin,
+                     core_models.NameMixin,
+                     core_models.DescribableMixin,
+                     core_models.ScheduleMixin,
+                     core_models.ErrorMessageMixin,
+                     LoggableMixin):
+
+    class Permissions(object):
+        customer_path = 'instance__service_project_link__project__customer'
+        project_path = 'instance__service_project_link__project'
+        project_group_path = 'instance__service_project_link__project__project_groups'
+
+    instance = models.ForeignKey(Instance, related_name='backup_schedules')
+    retention_time = models.PositiveIntegerField(
+        help_text='Retention time in days, if 0 - backup will be kept forever')
+    maximal_number_of_backups = models.PositiveSmallIntegerField()
+
+    def __str__(self):
+        return 'BackupSchedule of %s. Active: %s' % (self.instance, self.is_active)
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-backup-schedule'
+
+    def get_log_fields(self):
+        return ('uuid', 'name', 'instance')
