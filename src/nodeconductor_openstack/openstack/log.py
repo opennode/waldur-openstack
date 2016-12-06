@@ -44,13 +44,14 @@ class InstanceVolumeChangeEventLogger(EventLogger):
 
 class TenantQuotaLogger(EventLogger):
     quota = 'quotas.Quota'
-    service = 'structure.Service'
-    project = 'structure.Project'
     tenant = 'openstack.Tenant'
     limit = float
 
     class Meta:
-        event_types = ('quota_limit_updated',)
+        event_types = ('openstack_tenant_quota_limit_updated',)
+        event_groups = {
+            'resources': event_types,
+        }
 
 event_logger.register('openstack_backup', BackupEventLogger)
 event_logger.register('openstack_flavor', InstanceFlavorChangeEventLogger)

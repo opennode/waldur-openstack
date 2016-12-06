@@ -132,11 +132,9 @@ def log_tenant_quota_update(sender, instance, created=False, **kwargs):
     tenant = quota.scope
     event_logger.openstack_tenant_quota.info(
         '{quota_name} quota limit has been updated for tenant {tenant_name}.',
-        event_type='quota_limit_updated',
+        event_type='openstack_tenant_quota_limit_updated',
         event_context={
             'quota': quota,
             'tenant': tenant,
-            'service': tenant.service_project_link.service,
-            'project': tenant.service_project_link.project,
-            'limit': float(quota.limit), # Prevent passing integer
+            'limit': float(quota.limit),  # Prevent passing integer
         })
