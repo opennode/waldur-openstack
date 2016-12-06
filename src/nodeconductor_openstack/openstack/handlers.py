@@ -138,5 +138,5 @@ def log_tenant_quota_update(sender, instance, created=False, **kwargs):
             'tenant': tenant,
             'service': tenant.service_project_link.service,
             'project': tenant.service_project_link.project,
-            'limit': quota.limit
+            'limit': float(quota.limit), # Prevent passing integer
         })

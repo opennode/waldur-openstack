@@ -47,7 +47,7 @@ class TenantQuotaLogger(EventLogger):
     service = 'structure.Service'
     project = 'structure.Project'
     tenant = 'openstack.Tenant'
-    limit = int
+    limit = float
 
     class Meta:
         event_types = ('quota_limit_updated',)
