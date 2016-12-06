@@ -73,3 +73,10 @@ class OpenStackConfig(AppConfig):
             sender=core_models.SshPublicKey,
             dispatch_uid='openstack.handlers.remove_ssh_key_from_all_tenants_on_it_deletion',
         )
+
+        from nodeconductor.quotas.models import Quota
+        signals.post_save.connect(
+            handlers.log_tenant_quota_update,
+            sender=Quota,
+            dispatch_uid='openstack.handlers.log_tenant_quota_update',
+        )
