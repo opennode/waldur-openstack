@@ -42,6 +42,18 @@ class InstanceVolumeChangeEventLogger(EventLogger):
                        'resource_volume_extension_failed')
 
 
+class TenantQuotaLogger(EventLogger):
+    quota = 'quotas.Quota'
+    tenant = 'openstack.Tenant'
+    limit = float
+
+    class Meta:
+        event_types = ('openstack_tenant_quota_limit_updated',)
+        event_groups = {
+            'resources': event_types,
+        }
+
 event_logger.register('openstack_backup', BackupEventLogger)
 event_logger.register('openstack_flavor', InstanceFlavorChangeEventLogger)
+event_logger.register('openstack_tenant_quota', TenantQuotaLogger)
 event_logger.register('openstack_volume', InstanceVolumeChangeEventLogger)
