@@ -624,6 +624,17 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
         many=True,
     )
 
+    def get_fields(self):
+        fields = super(InstanceSecurityGroupsUpdateSerializer, self).get_fields()
+        instance = self.instance
+        if instance:
+            fields['security_groups'].display_name_field = 'name'
+            fields['security_groups'].view_name = 'openstacktenant-sgp-detail'
+            fields['security_groups'].query_params = {
+                'service_settings_uuid': instance.service_project_link.service.settings.uuid
+            }
+        return fields
+
     def validate_security_groups(self, security_groups):
         spl = self.instance.service_project_link
 
