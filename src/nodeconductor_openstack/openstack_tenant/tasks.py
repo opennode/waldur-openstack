@@ -281,10 +281,8 @@ class ScheduleBackups(core_tasks.BackgroundTask):
     name = 'openstack_tenant.ScheduleBackups'
 
     def run(self):
-        print 'executing ScheduleBackups task'
         backup_schedules = models.BackupSchedule.objects.filter(is_active=True, next_trigger_at__lt=timezone.now())
         for backup_schedule in backup_schedules:
-            print 'creating backup for schedule', backup_schedule
             kept_until = timezone.now() + \
                 timezone.timedelta(days=backup_schedule.retention_time) if backup_schedule.retention_time else None
             serializer = serializers.BackupSerializer
