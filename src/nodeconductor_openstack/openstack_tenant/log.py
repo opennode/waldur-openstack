@@ -56,7 +56,7 @@ class ResourceActionEventLogger(EventLogger):
 
 class BackupScheduleEventLogger(EventLogger):
     resource = models.Instance
-    schedule = models.BackupSchedule
+    backup_schedule = models.BackupSchedule
 
     class Meta:
         event_types = (

@@ -469,12 +469,6 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
         schedule.is_active = True
         schedule.error_message = ''
         schedule.save()
-
-        # event_logger.openstack_backup.info(
-        #     'Backup schedule for {resource_name} has been activated.',
-        #     event_type='resource_backup_schedule_activated',
-        #     event_context={'resource': schedule.instance})
-
         return response.Response({'status': 'BackupSchedule was activated'})
 
     @decorators.detail_route(methods=['post'])
@@ -489,11 +483,4 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
                 {'status': 'BackupSchedule is already deactivated'}, status=status.HTTP_409_CONFLICT)
         schedule.is_active = False
         schedule.save()
-
-        # TODO: move events to handlers.
-        # event_logger.openstack_backup.info(
-        #     'Backup schedule for {resource_name} has been deactivated.',
-        #     event_type='resource_backup_schedule_deactivated',
-        #     event_context={'resource': schedule.instance})
-
         return response.Response({'status': 'BackupSchedule was deactivated'})

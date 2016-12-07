@@ -65,4 +65,45 @@ def log_action(sender, instance, created=False, **kwargs):
 
 
 def log_backup_schedule_creation(sender, instance, created=False, **kwargs):
-    pass # TODO.
+    if not created:
+        return
+
+    backup_schedule = instance
+    log.event_logger.openstack_backup_schedule.info(
+        'Backup schedule "%s" has been created' % backup_schedule.name,
+        event_type='resource_backup_schedule_created',
+        event_context={'resource': backup_schedule.instance, 'backup_schedule': backup_schedule},
+    )
+
+
+def log_backup_schedule_action(sender, instance, created=False, **kwargs):
+    backup_schedule = instance
+    if created or not backup_schedule.tracker.has_changed('is_active'):
+        return
+
+    context = {'resource': backup_schedule.instance, 'backup_schedule': backup_schedule}
+    if backup_schedule.is_active:
+        log.event_logger.openstack_backup_schedule.info(
+            'Backup schedule "%s" has been activated' % backup_schedule.name,
+            event_type='resource_backup_schedule_activated',
+            event_context=context,
+        )
+    else:
+        if backup_schedule.error_message:
+            message = 'Backup schedule "%s" has been deactivated because of error' % backup_schedule.name
+        else:
+            message = 'Backup schedule "%s" has been deactivated' % backup_schedule.name
+        log.event_logger.openstack_backup_schedule.info(
+            message,
+            event_type='resource_backup_schedule_deactivated',
+            event_context=context,
+        )
+
+
+def log_backup_schedule_deletion(sender, instance, **kwargs):
+    backup_schedule = instance
+    log.event_logger.openstack_backup_schedule.info(
+        'Backup schedule "%s" has been deleted' % backup_schedule.name,
+        event_type='resource_backup_schedule_deleted',
+        event_context={'resource': backup_schedule.instance, 'backup_schedule': backup_schedule},
+    )

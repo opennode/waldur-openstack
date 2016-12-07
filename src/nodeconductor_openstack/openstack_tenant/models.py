@@ -272,6 +272,8 @@ class BackupSchedule(core_models.UuidMixin,
         help_text='Retention time in days, if 0 - backup will be kept forever')
     maximal_number_of_backups = models.PositiveSmallIntegerField()
 
+    tracker = FieldTracker()
+
     def __str__(self):
         return 'BackupSchedule of %s. Active: %s' % (self.instance, self.is_active)
 
