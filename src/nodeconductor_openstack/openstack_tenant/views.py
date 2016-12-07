@@ -400,7 +400,7 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
     queryset = models.BackupSchedule.objects.all()
     serializer_class = serializers.BackupScheduleSerializer
     lookup_field = 'uuid'
-    # filter_class = filters.BackupScheduleFilter
+    filter_class = filters.BackupScheduleFilter
     filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
     permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
 

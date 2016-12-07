@@ -1,3 +1,5 @@
+import django_filters
+
 from nodeconductor.core import filters as core_filters
 from nodeconductor.structure import filters as structure_filters
 
@@ -48,7 +50,24 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
 class BackupFilter(structure_filters.BaseResourceFilter):
     instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='instance__uuid')
     instance_uuid = core_filters.UUIDFilter(name='instance__uuid')
+    backup_schedule = core_filters.URLFilter(
+        view_name='openstacktenant-backup-schedule-detail', name='backup_schedule__uuid')
+    backup_schedule_uuid = core_filters.UUIDFilter(name='backup_schedule__uuid')
 
     class Meta(structure_filters.BaseResourceStateFilter.Meta):
         model = models.Backup
-        fields = structure_filters.BaseResourceStateFilter.Meta.fields + ('instance', 'instance_uuid')
+        fields = structure_filters.BaseResourceStateFilter.Meta.fields + (
+            'instance', 'instance_uuid', 'backup_schedule', 'backup_schedule_uuid')
+
+
+class BackupScheduleFilter(django_filters.FilterSet):
+    name = django_filters.CharFilter(lookup_type='icontains')
+    description = django_filters.CharFilter(lookup_type='icontains')
+    instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='instance__uuid')
+    instance_uuid = core_filters.UUIDFilter(name='instance__uuid')
+
+    class Meta(object):
+        model = models.BackupSchedule
+        fields = (
+            'name', 'description', 'instance', 'instance_uuid',
+        )
