@@ -278,6 +278,3 @@ class BackupSchedule(core_models.UuidMixin,
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-backup-schedule'
-
-    def get_log_fields(self):
-        return ('uuid', 'name', 'instance')

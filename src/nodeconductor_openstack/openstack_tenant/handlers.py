@@ -62,3 +62,7 @@ def log_action(sender, instance, created=False, **kwargs):
     elif resource.state == StateMixin.States.ERRED:
         _log_failed_action(
             resource, resource.tracker.previous('action'), resource.tracker.previous('action_details'))
+
+
+def log_backup_schedule_creation(sender, instance, created=False, **kwargs):
+    pass # TODO.

@@ -1,6 +1,8 @@
 from nodeconductor.logging.loggers import EventLogger, event_logger
 from nodeconductor.structure import models as structure_models
 
+from . import models
+
 
 class ResourceActionEventLogger(EventLogger):
     resource = structure_models.NewResource
@@ -52,4 +54,19 @@ class ResourceActionEventLogger(EventLogger):
         event_groups = {'resources': event_types}
 
 
+class BackupScheduleEventLogger(EventLogger):
+    resource = models.Instance
+    schedule = models.BackupSchedule
+
+    class Meta:
+        event_types = (
+            'resource_backup_schedule_created',
+            'resource_backup_schedule_deleted',
+            'resource_backup_schedule_activated',
+            'resource_backup_schedule_deactivated',
+        )
+        event_groups = {'resources': event_types}
+
+
 event_logger.register('openstack_resource_action', ResourceActionEventLogger)
+event_logger.register('openstack_backup_schedule', BackupScheduleEventLogger)
