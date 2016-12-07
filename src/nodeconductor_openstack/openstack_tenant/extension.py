@@ -21,4 +21,14 @@ class OpenStackTenantExtension(NodeConductorExtension):
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },
+            'openstacktenant-schedule-backups': {
+                'task': 'openstack_tenant.ScheduleBackups',
+                'schedule': timedelta(minutes=10),
+                'args': (),
+            },
+            'openstacktenant-delete-expired-backups': {
+                'task': 'openstack_tenant.DeleteExpiredBackups',
+                'schedule': timedelta(minutes=10),
+                'args': (),
+            },
         }

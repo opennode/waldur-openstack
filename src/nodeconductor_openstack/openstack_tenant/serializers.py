@@ -1,7 +1,9 @@
 import logging
+import pytz
 import re
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from nodeconductor.core import serializers as core_serializers, fields as core_fields
@@ -775,3 +777,24 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             )
             snapshot.increase_backend_quotas_usage()
             backup.snapshots.add(snapshot)
+
+
+class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
+    instance_name = serializers.ReadOnlyField(source='instance.name')
+    timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
+                                       initial=timezone.get_current_timezone_name())
+
+    class Meta(object):
+        model = models.BackupSchedule
+        view_name = 'openstacktenant-backup-schedule-detail'
+        fields = ('url', 'uuid', 'name', 'description', 'retention_time', 'timezone', 'instance', 'instance_name',
+                  'maximal_number_of_backups', 'schedule', 'is_active', 'error_message', 'next_trigger_at')
+        read_only_fields = ('url', 'uuid', 'is_active', 'backups', 'next_trigger_at', 'instance')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+        }
+
+    def create(self, validated_data):
+        validated_data['instance'] = self.context['instance']
+        return super(BackupScheduleSerializer, self).create(validated_data)

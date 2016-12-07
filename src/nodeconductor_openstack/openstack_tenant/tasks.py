@@ -1,12 +1,15 @@
 import logging
 
 from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
 from nodeconductor.core import tasks as core_tasks, models as core_models, utils as core_utils
+from nodeconductor.quotas import exceptions as quotas_exceptions
 from nodeconductor.structure import SupportedServices, models as structure_models, ServiceBackendError
 
 from nodeconductor_openstack.openstack_base.backend import update_pulled_fields
-from . import models, apps
+from . import models, apps, serializers
 
 
 logger = logging.getLogger(__name__)
@@ -143,13 +146,12 @@ class SetBackupErredTask(core_tasks.ErrorStateTransitionTask):
                 snapshot.save(update_fields=['state'])
 
         # Deactivate schedule if its backup become erred.
-        # schedule = backup.backup_schedule
-        # if schedule:
-        #     schedule.error_message = 'Failed to execute backup schedule for %s. Error: %s' % (
-        #         backup.instance, backup.error_message)
-        #     schedule.runtime_state = 'Failed to create backup'
-        #     schedule.is_active = False
-        #     schedule.save()
+        schedule = backup.backup_schedule
+        if schedule:
+            schedule.error_message = 'Failed to execute backup schedule for %s. Error: %s' % (
+                backup.instance, backup.error_message)
+            schedule.is_active = False
+            schedule.save()
 
 
 class ForceDeleteBackupTask(core_tasks.StateTransitionTask):
@@ -273,3 +275,46 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
             resource.save(update_fields=['state', 'error_message'])
         logger.info('%s %s (PK: %s) successfully pulled from backend.' % (
             resource.__class__.__name__, resource, resource.pk))
+
+
+class ScheduleBackups(core_tasks.BackgroundTask):
+    name = 'openstack_tenant.ScheduleBackups'
+
+    def run(self):
+        print 'executing ScheduleBackups task'
+        backup_schedules = models.BackupSchedule.objects.filter(is_active=True, next_trigger_at__lt=timezone.now())
+        for backup_schedule in backup_schedules:
+            print 'creating backup for schedule', backup_schedule
+            kept_until = timezone.now() + \
+                timezone.timedelta(days=backup_schedule.retention_time) if backup_schedule.retention_time else None
+            serializer = serializers.BackupSerializer
+            try:
+                with transaction.atomic():
+                    backup = models.Backup.objects.create(
+                        name='Backup of %s' % backup_schedule.instance.name,
+                        description='Scheduled backup of instance "%s"' % backup_schedule.instance,
+                        service_project_link=backup_schedule.instance.service_project_link,
+                        instance=backup_schedule.instance,
+                        backup_schedule=backup_schedule,
+                        metadata=serializer.get_backup_metadata(backup_schedule.instance),
+                        kept_until=kept_until,
+                    )
+                    serializer.create_backup_snapshots(backup)
+            except quotas_exceptions.QuotaValidationError as e:
+                message = 'Failed to schedule backup creation. Error: %s' % e
+                logger.exception('Backup schedule (PK: %s) execution failed. %s' % (backup_schedule.pk, message))
+                backup_schedule.is_active = False
+                backup_schedule.error_message = message
+                backup_schedule.save()
+            else:
+                from . import executors
+                executors.BackupCreateExecutor.execute(backup)
+
+
+class DeleteExpiredBackups(core_tasks.BackgroundTask):
+    name = 'openstack_tenant.DeleteExpiredBackups'
+
+    def run(self):
+        from . import executors
+        for backup in models.Backup.objects.filter(kept_until__lt=timezone.now(), state=models.Backup.States.OK):
+            executors.BackupDeleteExecutor.execute(backup)
