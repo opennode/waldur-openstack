@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 from nodeconductor.core.models import StateMixin
 
 from . import log

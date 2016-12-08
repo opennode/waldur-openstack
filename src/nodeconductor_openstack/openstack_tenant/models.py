@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 from urlparse import urlparse
 
 from django.core.validators import RegexValidator
