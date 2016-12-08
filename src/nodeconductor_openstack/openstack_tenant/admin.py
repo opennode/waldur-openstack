@@ -1,3 +1,6 @@
+import pytz
+
+from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 
@@ -76,6 +79,33 @@ class InstanceAdmin(structure_admin.VirtualMachineAdmin):
     pull = Pull()
 
 
+class BackupAdmin(admin.ModelAdmin):
+    readonly_fields = ('created', 'kept_until')
+    list_filter = ('uuid', 'state')
+    list_display = ('uuid', 'instance', 'state', 'project')
+
+    def project(self, obj):
+        return obj.instance.service_project_link.project
+
+    project.short_description = 'Project'
+
+
+class BackupScheduleForm(forms.ModelForm):
+    def clean_timezone(self):
+        tz = self.cleaned_data['timezone']
+        if tz not in pytz.all_timezones:
+            raise ValidationError('Invalid timezone', code='invalid')
+
+        return self.cleaned_data['timezone']
+
+
+class BackupScheduleAdmin(admin.ModelAdmin):
+    form = BackupScheduleForm
+    readonly_fields = ('next_trigger_at',)
+    list_filter = ('is_active',)
+    list_display = ('uuid', 'next_trigger_at', 'is_active', 'instance', 'timezone')
+
+
 admin.site.register(models.OpenStackTenantService, structure_admin.ServiceAdmin)
 admin.site.register(models.OpenStackTenantServiceProjectLink, structure_admin.ServiceProjectLinkAdmin)
 admin.site.register(models.Flavor, FlavorAdmin)
@@ -85,3 +115,5 @@ admin.site.register(models.SecurityGroup, SecurityGroupAdmin)
 admin.site.register(models.Volume, VolumeAdmin)
 admin.site.register(models.Snapshot, SnapshotAdmin)
 admin.site.register(models.Instance, InstanceAdmin)
+admin.site.register(models.Backup, BackupAdmin)
+admin.site.register(models.BackupSchedule, BackupScheduleAdmin)
