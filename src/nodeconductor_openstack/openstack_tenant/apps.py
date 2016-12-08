@@ -39,3 +39,21 @@ class OpenStackTenantConfig(AppConfig):
                 sender=Resource,
                 dispatch_uid='openstack_tenant.handlers.log_%s_action' % name,
             )
+
+        signals.post_save.connect(
+            handlers.log_backup_schedule_creation,
+            sender=models.BackupSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_backup_schedule_creation',
+        )
+
+        signals.post_save.connect(
+            handlers.log_backup_schedule_action,
+            sender=models.BackupSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_backup_schedule_action',
+        )
+
+        signals.pre_delete.connect(
+            handlers.log_backup_schedule_deletion,
+            sender=models.BackupSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_backup_schedule_deletion',
+        )

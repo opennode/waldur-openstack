@@ -1,7 +1,8 @@
 from django.utils import six
-from rest_framework import decorators, response, status
+from rest_framework import decorators, response, status, permissions, filters as rf_filters, exceptions
 
-from nodeconductor.core import views as core_views, exceptions as core_exceptions, mixins as core_mixins
+from nodeconductor.core import (views as core_views, exceptions as core_exceptions, mixins as core_mixins,
+                                permissions as core_permissions)
 from nodeconductor.structure import views as structure_views, filters as structure_filters
 
 from . import models, serializers, filters, executors
@@ -178,11 +179,12 @@ class InstanceViewSet(structure_views.PullMixin,
         'destroy': serializers.InstanceDeleteSerializer,
         'update_security_groups': serializers.InstanceSecurityGroupsUpdateSerializer,
         'backup': serializers.BackupSerializer,
+        'create_backup_schedule': serializers.BackupScheduleSerializer,
     }
 
     def get_serializer_context(self):
         context = super(InstanceViewSet, self).get_serializer_context()
-        if self.action == 'backup':
+        if self.action in ('backup', 'create_backup_schedule'):
             context['instance'] = self.get_object()
         return context
 
@@ -349,6 +351,14 @@ class InstanceViewSet(structure_views.PullMixin,
         executors.BackupCreateExecutor().execute(backup)
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @decorators.detail_route(methods=['post'])
+    @structure_views.safe_operation(valid_state=models.Instance.States.OK)
+    def create_backup_schedule(self, request, instance, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewMixin,
@@ -384,3 +394,73 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         instance_serialiser = serializers.InstanceSerializer(
             backup_restoration.instance, context={'request': self.request})
         return response.Response(instance_serialiser.data, status=status.HTTP_201_CREATED)
+
+
+class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
+    queryset = models.BackupSchedule.objects.all()
+    serializer_class = serializers.BackupScheduleSerializer
+    lookup_field = 'uuid'
+    filter_class = filters.BackupScheduleFilter
+    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
+    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
+
+    def perform_update(self, serializer):
+        instance = self.get_object().instance
+        if not core_permissions.has_user_permission_for_instance(self.request.user, instance):
+            raise exceptions.PermissionDenied()
+        super(BackupScheduleViewSet, self).perform_update(serializer)
+
+    def perform_destroy(self, schedule):
+        if not core_permissions.has_user_permission_for_instance(self.request.user, schedule.instance):
+            raise exceptions.PermissionDenied()
+        super(BackupScheduleViewSet, self).perform_destroy(schedule)
+
+    def get_backup_schedule(self):
+        schedule = self.get_object()
+        if not core_permissions.has_user_permission_for_instance(self.request.user, schedule.instance):
+            raise exceptions.PermissionDenied()
+        return schedule
+
+    def list(self, request, *args, **kwargs):
+        """
+        For schedule to work, it should be activated - it's flag is_active set to true. If it's not, it won't be used
+        for triggering the next backups. Schedule will be deactivated if backup fails.
+
+        - **retention time** is a duration in days during which backup is preserved.
+        - **maximal_number_of_backups** is a maximal number of active backups connected to this schedule.
+        - **schedule** is a backup schedule defined in a cron format.
+        - **timezone** is used for calculating next run of the backup (optional).
+
+        A schedule can be it two states: active or not. Non-active states are not used for scheduling the new tasks.
+        Only users with write access to backup schedule source can activate or deactivate schedule.
+        """
+        return super(BackupScheduleViewSet, self).list(self, request, *args, **kwargs)
+
+    @decorators.detail_route(methods=['post'])
+    def activate(self, request, uuid):
+        """
+        Activate a backup schedule. Note that
+        if a schedule is already active, this will result in **409 CONFLICT** code.
+        """
+        schedule = self.get_backup_schedule()
+        if schedule.is_active:
+            return response.Response(
+                {'status': 'Backup schedule is already activated'}, status=status.HTTP_409_CONFLICT)
+        schedule.is_active = True
+        schedule.error_message = ''
+        schedule.save()
+        return response.Response({'status': 'Backup schedule was activated'})
+
+    @decorators.detail_route(methods=['post'])
+    def deactivate(self, request, uuid):
+        """
+        Deactivate a backup schedule. Note that
+        if a schedule was already deactivated, this will result in **409 CONFLICT** code.
+        """
+        schedule = self.get_backup_schedule()
+        if not schedule.is_active:
+            return response.Response(
+                {'status': 'Backup schedule is already deactivated'}, status=status.HTTP_409_CONFLICT)
+        schedule.is_active = False
+        schedule.save()
+        return response.Response({'status': 'Backup schedule was deactivated'})

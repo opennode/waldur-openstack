@@ -397,7 +397,8 @@ class NestedSecurityGroupSerializer(core_serializers.HyperlinkedRelatedModelSeri
 class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
     instance_name = serializers.ReadOnlyField(source='instance.name')
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
-                                       default=timezone.get_current_timezone_name)
+                                       initial=timezone.get_current_timezone_name(),
+                                       default=timezone.get_current_timezone_name())
 
     class Meta(object):
         model = models.BackupSchedule
