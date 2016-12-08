@@ -423,26 +423,6 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
 
     def list(self, request, *args, **kwargs):
         """
-        To perform backups on a regular basis, it is possible to define a backup schedule. Example of a request:
-
-        .. code-block:: http
-
-            POST /api/openstack-backup-schedules/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-            {
-                "instance": "http://example.com/api/openstack-instances/430abd492a384f9bbce5f6b999ac766c/",
-                "description": "schedule description",
-                "retention_time": 0,
-                "timezone": "Europe/London",
-                "maximal_number_of_backups": 10,
-                "schedule": "1 1 1 1 1",
-                "is_active": true
-            }
-
         For schedule to work, it should be activated - it's flag is_active set to true. If it's not, it won't be used
         for triggering the next backups. Schedule will be deactivated if backup fails.
 
