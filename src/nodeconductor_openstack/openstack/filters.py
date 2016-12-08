@@ -185,8 +185,8 @@ class DRBackupFilter(structure_filters.BaseResourceFilter):
 
 
 class VolumeFilter(structure_filters.BaseResourceStateFilter):
-    instance_uuid = UUIDFilter(name='instances__uuid')
-    instance = core_filters.URLFilter(view_name='openstack-instance-detail', name='instances__uuid')
+    instance_uuid = UUIDFilter(name='instance__uuid')
+    instance = core_filters.URLFilter(view_name='openstack-instance-detail', name='instance__uuid')
 
     class Meta(structure_filters.BaseResourceStateFilter.Meta):
         model = models.Volume
