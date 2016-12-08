@@ -445,11 +445,11 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
         schedule = self.get_backup_schedule()
         if schedule.is_active:
             return response.Response(
-                {'status': 'BackupSchedule is already activated'}, status=status.HTTP_409_CONFLICT)
+                {'status': 'Backup schedule is already activated'}, status=status.HTTP_409_CONFLICT)
         schedule.is_active = True
         schedule.error_message = ''
         schedule.save()
-        return response.Response({'status': 'BackupSchedule was activated'})
+        return response.Response({'status': 'Backup schedule was activated'})
 
     @decorators.detail_route(methods=['post'])
     def deactivate(self, request, uuid):
@@ -460,7 +460,7 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
         schedule = self.get_backup_schedule()
         if not schedule.is_active:
             return response.Response(
-                {'status': 'BackupSchedule is already deactivated'}, status=status.HTTP_409_CONFLICT)
+                {'status': 'Backup schedule is already deactivated'}, status=status.HTTP_409_CONFLICT)
         schedule.is_active = False
         schedule.save()
-        return response.Response({'status': 'BackupSchedule was deactivated'})
+        return response.Response({'status': 'Backup schedule was deactivated'})
