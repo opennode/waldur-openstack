@@ -68,6 +68,3 @@ class BackupScheduleFilter(django_filters.FilterSet):
 
     class Meta(object):
         model = models.BackupSchedule
-        fields = (
-            'name', 'description', 'instance', 'instance_uuid',
-        )
