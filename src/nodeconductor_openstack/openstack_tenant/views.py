@@ -407,18 +407,18 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
     def perform_update(self, serializer):
         instance = self.get_object().instance
         if not core_permissions.has_user_permission_for_instance(self.request.user, instance):
-            raise exceptions.PermissionDenied('You do not have permission to perform this action.')
+            raise exceptions.PermissionDenied()
         super(BackupScheduleViewSet, self).perform_update(serializer)
 
     def perform_destroy(self, schedule):
         if not core_permissions.has_user_permission_for_instance(self.request.user, schedule.instance):
-            raise exceptions.PermissionDenied('You do not have permission to perform this action.')
+            raise exceptions.PermissionDenied()
         super(BackupScheduleViewSet, self).perform_destroy(schedule)
 
     def get_backup_schedule(self):
         schedule = self.get_object()
         if not core_permissions.has_user_permission_for_instance(self.request.user, schedule.instance):
-            raise exceptions.PermissionDenied('You do not have permission to perform this action.')
+            raise exceptions.PermissionDenied()
         return schedule
 
     def list(self, request, *args, **kwargs):
