@@ -9,3 +9,9 @@ def register_in(router):
     router.register(r'openstacktenant-flavors', views.FlavorViewSet, base_name='openstacktenant-flavor')
     router.register(r'openstacktenant-floating-ips', views.FloatingIPViewSet, base_name='openstacktenant-fip')
     router.register(r'openstacktenant-security-groups', views.SecurityGroupViewSet, base_name='openstacktenant-sgp')
+    router.register(r'openstacktenant-volumes', views.VolumeViewSet, base_name='openstacktenant-volume')
+    router.register(r'openstacktenant-snapshots', views.SnapshotViewSet, base_name='openstacktenant-snapshot')
+    router.register(r'openstacktenant-instances', views.InstanceViewSet, base_name='openstacktenant-instance')
+    router.register(r'openstacktenant-backups', views.BackupViewSet, base_name='openstacktenant-backup')
+    router.register(r'openstacktenant-backup-schedules', views.BackupScheduleViewSet,
+                    base_name='openstacktenant-backup-schedule')

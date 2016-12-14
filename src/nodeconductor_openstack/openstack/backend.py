@@ -20,29 +20,12 @@ from nodeconductor.core.models import StateMixin
 from nodeconductor.core.tasks import send_task
 from nodeconductor.structure import log_backend_action, SupportedServices
 
-from nodeconductor_openstack.openstack_base.backend import OpenStackBackendError, BaseOpenStackBackend
+from nodeconductor_openstack.openstack_base.backend import (
+    OpenStackBackendError, BaseOpenStackBackend, update_pulled_fields)
 from . import models
 
 
 logger = logging.getLogger(__name__)
-
-
-def _update_pulled_fields(instance, imported_instance, fields):
-    """ Update instance fields based on imported from backend data.
-
-        Save changes to DB only one or more fields were changed.
-    """
-    modified = False
-    for field in fields:
-        pulled_value = getattr(imported_instance, field)
-        current_value = getattr(instance, field)
-        if current_value != pulled_value:
-            setattr(instance, field, pulled_value)
-            logger.info("%s's with uuid %s %s field updated from value '%s' to value '%s'",
-                        instance.__class__.__name__, instance.uuid.hex, field, current_value, pulled_value)
-            modified = True
-    if modified:
-        instance.save()
 
 
 class OpenStackBackend(BaseOpenStackBackend):
@@ -296,63 +279,10 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action('pull quotas for tenant')
     def pull_tenant_quotas(self, tenant):
-        nova = self.nova_client
-        neutron = self.neutron_client
-        cinder = self.cinder_client
-
-        try:
-            nova_quotas = nova.quotas.get(tenant_id=tenant.backend_id)
-            cinder_quotas = cinder.quotas.get(tenant_id=tenant.backend_id)
-            neutron_quotas = neutron.show_quota(tenant_id=tenant.backend_id)['quota']
-        except (nova_exceptions.ClientException,
-                cinder_exceptions.ClientException,
-                neutron_exceptions.NeutronClientException) as e:
-            six.reraise(OpenStackBackendError, e)
-
-        tenant.set_quota_limit('ram', nova_quotas.ram)
-        tenant.set_quota_limit('vcpu', nova_quotas.cores)
-        tenant.set_quota_limit('storage', self.gb2mb(cinder_quotas.gigabytes))
-        tenant.set_quota_limit('snapshots', cinder_quotas.snapshots)
-        tenant.set_quota_limit('volumes', cinder_quotas.volumes)
-        tenant.set_quota_limit('instances', nova_quotas.instances)
-        tenant.set_quota_limit('security_group_count', neutron_quotas['security_group'])
-        tenant.set_quota_limit('security_group_rule_count', neutron_quotas['security_group_rule'])
-        tenant.set_quota_limit('floating_ip_count', neutron_quotas['floatingip'])
-
-        try:
-            volumes = cinder.volumes.list()
-            snapshots = cinder.volume_snapshots.list()
-            instances = nova.servers.list()
-            security_groups = nova.security_groups.list()
-            floating_ips = neutron.list_floatingips(tenant_id=tenant.backend_id)['floatingips']
-
-            flavors = {flavor.id: flavor for flavor in nova.flavors.list()}
-
-            ram, vcpu = 0, 0
-            for flavor_id in (instance.flavor['id'] for instance in instances):
-                try:
-                    flavor = flavors.get(flavor_id, nova.flavors.get(flavor_id))
-                except nova_exceptions.NotFound:
-                    logger.warning('Cannot find flavor with id %s', flavor_id)
-                    continue
-
-                ram += getattr(flavor, 'ram', 0)
-                vcpu += getattr(flavor, 'vcpus', 0)
-
-        except (nova_exceptions.ClientException,
-                cinder_exceptions.ClientException,
-                neutron_exceptions.NeutronClientException) as e:
-            six.reraise(OpenStackBackendError, e)
-
-        tenant.set_quota_usage('ram', ram)
-        tenant.set_quota_usage('vcpu', vcpu)
-        tenant.set_quota_usage('storage', sum(self.gb2mb(v.size) for v in volumes + snapshots))
-        tenant.set_quota_usage('volumes', len(volumes))
-        tenant.set_quota_usage('snapshots', len(snapshots))
-        tenant.set_quota_usage('instances', len(instances), fail_silently=True)
-        tenant.set_quota_usage('security_group_count', len(security_groups))
-        tenant.set_quota_usage('security_group_rule_count', len(sum([sg.rules for sg in security_groups], [])))
-        tenant.set_quota_usage('floating_ip_count', len(floating_ips))
+        for quota_name, limit in self.get_tenant_quotas_limits(tenant.backend_id).items():
+            tenant.set_quota_limit(quota_name, limit)
+        for quota_name, usage in self.get_tenant_quotas_usage(tenant.backend_id).items():
+            tenant.set_quota_usage(quota_name, usage, fail_silently=True)
 
     @log_backend_action('pull floating IPs for tenant')
     def pull_tenant_floating_ips(self, tenant):
@@ -620,7 +550,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         tenant.refresh_from_db()
         # if tenant was not modified in NC database after import.
         if tenant.modified < import_time:
-            _update_pulled_fields(tenant, imported_tenant, ('name', 'description'))
+            update_pulled_fields(tenant, imported_tenant, ('name', 'description'))
 
     @log_backend_action()
     def add_admin_user_to_tenant(self, tenant):
@@ -953,126 +883,214 @@ class OpenStackBackend(BaseOpenStackBackend):
         if instance.modified < import_time:
             update_fields = ('ram', 'cores', 'disk', 'internal_ips',
                              'external_ips', 'runtime_state', 'error_message')
-            _update_pulled_fields(instance, imported_instance, update_fields)
+            update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
-    def cleanup_tenant(self, tenant, dryrun=True):
+    def delete_tenant_floating_ips(self, tenant):
         if not tenant.backend_id:
             # This method will remove all floating IPs if tenant `backend_id` is not defined.
-            raise OpenStackBackendError('Method `cleanup_tenant` should not be called if tenant has no backend_id')
-        # floatingips
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
         neutron = self.neutron_admin_client
-        floatingips = neutron.list_floatingips(tenant_id=tenant.backend_id)
-        if floatingips:
-            for floatingip in floatingips['floatingips']:
-                logger.info("Deleting floating IP %s from tenant %s", floatingip['id'], tenant.backend_id)
-                if not dryrun:
-                    try:
-                        neutron.delete_floatingip(floatingip['id'])
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Floating IP %s is already gone from tenant %s", floatingip['id'], tenant.backend_id)
 
-        # ports
-        ports = neutron.list_ports(tenant_id=tenant.backend_id)
-        if ports:
-            for port in ports['ports']:
-                logger.info("Deleting port %s interface_router from tenant %s", port['id'], tenant.backend_id)
-                if not dryrun:
-                    try:
-                        neutron.remove_interface_router(port['device_id'], {'port_id': port['id']})
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Port %s interface_router is already gone from tenant %s", port['id'], tenant.backend_id)
+        try:
+            floatingips = neutron.list_floatingips(tenant_id=tenant.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
 
-                logger.info("Deleting port %s from tenant %s", port['id'], tenant.backend_id)
-                if not dryrun:
-                    try:
-                        neutron.delete_port(port['id'])
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Port %s is already gone from tenant %s", port['id'], tenant.backend_id)
+        for floatingip in floatingips.get('floatingips', []):
+            logger.info("Deleting floating IP %s from tenant %s", floatingip['id'], tenant.backend_id)
+            try:
+                neutron.delete_floatingip(floatingip['id'])
+            except neutron_exceptions.NotFound:
+                logger.debug("Floating IP %s is already gone from tenant %s", floatingip['id'], tenant.backend_id)
+            except neutron_exceptions.NeutronClientException as e:
+                six.reraise(OpenStackBackendError, e)
 
-        # routers
-        routers = neutron.list_routers(tenant_id=tenant.backend_id)
-        if routers:
-            for router in routers['routers']:
-                logger.info("Deleting router %s from tenant %s", router['id'], tenant.backend_id)
-                if not dryrun:
-                    try:
-                        neutron.delete_router(router['id'])
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Router %s is already gone from tenant %s", router['id'], tenant.backend_id)
+    @log_backend_action()
+    def delete_tenant_ports(self, tenant):
+        if not tenant.backend_id:
+            # This method will remove all ports if tenant `backend_id` is not defined.
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
 
-        # networks
-        networks = neutron.list_networks(tenant_id=tenant.backend_id)
-        if networks:
-            for network in networks['networks']:
-                if network['router:external']:
-                    continue
-                for subnet in network['subnets']:
-                    logger.info("Deleting subnetwork %s from tenant %s", subnet, tenant.backend_id)
-                    if not dryrun:
-                        try:
-                            neutron.delete_subnet(subnet)
-                        except neutron_exceptions.NotFound:
-                            logger.info("Subnetwork %s is already gone from tenant %s", subnet, tenant.backend_id)
+        neutron = self.neutron_admin_client
 
-                logger.info("Deleting network %s from tenant %s", network['id'], tenant.backend_id)
-                if not dryrun:
-                    try:
-                        neutron.delete_network(network['id'])
-                    except neutron_exceptions.NotFound:
-                        logger.debug("Network %s is already gone from tenant %s", network['id'], tenant.backend_id)
+        try:
+            ports = neutron.list_ports(tenant_id=tenant.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
 
-        # security groups
+        for port in ports.get('ports', []):
+            logger.info("Deleting port %s interface_router from tenant %s", port['id'], tenant.backend_id)
+            try:
+                neutron.remove_interface_router(port['device_id'], {'port_id': port['id']})
+            except neutron_exceptions.NotFound:
+                logger.debug("Port %s interface_router is already gone from tenant %s", port['id'],
+                             tenant.backend_id)
+            except neutron_exceptions.NeutronClientException as e:
+                six.reraise(OpenStackBackendError, e)
+
+            logger.info("Deleting port %s from tenant %s", port['id'], tenant.backend_id)
+            try:
+                neutron.delete_port(port['id'])
+            except neutron_exceptions.NotFound:
+                logger.debug("Port %s is already gone from tenant %s", port['id'], tenant.backend_id)
+            except neutron_exceptions.NeutronClientException as e:
+                six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_tenant_routers(self, tenant):
+        if not tenant.backend_id:
+            # This method will remove all routers if tenant `backend_id` is not defined.
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
+        neutron = self.neutron_admin_client
+
+        try:
+            routers = neutron.list_routers(tenant_id=tenant.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        for router in routers.get('routers', []):
+            logger.info("Deleting router %s from tenant %s", router['id'], tenant.backend_id)
+            try:
+                neutron.delete_router(router['id'])
+            except neutron_exceptions.NotFound:
+                logger.debug("Router %s is already gone from tenant %s", router['id'], tenant.backend_id)
+            except neutron_exceptions.NeutronClientException as e:
+                six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_tenant_networks(self, tenant):
+        if not tenant.backend_id:
+            # This method will remove all networks if tenant `backend_id` is not defined.
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
+        neutron = self.neutron_admin_client
+
+        try:
+            networks = neutron.list_networks(tenant_id=tenant.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        for network in networks.get('networks', []):
+            if network['router:external']:
+                continue
+            for subnet in network['subnets']:
+                logger.info("Deleting subnetwork %s from tenant %s", subnet, tenant.backend_id)
+                try:
+                    neutron.delete_subnet(subnet)
+                except neutron_exceptions.NotFound:
+                    logger.info("Subnetwork %s is already gone from tenant %s", subnet, tenant.backend_id)
+                except neutron_exceptions.NeutronClientException as e:
+                    six.reraise(OpenStackBackendError, e)
+
+            logger.info("Deleting network %s from tenant %s", network['id'], tenant.backend_id)
+            try:
+                neutron.delete_network(network['id'])
+            except neutron_exceptions.NotFound:
+                logger.debug("Network %s is already gone from tenant %s", network['id'], tenant.backend_id)
+            except neutron_exceptions.NeutronClientException as e:
+                six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_tenant_security_groups(self, tenant):
         nova = self.nova_client
-        sgroups = nova.security_groups.list()
+
+        try:
+            sgroups = nova.security_groups.list()
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
         for sgroup in sgroups:
             logger.info("Deleting security group %s from tenant %s", sgroup.id, tenant.backend_id)
-            if not dryrun:
-                try:
-                    sgroup.delete()
-                except nova_exceptions.ClientException:
-                    logger.debug("Cannot delete %s from tenant %s", sgroup, tenant.backend_id)
+            try:
+                sgroup.delete()
+            except nova_exceptions.NotFound:
+                logger.debug("Security group %s is already gone from tenant %s", sgroup.id, tenant.backend_id)
+            except nova_exceptions.ClientException as e:
+                six.reraise(OpenStackBackendError, e)
 
-        # servers (instances)
-        servers = nova.servers.list()
+    @log_backend_action()
+    def delete_tenant_instances(self, tenant):
+        nova = self.nova_client
+
+        try:
+            servers = nova.servers.list()
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
         for server in servers:
-            logger.info("Deleting server %s from tenant %s", server.id, tenant.backend_id)
-            if not dryrun:
+            logger.info("Deleting instance %s from tenant %s", server.id, tenant.backend_id)
+            try:
                 server.delete()
+            except nova_exceptions.NotFound:
+                logger.debug("Instance %s is already gone from tenant %s", server.id, tenant.backend_id)
+            except nova_exceptions.ClientException as e:
+                six.reraise(OpenStackBackendError, e)
 
-        # snapshots
+    @log_backend_action()
+    def delete_tenant_snapshots(self, tenant):
         cinder = self.cinder_client
-        snapshots = cinder.volume_snapshots.list()
-        for snapshot in snapshots:
-            logger.info("Deleting snapshots %s from tenant %s", snapshot.id, tenant.backend_id)
-            if not dryrun:
-                snapshot.delete()
 
-        # volumes
-        volumes = cinder.volumes.list()
+        try:
+            snapshots = cinder.volume_snapshots.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        for snapshot in snapshots:
+            logger.info("Deleting snapshot %s from tenant %s", snapshot.id, tenant.backend_id)
+            try:
+                snapshot.delete()
+            except cinder_exceptions.NotFound:
+                logger.debug("Snapshot %s is already gone from tenant %s", snapshot.id, tenant.backend_id)
+            except cinder_exceptions.ClientException as e:
+                six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_tenant_volumes(self, tenant):
+        cinder = self.cinder_client
+
+        try:
+            volumes = cinder.volumes.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
         for volume in volumes:
             logger.info("Deleting volume %s from tenant %s", volume.id, tenant.backend_id)
-            if not dryrun:
+            try:
                 volume.delete()
+            except cinder_exceptions.NotFound:
+                logger.debug("Volume %s is already gone from tenant %s", volume.id, tenant.backend_id)
+            except cinder_exceptions.ClientException as e:
+                six.reraise(OpenStackBackendError, e)
 
-        # user
+    @log_backend_action()
+    def delete_tenant_user(self, tenant):
         keystone = self.keystone_client
         try:
             user = keystone.users.find(name=tenant.user_username)
             logger.info('Deleting user %s that was connected to tenant %s', user.name, tenant.backend_id)
-            if not dryrun:
-                user.delete()
+            user.delete()
+        except keystone_exceptions.NotFound:
+            logger.debug("User %s is already gone from tenant %s", tenant.user_username, tenant.backend_id)
         except keystone_exceptions.ClientException as e:
             logger.error('Cannot delete user %s from tenant %s. Error: %s', tenant.user_username, tenant.backend_id, e)
 
-        # tenant
+    @log_backend_action()
+    def delete_tenant(self, tenant):
+        if not tenant.backend_id:
+            raise OpenStackBackendError('This method should not be called if tenant has no backend_id')
+
         keystone = self.keystone_admin_client
+
         logger.info("Deleting tenant %s", tenant.backend_id)
-        if not dryrun:
-            try:
-                keystone.tenants.delete(tenant.backend_id)
-            except keystone_exceptions.ClientException as e:
-                six.reraise(OpenStackBackendError, e)
+        try:
+            keystone.tenants.delete(tenant.backend_id)
+        except keystone_exceptions.NotFound:
+            logger.debug("Tenant %s is already gone", tenant.backend_id)
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
     def resize_instance(self, instance, flavor_id):
@@ -1712,7 +1730,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 update_fields = ('name', 'description', 'size', 'metadata',
                                  'type', 'bootable', 'runtime_state', 'device')
 
-            _update_pulled_fields(volume, imported_volume, update_fields)
+            update_pulled_fields(volume, imported_volume, update_fields)
 
     @log_backend_action()
     def create_snapshot(self, snapshot, force=False):
@@ -1768,7 +1786,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         snapshot.refresh_from_db()
         if snapshot.modified < import_time:
             update_fields = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
-            _update_pulled_fields(snapshot, imported_snapshot, update_fields)
+            update_pulled_fields(snapshot, imported_snapshot, update_fields)
 
     @log_backend_action()
     def pull_snapshot_runtime_state(self, snapshot):

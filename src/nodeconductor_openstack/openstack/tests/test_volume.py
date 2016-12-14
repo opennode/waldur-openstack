@@ -1,3 +1,4 @@
+from ddt import ddt, data
 from rest_framework import test, status
 
 from nodeconductor.structure.models import ProjectRole
@@ -6,18 +7,21 @@ from nodeconductor.structure.tests import factories as structure_factories
 from . import factories, fixtures
 from .. import models
 
-
+@ddt
 class VolumeExtendTestCase(test.APITransactionTestCase):
     def setUp(self):
-        self.user = structure_factories.UserFactory()
+        self.admin = structure_factories.UserFactory()
+        self.manager = structure_factories.UserFactory()
         self.staff = structure_factories.UserFactory(is_staff=True)
         self.admined_volume = factories.VolumeFactory(state=models.Volume.States.OK)
 
         admined_project = self.admined_volume.service_project_link.project
-        admined_project.add_user(self.user, ProjectRole.ADMINISTRATOR)
+        admined_project.add_user(self.admin, ProjectRole.ADMINISTRATOR)
+        admined_project.add_user(self.manager, ProjectRole.MANAGER)
 
-    def test_user_can_resize_size_of_volume_he_is_administrator_of(self):
-        self.client.force_authenticate(user=self.user)
+    @data('admin', 'manager')
+    def test_user_can_resize_size_of_volume_he_has_access_to(self, user):
+        self.client.force_authenticate(getattr(self, user))
         new_size = self.admined_volume.size + 1024
 
         url = factories.VolumeFactory.get_url(self.admined_volume, action='extend')
@@ -28,7 +32,7 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
         self.assertEqual(self.admined_volume.size, new_size)
 
     def test_user_can_not_extend_volume_if_resulting_quota_usage_is_greater_then_limit(self):
-        self.client.force_authenticate(user=self.user)
+        self.client.force_authenticate(user=self.admin)
         self.admined_volume.tenant.set_quota_usage('storage', self.admined_volume.size)
         self.admined_volume.tenant.set_quota_limit('storage', self.admined_volume.size + 512)
 
@@ -39,7 +43,7 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
 
     def test_user_can_not_extend_volume_if_volume_operation_is_performed(self):
-        self.client.force_authenticate(user=self.user)
+        self.client.force_authenticate(user=self.admin)
         self.admined_volume.state = models.Volume.States.UPDATING
         self.admined_volume.save()
 
@@ -50,7 +54,7 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT, response.data)
 
     def test_user_can_not_extend_volume_if_volume_does_not_have_backend_id(self):
-        self.client.force_authenticate(user=self.user)
+        self.client.force_authenticate(user=self.admin)
         self.admined_volume.backend_id = ''
         self.admined_volume.save()
 
@@ -98,7 +102,7 @@ class VolumeAttachTestCase(test.APITransactionTestCase):
         self.volume.save()
 
         response = self.get_response()
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
     def test_user_can_not_attach_volume_to_instance_in_other_tenant(self):
         self.volume.state = models.Volume.States.OK
@@ -108,3 +112,33 @@ class VolumeAttachTestCase(test.APITransactionTestCase):
 
         response = self.get_response()
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class VolumeSnapshotTestCase(test.APITransactionTestCase):
+    def setUp(self):
+        self.fixture = fixtures.OpenStackFixture()
+        self.volume = self.fixture.openstack_volume
+        self.url = factories.VolumeFactory.get_url(self.volume, action='snapshot')
+
+    def test_user_can_create_volume_snapshot(self):
+        self.volume.state = models.Volume.States.OK
+        self.volume.runtime_state = 'available'
+        self.volume.save()
+
+        self.client.force_authenticate(self.fixture.owner)
+        payload = {'name': '%s snapshot' % self.volume.name}
+
+        response = self.client.post(self.url, data=payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_user_cannot_create_snapshot_for_volume_with_invalid_runtime_state(self):
+        self.volume.state = models.Volume.States.OK
+        self.volume.runtime_state = 'in-use'
+        self.volume.save()
+
+        self.client.force_authenticate(self.fixture.owner)
+        payload = {'name': '%s snapshot' % self.volume.name}
+
+        response = self.client.post(self.url, data=payload)
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data['detail'], 'Volume runtime state should be "available".')

@@ -22,7 +22,7 @@ class TenantQuotasTest(BaseTenantActionsTest):
         self.client.force_authenticate(user=structure_factories.UserFactory())
         response = self.client.post(self.get_url())
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertFalse(mocked_task.called)
 
     def test_staff_can_set_tenant_quotas(self, mocked_task):
@@ -194,3 +194,25 @@ class ServiceTenantCreateTest(BaseTenantActionsTest):
         self.client.force_authenticate(self.fixture.owner)
         response = self.client.post(self.url, {'name': 'Valid service'})
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+
+
+class TenantActionsMetadataTest(BaseTenantActionsTest):
+    def test_if_tenant_is_ok_actions_enabled(self):
+        self.client.force_authenticate(self.fixture.staff)
+        actions = self.get_actions()
+        for action in 'create_service', 'set_quotas':
+            self.assertTrue(actions[action]['enabled'])
+
+    def test_if_tenant_is_not_ok_actions_disabled(self):
+        self.tenant.state = Tenant.States.DELETING
+        self.tenant.save()
+
+        self.client.force_authenticate(self.fixture.owner)
+        actions = self.get_actions()
+        for action in 'create_service', 'set_quotas':
+            self.assertFalse(actions[action]['enabled'])
+
+    def get_actions(self):
+        url = factories.TenantFactory.get_url(self.tenant)
+        response = self.client.options(url)
+        return response.data['actions']

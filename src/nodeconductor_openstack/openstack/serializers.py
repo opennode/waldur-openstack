@@ -397,7 +397,8 @@ class NestedSecurityGroupSerializer(core_serializers.HyperlinkedRelatedModelSeri
 class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
     instance_name = serializers.ReadOnlyField(source='instance.name')
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
-                                       default=timezone.get_current_timezone_name)
+                                       initial=timezone.get_current_timezone_name(),
+                                       default=timezone.get_current_timezone_name())
 
     class Meta(object):
         model = models.BackupSchedule
@@ -582,8 +583,8 @@ class BackupRestorationSerializer(BasicBackupRestorationSerializer):
             volume.save()
             volume.increase_backend_quotas_usage()
             instance.volumes.add(volume)
-        # XXX: This should be moved to itacloud assembly
-        self.create_instance_crm(instance, backup)
+            # XXX: This should be moved to itacloud assembly
+            self.create_instance_crm(instance, backup)
         return backup_restoration
 
 

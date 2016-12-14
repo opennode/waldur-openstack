@@ -119,3 +119,22 @@ def remove_ssh_key_from_all_tenants_on_it_deletion(sender, instance, **kwargs):
         serialized_tenant = core_utils.serialize_instance(tenant)
         core_tasks.BackendMethodTask().delay(
             serialized_tenant, 'remove_ssh_key_from_tenant', ssh_key.name, ssh_key.fingerprint)
+
+
+def log_tenant_quota_update(sender, instance, created=False, **kwargs):
+    quota = instance
+    if created or not isinstance(quota.scope, Tenant):
+        return
+
+    if not quota.tracker.has_changed('limit'):
+        return
+
+    tenant = quota.scope
+    event_logger.openstack_tenant_quota.info(
+        '{quota_name} quota limit has been updated for tenant {tenant_name}.',
+        event_type='openstack_tenant_quota_limit_updated',
+        event_context={
+            'quota': quota,
+            'tenant': tenant,
+            'limit': float(quota.limit),  # Prevent passing integer
+        })

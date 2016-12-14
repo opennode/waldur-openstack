@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from django.db.models import signals
 
 
 class OpenStackTenantConfig(AppConfig):
@@ -16,6 +17,43 @@ class OpenStackTenantConfig(AppConfig):
         from .backend import OpenStackTenantBackend
         SupportedServices.register_backend(OpenStackTenantBackend)
 
-        # from nodeconductor.structure.models import ServiceSettings
-        # from nodeconductor.quotas.fields import QuotaField
-        # TODO: initialize service settings quotas based on tenant.
+        # Initialize service settings quotas based on tenant.
+        from nodeconductor.structure.models import ServiceSettings
+        from nodeconductor.quotas.fields import QuotaField
+        from nodeconductor_openstack.openstack.models import Tenant
+        for quota_name in Tenant.get_quotas_names():
+            ServiceSettings.add_quota_field(
+                name=quota_name,
+                quota_field=QuotaField(
+                    is_backend=True,
+                    creation_condition=lambda service_settings:
+                        service_settings.type == OpenStackTenantConfig.service_name
+                )
+            )
+
+        from . import handlers, models
+        for Resource in (models.Instance, models.Volume, models.Snapshot):
+            name = Resource.__name__.lower()
+            signals.post_save.connect(
+                handlers.log_action,
+                sender=Resource,
+                dispatch_uid='openstack_tenant.handlers.log_%s_action' % name,
+            )
+
+        signals.post_save.connect(
+            handlers.log_backup_schedule_creation,
+            sender=models.BackupSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_backup_schedule_creation',
+        )
+
+        signals.post_save.connect(
+            handlers.log_backup_schedule_action,
+            sender=models.BackupSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_backup_schedule_action',
+        )
+
+        signals.pre_delete.connect(
+            handlers.log_backup_schedule_deletion,
+            sender=models.BackupSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_backup_schedule_deletion',
+        )
