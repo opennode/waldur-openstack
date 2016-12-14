@@ -635,7 +635,7 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
             fields['security_groups'].display_name_field = 'name'
             fields['security_groups'].view_name = 'openstacktenant-sgp-detail'
             fields['security_groups'].query_params = {
-                'service_settings_uuid': instance.service_project_link.service.settings.uuid
+                'settings_uuid': instance.service_project_link.service.settings.uuid
             }
         return fields
 
