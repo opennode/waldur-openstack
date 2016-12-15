@@ -44,27 +44,14 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
     def get_task_signature(cls, tenant, serialized_tenant, pull_security_groups=True, **kwargs):
         # create tenant, add user to it, create internal network, pull quotas
         creation_tasks = [
-            core_tasks.BackendMethodTask().si(
-                serialized_tenant, 'create_tenant',
-                state_transition='begin_creating',
-                runtime_state='creating tenant'),
-            core_tasks.BackendMethodTask().si(
-                serialized_tenant, 'add_admin_user_to_tenant',
-                runtime_state='adding global admin user to tenant'),
-            core_tasks.BackendMethodTask().si(
-                serialized_tenant, 'create_tenant_user',
-                runtime_state='creating tenant user'),
-            core_tasks.BackendMethodTask().si(
-                serialized_tenant, 'create_internal_network',
-                runtime_state='creating internal network for tenant'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'create_tenant', state_transition='begin_creating'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'add_admin_user_to_tenant'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'create_tenant_user'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'create_internal_network'),
         ]
         quotas = tenant.quotas.all()
         quotas = {q.name: int(q.limit) if q.limit.is_integer() else q.limit for q in quotas}
-        creation_tasks.append(core_tasks.BackendMethodTask().si(
-            serialized_tenant, 'push_tenant_quotas', quotas,
-            runtime_state='pushing tenant quotas',
-            success_runtime_state='online')
-        )
+        creation_tasks.append(core_tasks.BackendMethodTask().si(serialized_tenant, 'push_tenant_quotas', quotas))
         # handle security groups
         # XXX: Create default security groups that was connected to SPL earlier.
         serialized_executor = core_utils.serialize_class(SecurityGroupCreateExecutor)
@@ -73,22 +60,14 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
             creation_tasks.append(core_tasks.ExecutorTask().si(serialized_executor, serialized_security_group))
 
         if pull_security_groups:
-            creation_tasks.append(core_tasks.BackendMethodTask().si(
-                serialized_tenant, 'pull_tenant_security_groups',
-                runtime_state='pulling tenant security groups',
-                success_runtime_state='online')
-            )
+            creation_tasks.append(core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_security_groups'))
 
         # initialize external network if it defined in service settings
         service_settings = tenant.service_project_link.service.settings
         external_network_id = service_settings.get_option('external_network_id')
         if external_network_id:
             creation_tasks.append(core_tasks.BackendMethodTask().si(
-                serialized_tenant, 'connect_tenant_to_external_network',
-                external_network_id=external_network_id,
-                runtime_state='connecting tenant to external network',
-                success_runtime_state='online')
-            )
+                serialized_tenant, 'connect_tenant_to_external_network', external_network_id=external_network_id))
 
         return chain(*creation_tasks)
 
@@ -171,10 +150,7 @@ class TenantAllocateFloatingIPExecutor(core_executors.ActionExecutor):
     @classmethod
     def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
         return core_tasks.BackendMethodTask().si(
-            serialized_tenant, 'allocate_floating_ip_address',
-            state_transition='begin_updating',
-            runtime_state='allocating floating ip',
-            success_runtime_state='online')
+            serialized_tenant, 'allocate_floating_ip_address', state_transition='begin_updating')
 
 
 class TenantDeleteExternalNetworkExecutor(core_executors.ActionExecutor):
@@ -182,10 +158,7 @@ class TenantDeleteExternalNetworkExecutor(core_executors.ActionExecutor):
     @classmethod
     def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
         return core_tasks.BackendMethodTask().si(
-            serialized_tenant, 'delete_external_network',
-            state_transition='begin_updating',
-            runtime_state='deleting external network',
-            success_runtime_state='online')
+            serialized_tenant, 'delete_external_network', state_transition='begin_updating')
 
 
 class TenantCreateExternalNetworkExecutor(core_executors.ActionExecutor):
@@ -198,8 +171,6 @@ class TenantCreateExternalNetworkExecutor(core_executors.ActionExecutor):
         return core_tasks.BackendMethodTask().si(
             serialized_tenant, 'create_external_network',
             state_transition='begin_updating',
-            runtime_state='creating external network',
-            success_runtime_state='online',
             **external_network_data)
 
 
@@ -208,10 +179,7 @@ class TenantPushQuotasExecutor(core_executors.ActionExecutor):
     @classmethod
     def get_task_signature(cls, tenant, serialized_tenant, quotas=None, **kwargs):
         return core_tasks.BackendMethodTask().si(
-            serialized_tenant, 'push_tenant_quotas', quotas,
-            state_transition='begin_updating',
-            runtime_state='updating quotas',
-            success_runtime_state='online')
+            serialized_tenant, 'push_tenant_quotas', quotas, state_transition='begin_updating')
 
 
 class TenantPullExecutor(core_executors.ActionExecutor):
