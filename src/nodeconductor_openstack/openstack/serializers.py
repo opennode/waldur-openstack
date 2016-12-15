@@ -1093,10 +1093,10 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas', 'runtime_state',
+            'user_username', 'user_password', 'quotas',
         )
         read_only_fields = structure_serializers.PrivateCloudSerializer.Meta.read_only_fields + (
-            'internal_network_id', 'external_network_id', 'user_password', 'runtime_state'
+            'internal_network_id', 'external_network_id', 'user_password',
         )
         protected_fields = structure_serializers.PrivateCloudSerializer.Meta.protected_fields + (
             'user_username',
