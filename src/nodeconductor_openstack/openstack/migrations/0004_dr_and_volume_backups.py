@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
             options={
                 'abstract': False,
             },
-            bases=(nodeconductor.core.models.SerializableAbstractMixin, nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
+            bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.CreateModel(
             name='VolumeBackup',
@@ -62,7 +62,7 @@ class Migration(migrations.Migration):
             options={
                 'abstract': False,
             },
-            bases=(nodeconductor.core.models.SerializableAbstractMixin, nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
+            bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.RemoveField(
             model_name='snapshot',
