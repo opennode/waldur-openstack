@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'OpenStackTenant service',
                 'verbose_name_plural': 'OpenStackTenan services',
             },
-            bases=(nodeconductor.core.models.SerializableAbstractMixin, nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
+            bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.CreateModel(
             name='OpenStackTenantServiceProjectLink',
@@ -42,7 +42,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'OpenStackTenant service project link',
                 'verbose_name_plural': 'OpenStackTenant service project links',
             },
-            bases=(nodeconductor.core.models.SerializableAbstractMixin, nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
+            bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.AddField(
             model_name='openstacktenantservice',
