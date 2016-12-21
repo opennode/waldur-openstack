@@ -435,7 +435,9 @@ class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
     action = 'Assign floating IP'
 
     @classmethod
-    def get_action_details(cls, instance, **kwargs):
+    def get_action_details(cls, instance, floating_ip_uuid=None, **kwargs):
+        if floating_ip_uuid is None:
+            return {'message': 'Allocate new floating IP and assign it to instance'}
         floating_ip_address = models.FloatingIP.objects.get(uuid=kwargs.get('floating_ip_uuid')).address
         return {
             'message': 'Assign floating IP %s' % floating_ip_address,
@@ -443,12 +445,18 @@ class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
         }
 
     @classmethod
-    def get_task_signature(cls, instance, serialized_instance, floating_ip_uuid, **kwargs):
-        return core_tasks.BackendMethodTask().si(
-            serialized_instance, 'assign_floating_ip_to_instance',
-            floating_ip_uuid=floating_ip_uuid,
-            state_transition='begin_updating',
-        )
+    def get_task_signature(cls, instance, serialized_instance, floating_ip_uuid=None, **kwargs):
+        if floating_ip_uuid is not None:
+            return core_tasks.BackendMethodTask().si(
+                serialized_instance, 'assign_floating_ip_to_instance',
+                floating_ip_uuid=floating_ip_uuid,
+                state_transition='begin_updating',
+            )
+        else:
+            return core_tasks.BackendMethodTask().si(
+                serialized_instance, 'allocate_and_assign_floating_ip_to_instance',
+                state_transition='begin_updating',
+            )
 
 
 class InstanceStopExecutor(core_executors.ActionExecutor):
