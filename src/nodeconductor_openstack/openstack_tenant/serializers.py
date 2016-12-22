@@ -384,7 +384,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
-            'floating_ip',
+            'floating_ip', 'security_groups',
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
             'flavor_disk', 'runtime_state', 'flavor_name', 'action',
@@ -535,7 +535,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 class AssignFloatingIpSerializer(serializers.Serializer):
     floating_ip = serializers.HyperlinkedRelatedField(
         label='Floating IP',
-        required=True,
+        required=False,
+        allow_null=True,
         view_name='openstacktenant-fip-detail',
         lookup_field='uuid',
         queryset=models.FloatingIP.objects.all()
@@ -555,9 +556,6 @@ class AssignFloatingIpSerializer(serializers.Serializer):
             field.display_name_field = 'address'
         return fields
 
-    def get_floating_ip_uuid(self):
-        return self.validated_data.get('floating_ip').uuid.hex
-
     def validate_floating_ip(self, floating_ip):
         if floating_ip is not None:
             if floating_ip.status != 'DOWN':
@@ -565,6 +563,13 @@ class AssignFloatingIpSerializer(serializers.Serializer):
             elif floating_ip.settings != self.instance.service_project_link.service.settings:
                 raise serializers.ValidationError("Floating IP must belong to same settings as instance.")
         return floating_ip
+
+    def save(self):
+        # Increase service settings quota on floating IP quota if new one will be created.
+        if not self.validated_data.get('floating_ip'):
+            settings = self.instance.service_project_link.service.settings
+            settings.add_quota_usage(settings.Quotas.floating_ip_count, 1, validate=True)
+        return self.validated_data.get('floating_ip')
 
 
 class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.Serializer):

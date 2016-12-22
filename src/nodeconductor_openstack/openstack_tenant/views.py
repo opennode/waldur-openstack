@@ -208,6 +208,8 @@ class InstanceViewSet(structure_views.PullMixin,
             raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
         if action == 'resize' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
             raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
+        if action == 'assign_floating_ip' and instance.external_ips:
+            raise core_exceptions.IncorrectStateException('Instance already has floating IP.')
         if action == 'destroy':
             if instance.state not in (States.OK, States.ERRED):
                 raise core_exceptions.IncorrectStateException('Instance state has to be OK or erred.')
@@ -283,6 +285,7 @@ class InstanceViewSet(structure_views.PullMixin,
         """
         To assign floating IP to the instance, make **POST** request to
         */api/openstacktenant-instances/<uuid>/assign_floating_ip/* with link to the floating IP.
+        Make empty POST request to allocate new floating IP and assign it to instance.
         Note that instance should be in stable state, service project link of the instance should be in stable state
         and have external network.
 
@@ -302,7 +305,11 @@ class InstanceViewSet(structure_views.PullMixin,
         """
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
-        executors.InstanceAssignFloatingIpExecutor.execute(instance, floating_ip_uuid=serializer.get_floating_ip_uuid())
+        floating_ip = serializer.save()
+        if floating_ip:
+            executors.InstanceAssignFloatingIpExecutor.execute(instance, floating_ip_uuid=floating_ip.uuid)
+        else:
+            executors.InstanceAssignFloatingIpExecutor.execute(instance)
 
     assign_floating_ip.title = 'Assign floating IP'
 

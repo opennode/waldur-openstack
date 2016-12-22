@@ -555,10 +555,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         # TODO: check availability and quota
         filters = {'status': 'DOWN', 'backend_network_id': self.external_network_id, 'settings': self.settings}
         if not models.FloatingIP.objects.filter(**filters).exists():
-            self._allocate_floating_ip_address()
+            self._allocate_floating_ip()
         return models.FloatingIP.objects.filter(**filters).first()
 
-    def _allocate_floating_ip_address(self):
+    def _allocate_floating_ip(self):
         neutron = self.neutron_client
         try:
             ip_address = neutron.create_floatingip({
@@ -570,13 +570,18 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            models.FloatingIP.objects.create(
+            return models.FloatingIP.objects.create(
                 status='DOWN',
                 settings=self.settings,
                 address=ip_address['floating_ip_address'],
                 backend_id=ip_address['id'],
                 backend_network_id=ip_address['floating_network_id'],
             )
+
+    @log_backend_action()
+    def allocate_and_assign_floating_ip_to_instance(self, instance):
+        floating_ip = self._allocate_floating_ip()
+        self.assign_floating_ip_to_instance(instance, floating_ip.uuid)
 
     @log_backend_action()
     def assign_floating_ip_to_instance(self, instance, floating_ip_uuid):
