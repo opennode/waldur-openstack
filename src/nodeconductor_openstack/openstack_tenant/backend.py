@@ -434,13 +434,13 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def create_instance(self, instance, backend_flavor_id=None,
-                        skip_external_ip_assignment=False, public_key=None, floating_ip_uuid=None):
+                        allocate_floating_ip=False, public_key=None, floating_ip_uuid=None):
         nova = self.nova_client
 
         floating_ip = None
         if floating_ip_uuid:
             floating_ip = models.FloatingIP.objects.get(uuid=floating_ip_uuid)
-        elif not skip_external_ip_assignment:
+        elif allocate_floating_ip:
             floating_ip = self._get_or_create_floating_ip()
 
         if floating_ip:

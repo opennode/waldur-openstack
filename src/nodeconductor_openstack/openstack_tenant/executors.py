@@ -241,7 +241,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance,
-                           ssh_key=None, flavor=None, floating_ip=None, skip_external_ip_assignment=False):
+                           ssh_key=None, flavor=None, floating_ip=None, allocate_floating_ip=False):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
@@ -265,7 +265,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         # Create instance based on volumes
         kwargs = {
             'backend_flavor_id': flavor.backend_id,
-            'skip_external_ip_assignment': skip_external_ip_assignment,
+            'allocate_floating_ip': allocate_floating_ip,
         }
         if ssh_key is not None:
             kwargs['public_key'] = ssh_key.public_key
@@ -605,7 +605,7 @@ class BackupRestorationExecutor(core_executors.CreateExecutor):
         # Create instance. Wait 10 seconds after volumes creation due to OpenStack restrictions.
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance',
-            skip_external_ip_assignment=False,
+            allocate_floating_ip=False,
             backend_flavor_id=backup_restoration.flavor.backend_id
         ).set(countdown=10))
         return chain(*_tasks)

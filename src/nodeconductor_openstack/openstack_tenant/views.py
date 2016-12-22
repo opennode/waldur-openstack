@@ -223,7 +223,7 @@ class InstanceViewSet(structure_views.PullMixin,
             instance,
             ssh_key=serializer.validated_data.get('ssh_public_key'),
             flavor=serializer.validated_data['flavor'],
-            skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'],
+            allocate_floating_ip=serializer.validated_data['allocate_floating_ip'],
             floating_ip=serializer.validated_data.get('floating_ip'),
             is_heavy_task=True,
         )
