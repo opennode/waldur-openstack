@@ -438,7 +438,7 @@ class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
     def get_action_details(cls, instance, floating_ip_uuid=None, **kwargs):
         if floating_ip_uuid is None:
             return {'message': 'Allocate new floating IP and assign it to instance'}
-        floating_ip_address = models.FloatingIP.objects.get(uuid=kwargs.get('floating_ip_uuid')).address
+        floating_ip_address = models.FloatingIP.objects.get(uuid=floating_ip_uuid).address
         return {
             'message': 'Assign floating IP %s' % floating_ip_address,
             'floating_ip_address': floating_ip_address,
