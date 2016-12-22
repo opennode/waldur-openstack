@@ -358,7 +358,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
 
-    skip_external_ip_assignment = serializers.BooleanField(write_only=True, default=False)
+    allocate_floating_ip = serializers.BooleanField(write_only=True, default=False)
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
     data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024, write_only=True)
 
@@ -378,12 +378,12 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         model = models.Instance
         view_name = 'openstacktenant-instance-detail'
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
             'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
             'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
             'floating_ip', 'security_groups',
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
@@ -449,7 +449,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     def _validate_external_ip(self, attrs):
         floating_ip = attrs.get('floating_ip')
         spl = attrs['service_project_link']
-        skip_external_ip_assignment = attrs['skip_external_ip_assignment']
+        allocate_floating_ip = attrs['allocate_floating_ip']
 
         # Case 1. If floating_ip!=None then requested floating IP is assigned to the instance.
         if floating_ip:
@@ -457,17 +457,17 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             if floating_ip.status != 'DOWN':
                 raise serializers.ValidationError({'floating_ip': 'Floating IP status must be DOWN.'})
 
-        # Case 2. If floating_ip=None and skip_external_ip_assignment=False
+        # Case 2. If floating_ip=None and allocate_floating_ip=True
         # then new floating IP is allocated and assigned to the instance.
-        elif not skip_external_ip_assignment:
+        elif allocate_floating_ip:
 
             floating_ip_count_quota = spl.service.settings.quotas.get(name='floating_ip_count')
             if floating_ip_count_quota.is_exceeded(delta=1):
                 raise serializers.ValidationError({
-                    'skip_external_ip_assignment': 'Can not allocate floating IP - quota has been filled.'
+                    'allocate_floating_ip': 'Can not allocate floating IP - quota has been filled.'
                 })
 
-        # Case 3. If floating_ip=None and skip_external_ip_assignment=True
+        # Case 3. If floating_ip=None and allocate_floating_ip=False
         # floating IP allocation is not attempted, only internal IP is created.
         else:
             logger.debug('Floating IP allocation is not attempted.')
