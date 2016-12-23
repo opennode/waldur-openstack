@@ -122,6 +122,8 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if action == 'attach' and volume.runtime_state != 'available':
             raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
         elif action == 'detach':
+            if volume.bootable:
+                raise core_exceptions.IncorrectStateException('It is impossible to detach bootable volume.')
             if volume.runtime_state != 'in-use':
                 raise core_exceptions.IncorrectStateException('Volume runtime state should be "in-use".')
             if not volume.instance:
