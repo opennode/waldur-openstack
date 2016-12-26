@@ -45,9 +45,12 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
     source_volume_uuid = core_filters.UUIDFilter(name='source_volume__uuid')
     source_volume = core_filters.URLFilter(view_name='openstacktenant-volume-detail', name='source_volume__uuid')
 
+    backup_uuid = core_filters.UUIDFilter(name='backups__uuid')
+    backup = core_filters.URLFilter(view_name='openstacktenant-backup-detail', name='backups__uuid')
+
     class Meta(structure_filters.BaseResourceStateFilter.Meta):
         model = models.Snapshot
-        fields = structure_filters.BaseResourceStateFilter.Meta.fields + ('source_volume_uuid', 'source_volume')
+        fields = structure_filters.BaseResourceStateFilter.Meta.fields
 
 
 class BackupFilter(structure_filters.BaseResourceFilter):
