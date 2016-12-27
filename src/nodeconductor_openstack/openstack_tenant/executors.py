@@ -74,6 +74,14 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
         }
 
     @classmethod
+    def pre_apply(cls, volume, **kwargs):
+        super(VolumeExtendExecutor, cls).pre_apply(volume, **kwargs)
+        if volume.instance is not None:
+            volume.instance.action = 'Extend volume'
+            volume.instance.schedule_updating()
+            volume.instance.save()
+
+    @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         if volume.instance is None:
             return chain(
@@ -129,6 +137,22 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                 erred_state='error'
             ),
         )
+
+    @classmethod
+    def get_success_signature(cls, volume, serialized_volume, **kwargs):
+        if volume.instance is None:
+            return super(VolumeExtendExecutor, cls).get_success_signature(volume, serialized_volume, **kwargs)
+        else:
+            instance = volume.instance
+            serialized_instance = core_utils.serialize_instance(instance)
+            return chain(
+                super(VolumeExtendExecutor, cls).get_success_signature(volume, serialized_volume, **kwargs),
+                super(VolumeExtendExecutor, cls).get_success_signature(instance, serialized_instance, **kwargs),
+            )
+
+    @classmethod
+    def get_failure_signature(cls, volume, serialized_volume, **kwargs):
+        return tasks.VolumeExtendErredTask().s(serialized_volume)
 
 
 class VolumeAttachExecutor(core_executors.ActionExecutor):
