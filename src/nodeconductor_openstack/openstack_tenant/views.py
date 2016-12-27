@@ -221,6 +221,18 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return super(VolumeViewSet, self).check_operation(request, resource, action)
 
 
+class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         structure_views.ResourceViewMixin,
+                                         structure_views.PullMixin,
+                                         core_views.UpdateOnlyStateExecutorViewSet)):
+    queryset = models.Snapshot.objects.all()
+    serializer_class = serializers.SnapshotSerializer
+    update_executor = executors.SnapshotUpdateExecutor
+    delete_executor = executors.SnapshotDeleteExecutor
+    pull_executor = executors.SnapshotPullExecutor
+    filter_class = filters.SnapshotFilter
+
+
 class InstanceViewSet(structure_views.PullMixin,
                       core_mixins.UpdateExecutorMixin,
                       structure_views._BaseResourceViewSet):

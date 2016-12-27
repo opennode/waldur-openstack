@@ -8,10 +8,10 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from nodeconductor.core import serializers as core_serializers, fields as core_fields
+from nodeconductor.core import serializers as core_serializers, fields as core_fields, utils as core_utils
 from nodeconductor.structure import serializers as structure_serializers
 
-from . import models
+from . import models, fields
 
 
 logger = logging.getLogger(__name__)
@@ -817,3 +817,20 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
     def create(self, validated_data):
         validated_data['instance'] = self.context['instance']
         return super(BackupScheduleSerializer, self).create(validated_data)
+
+
+class MeterSampleSerializer(serializers.Serializer):
+    name = serializers.CharField(source='counter_name')
+    value = serializers.FloatField(source='counter_volume')
+    type = serializers.CharField(source='counter_type')
+    unit = serializers.CharField(source='counter_unit')
+    timestamp = fields.StringTimestampField(formats=('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'))
+    recorded_at = fields.StringTimestampField(formats=('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'))
+
+
+class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSerializer):
+    def get_fields(self):
+        fields = super(MeterTimestampIntervalSerializer, self).get_fields()
+        fields['start'].default = core_utils.timeshift(hours=-1)
+        fields['end'].default = core_utils.timeshift()
+        return fields
