@@ -184,6 +184,15 @@ class SetBackupRestorationErredTask(core_tasks.ErrorStateTransitionTask):
                 volume.save(update_fields=['state'])
 
 
+class VolumeExtendErredTask(core_tasks.ErrorStateTransitionTask):
+    """ Mark volume and its instance as erred on fail """
+
+    def execute(self, volume):
+        super(VolumeExtendErredTask, self).execute(volume)
+        if volume.instance is not None:
+            super(VolumeExtendErredTask, self).execute(volume.instance)
+
+
 # CELERYBEAT
 
 class PullResources(core_tasks.BackgroundTask):

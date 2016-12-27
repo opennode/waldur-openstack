@@ -138,6 +138,22 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
             ),
         )
 
+    @classmethod
+    def get_success_signature(cls, volume, serialized_volume, **kwargs):
+        if volume.instance is None:
+            return super(VolumeExtendExecutor, cls).get_success_signature(volume, serialized_volume, **kwargs)
+        else:
+            instance = volume.instance
+            serialized_instance = core_utils.serialize_instance(instance)
+            return chain(
+                super(VolumeExtendExecutor, cls).get_success_signature(volume, serialized_volume, **kwargs),
+                super(VolumeExtendExecutor, cls).get_success_signature(instance, serialized_instance, **kwargs),
+            )
+
+    @classmethod
+    def get_failure_signature(cls, volume, serialized_volume, **kwargs):
+        return tasks.VolumeExtendErredTask.s(serialized_volume)
+
 
 class VolumeAttachExecutor(core_executors.ActionExecutor):
     action = 'Attach'
