@@ -50,6 +50,10 @@ class ResourceActionEventLogger(EventLogger):
             'resource_restart_scheduled',
             'resource_restart_succeeded',
             'resource_restart_failed',
+
+            'resource_extend_volume_scheduled',
+            'resource_extend_volume_succeeded',
+            'resource_extend_volume_failed',
         )
         event_groups = {'resources': event_types}
 
