@@ -268,7 +268,11 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
             except KeyError:
                 self._set_erred(instance)
             else:
-                self._update(instance, backend_instance, backend.INSTANCE_UPDATE_FIELDS)
+                with transaction.atomic():
+                    self._update(instance, backend_instance, backend.INSTANCE_UPDATE_FIELDS)
+                    if set(instance.security_groups.all()) != set(backend_instance._security_groups):
+                        instance.security_groups.clear()
+                        instance.security_groups.add(*backend_instance._security_groups)
 
     def _set_erred(self, resource):
         resource.set_erred()
