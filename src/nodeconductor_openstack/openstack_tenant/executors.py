@@ -74,6 +74,14 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
         }
 
     @classmethod
+    def pre_apply(cls, volume, **kwargs):
+        super(VolumeExtendExecutor, cls).pre_apply(volume, **kwargs)
+        if volume.instance is not None:
+            volume.instance.action = 'Extending volume'
+            volume.instance.schedule_updating()
+            volume.instance.save()
+
+    @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         if volume.instance is None:
             return chain(
