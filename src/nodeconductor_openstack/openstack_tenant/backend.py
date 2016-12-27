@@ -717,7 +717,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             if timezone.is_naive(d):
                 launch_time = timezone.make_aware(d, timezone.utc)
 
-        return models.Instance(
+        instance = models.Instance(
             name=backend_instance.name or backend_instance.id,
             key_name=backend_instance.key_name or '',
             start_time=launch_time,
@@ -734,6 +734,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             external_ips=ips.get('external', ''),
             backend_id=backend_instance.id,
         )
+        backend_security_groups_names = [sg['name'] for sg in backend_instance.security_groups]
+        instance._security_groups = models.SecurityGroup.objects.filter(
+            name__in=backend_security_groups_names, settings=self.settings)
+        return instance
 
     def get_instances(self):
         nova = self.nova_client
