@@ -267,7 +267,6 @@ class BackupSchedule(core_models.UuidMixin,
     class Permissions(object):
         customer_path = 'instance__service_project_link__project__customer'
         project_path = 'instance__service_project_link__project'
-        project_group_path = 'instance__service_project_link__project__project_groups'
 
     instance = models.ForeignKey(Instance, related_name='backup_schedules')
     retention_time = models.PositiveIntegerField(

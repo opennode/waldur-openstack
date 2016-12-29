@@ -36,8 +36,6 @@ class InstanceFilter(structure_filters.BaseResourceFilter):
             # Backwards compatibility
             project__customer__name='service_project_link__project__customer__name',
             project__name='service_project_link__project__name',
-            project__project_groups__name='service_project_link__project__project_groups__name',
-
             **structure_filters.BaseResourceFilter.Meta.order_by_mapping
         )
 

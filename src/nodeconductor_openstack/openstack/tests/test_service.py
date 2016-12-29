@@ -1,7 +1,7 @@
 from mock import patch
 from rest_framework import status, test
 
-from nodeconductor.structure.models import ServiceSettings, ProjectRole, CustomerRole, ProjectGroupRole
+from nodeconductor.structure.models import ServiceSettings, ProjectRole, CustomerRole
 from nodeconductor.structure.tests import factories as structure_factories
 from .. import models
 from . import factories
@@ -13,14 +13,12 @@ class BaseServiceTest(test.APITransactionTestCase):
             'owned': structure_factories.CustomerFactory(),
             'has_admined_project': structure_factories.CustomerFactory(),
             'has_managed_project': structure_factories.CustomerFactory(),
-            'has_managed_by_group_manager': structure_factories.CustomerFactory(),
         }
 
         self.users = {
             'customer_owner': structure_factories.UserFactory(),
             'project_admin': structure_factories.UserFactory(),
             'project_manager': structure_factories.UserFactory(),
-            'group_manager': structure_factories.UserFactory(),
             'no_role': structure_factories.UserFactory(),
         }
 
@@ -28,16 +26,12 @@ class BaseServiceTest(test.APITransactionTestCase):
             'owned': structure_factories.ProjectFactory(customer=self.customers['owned']),
             'admined': structure_factories.ProjectFactory(customer=self.customers['has_admined_project']),
             'managed': structure_factories.ProjectFactory(customer=self.customers['has_managed_project']),
-            'managed_by_group_manager': structure_factories.ProjectFactory(
-                customer=self.customers['has_managed_by_group_manager']),
         }
 
         self.services = {
             'owned': factories.OpenStackServiceFactory(customer=self.customers['owned']),
             'admined': factories.OpenStackServiceFactory(customer=self.customers['has_admined_project']),
             'managed': factories.OpenStackServiceFactory(customer=self.customers['has_managed_project']),
-            'managed_by_group_manager': factories.OpenStackServiceFactory(
-                customer=self.customers['has_managed_by_group_manager']),
             'not_in_project': factories.OpenStackServiceFactory(),
         }
 
@@ -46,14 +40,9 @@ class BaseServiceTest(test.APITransactionTestCase):
 
         self.projects['admined'].add_user(self.users['project_admin'], ProjectRole.ADMINISTRATOR)
         self.projects['managed'].add_user(self.users['project_manager'], ProjectRole.MANAGER)
-        project_group = structure_factories.ProjectGroupFactory()
-        project_group.projects.add(self.projects['managed_by_group_manager'])
-        project_group.add_user(self.users['group_manager'], ProjectGroupRole.MANAGER)
 
         factories.OpenStackServiceProjectLinkFactory(service=self.services['admined'], project=self.projects['admined'])
         factories.OpenStackServiceProjectLinkFactory(service=self.services['managed'], project=self.projects['managed'])
-        factories.OpenStackServiceProjectLinkFactory(
-            service=self.services['managed_by_group_manager'], project=self.projects['managed_by_group_manager'])
 
 
 class ListServiceTest(BaseServiceTest):
@@ -79,15 +68,6 @@ class ListServiceTest(BaseServiceTest):
         service_url = factories.OpenStackServiceFactory.get_url(self.services['managed'])
         self.assertIn(service_url, [instance['url'] for instance in response.data])
 
-    def test_user_can_list_services_of_projects_he_is_group_manager_of(self):
-        self.client.force_authenticate(user=self.users['group_manager'])
-
-        response = self.client.get(factories.OpenStackServiceFactory.get_list_url())
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        service_url = factories.OpenStackServiceFactory.get_url(self.services['managed_by_group_manager'])
-        self.assertIn(service_url, [instance['url'] for instance in response.data])
-
     def test_user_can_list_services_of_projects_he_is_customer_owner_of(self):
         self.client.force_authenticate(user=self.users['customer_owner'])
 
@@ -103,7 +83,7 @@ class ListServiceTest(BaseServiceTest):
         response = self.client.get(factories.OpenStackServiceFactory.get_list_url())
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        for service_type in 'admined', 'managed', 'managed_by_group_manager':
+        for service_type in 'admined', 'managed':
             service_url = factories.OpenStackServiceFactory.get_url(self.services[service_type])
             self.assertNotIn(
                 service_url,
@@ -128,12 +108,6 @@ class GetServiceTest(BaseServiceTest):
         self.client.force_authenticate(user=self.users['project_manager'])
 
         response = self.client.get(factories.OpenStackServiceFactory.get_url(self.services['managed']))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_user_can_access_service_allowed_for_project_he_is_group_manager_of(self):
-        self.client.force_authenticate(user=self.users['group_manager'])
-
-        response = self.client.get(factories.OpenStackServiceFactory.get_url(self.services['managed_by_group_manager']))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_user_can_see_services_customer_name(self):
@@ -162,7 +136,7 @@ class GetServiceTest(BaseServiceTest):
             )
 
     def test_user_cannot_access_service_not_allowed_for_any_project(self):
-        for user_role in 'customer_owner', 'project_admin', 'project_manager', 'group_manager':
+        for user_role in 'customer_owner', 'project_admin', 'project_manager':
             self.client.force_authenticate(user=self.users[user_role])
 
             response = self.client.get(factories.OpenStackServiceFactory.get_url(self.services['not_in_project']))

@@ -100,7 +100,6 @@ class SecurityGroup(core_models.UuidMixin,
     class Permissions(object):
         customer_path = 'service_project_link__project__customer'
         project_path = 'service_project_link__project'
-        project_group_path = 'service_project_link__project__project_groups'
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='security_groups')
@@ -128,7 +127,6 @@ class IpMapping(core_models.UuidMixin):
     class Permissions(object):
         project_path = 'project'
         customer_path = 'project__customer'
-        project_group_path = 'project__project_groups'
 
     public_ip = models.GenericIPAddressField(protocol='IPv4')
     private_ip = models.GenericIPAddressField(protocol='IPv4')
@@ -141,7 +139,6 @@ class FloatingIP(core_models.UuidMixin):
     class Permissions(object):
         customer_path = 'service_project_link__project__customer'
         project_path = 'service_project_link__project'
-        project_group_path = 'service_project_link__project__project_groups'
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='floating_ips')
@@ -326,7 +323,6 @@ class BackupSchedule(core_models.UuidMixin,
     class Permissions(object):
         customer_path = 'instance__service_project_link__project__customer'
         project_path = 'instance__service_project_link__project'
-        project_group_path = 'instance__service_project_link__project__project_groups'
 
     class BackupTypes(object):
         REGULAR = 'Regular'
@@ -359,7 +355,6 @@ class Backup(core_models.UuidMixin,
     class Permissions(object):
         customer_path = 'instance__service_project_link__project__customer'
         project_path = 'instance__service_project_link__project'
-        project_group_path = 'instance__service_project_link__project__project_groups'
 
     instance = models.ForeignKey(Instance, related_name='backups', on_delete=models.PROTECT)
     tenant = models.ForeignKey('Tenant', related_name='backups')
@@ -397,7 +392,6 @@ class BackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, Ti
     class Permissions(object):
         customer_path = 'backup__instance__service_project_link__project__customer'
         project_path = 'backup__instance__service_project_link__project'
-        project_group_path = 'backup__instance__service_project_link__project__project_groups'
 
     def get_backend(self):
         return self.tenant.get_backend()
@@ -608,7 +602,6 @@ class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, 
     class Permissions(object):
         customer_path = 'dr_backup__service_project_link__project__customer'
         project_path = 'dr_backup__service_project_link__project'
-        project_group_path = 'dr_backup__service_project_link__project__project_groups'
 
     def get_backend(self):
         return self.tenant.get_backend()

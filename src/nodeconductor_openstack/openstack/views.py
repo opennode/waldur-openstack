@@ -946,7 +946,6 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
         - ?aggregate=name - by license name
         - ?aggregate=type - by license type
-        - ?aggregate=project_group - by project groups
         - ?aggregate=project - by projects
         - ?aggregate=customer - by customer
 
@@ -973,7 +972,7 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         filter_name = self.request.query_params.get('name')
         filter_type = self.request.query_params.get('type')
 
-        valid_aggregates = 'name', 'type', 'customer', 'project', 'project_group'
+        valid_aggregates = 'name', 'type', 'customer', 'project'
         for arg in aggregates:
             if arg not in valid_aggregates:
                 return response.Response(
@@ -1005,12 +1004,6 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 'project_uuid': instance.project.uuid.hex,
                 'project_name': instance.project.name,
             })
-
-            if instance.project.project_group is not None:
-                tag_dict.update({
-                    'project_group_uuid': instance.project.project_group.uuid.hex,
-                    'project_group_name': instance.project.project_group.name,
-                })
 
             key = '-'.join([tag_dict.get(arg) or tag_dict.get('%s_uuid' % arg) for arg in aggregates])
             tags_aggregate.setdefault(key, [])

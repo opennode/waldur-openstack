@@ -89,8 +89,6 @@ class BackupPermissionsTest(helpers.PermissionsTest):
         # objects
         self.customer = structure_factories.CustomerFactory()
         self.project = structure_factories.ProjectFactory(customer=self.customer)
-        self.project_group = structure_factories.ProjectGroupFactory(customer=self.customer)
-        self.project_group.projects.add(self.project)
         self.service = factories.OpenStackServiceFactory(customer=self.customer)
         self.spl = factories.OpenStackServiceProjectLinkFactory(service=self.service, project=self.project)
         self.instance = factories.InstanceFactory(service_project_link=self.spl, state=models.Instance.States.OK)
@@ -104,12 +102,10 @@ class BackupPermissionsTest(helpers.PermissionsTest):
         self.project.add_user(self.project_manager, structure_models.ProjectRole.MANAGER)
         self.customer_owner = structure_factories.UserFactory(username='owner')
         self.customer.add_user(self.customer_owner, structure_models.CustomerRole.OWNER)
-        self.project_group_manager = structure_factories.UserFactory(username='project_group_manager')
-        self.project_group.add_user(self.project_group_manager, structure_models.ProjectGroupRole.MANAGER)
 
     def get_users_with_permission(self, url, method):
         if method == 'GET':
-            return [self.staff, self.project_admin, self.project_manager, self.project_group_manager]
+            return [self.staff, self.project_admin, self.project_manager]
         else:
             return [self.staff, self.project_admin, self.project_manager, self.customer_owner]
 
@@ -117,7 +113,7 @@ class BackupPermissionsTest(helpers.PermissionsTest):
         if method == 'GET':
             return [self.regular_user]
         else:
-            return [self.regular_user, self.project_group_manager]
+            return [self.regular_user]
 
     def get_urls_configs(self):
         yield {'url': factories.BackupFactory.get_url(self.backup), 'method': 'GET'}
