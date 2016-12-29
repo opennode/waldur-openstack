@@ -1400,6 +1400,9 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def delete_network(self, network):
+        for subnet in network.subnets.all():
+            self.delete_subnet(subnet)
+
         neutron = self.neutron_admin_client
         try:
             neutron.delete_network(network.backend_id)
@@ -1433,6 +1436,82 @@ class OpenStackBackend(BaseOpenStackBackend):
             update_fields = ('name', 'description', 'type', 'segmentation_id', 'runtime_state')
             update_pulled_fields(network, imported_network, update_fields)
 
+    @log_backend_action()
+    def create_subnet(self, subnet):
+        neutron = self.neutron_admin_client
+
+        data = {
+            'name': subnet.name,
+            'description': subnet.description,
+            'network_id': subnet.network.backend_id,
+            'tenant_id': subnet.network.tenant.backend_id,
+            'cidr': subnet.cidr,
+            'allocation_pools': subnet.allocation_pools,
+            'ip_version': subnet.ip_version,
+            'enable_dhcp': subnet.enable_dhcp,
+        }
+        try:
+            response = neutron.create_subnet({'subnets': [data]})
+            # Automatically create router for subnet
+            # TODO: Ideally: Create separate model for router and create it separately.
+            #       Good enough: refactor `get_or_create_router` method: split it into several method.
+            self.get_or_create_router(subnet.network.name, response['subnets'][0]['id'])
+        except neutron_exceptions.NeutronException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            backend_subnet = response['subnets'][0]
+            subnet.backend_id = backend_subnet['id']
+            subnet.gateway_ip = backend_subnet['gateway_ip']
+            subnet.save()
+
+    @log_backend_action()
+    def update_subnet(self, subnet):
+        neutron = self.neutron_admin_client
+
+        data = {'name': subnet.name, 'description': subnet.description}
+        try:
+            neutron.update_subnet(subnet.backend_id, {'subnet': data})
+        except neutron_exceptions.NeutronException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_subnet(self, subnet):
+        neutron = self.neutron_admin_client
+        try:
+            neutron.delete_subnet(subnet.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    def import_subnet(self, subnet_backend_id):
+        neutron = self.neutron_admin_client
+        try:
+            backend_subnet = neutron.show_subnet(subnet_backend_id)['subnet']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        subnet = models.SubNet(
+            name=backend_subnet['name'],
+            description=backend_subnet['description'] or '',
+            allocation_pools=backend_subnet['allocation_pools'],
+            cidr=backend_subnet['cidr'],
+            ip_version=backend_subnet['ip_version'],
+            gateway_ip=backend_subnet['gateway_ip'],
+            enable_dhcp=backend_subnet['enable_dhcp'],
+            state=models.Network.States.OK,
+        )
+        return subnet
+
+    @log_backend_action()
+    def pull_subnet(self, subnet):
+        import_time = timezone.now()
+        imported_subnet = self.import_subnet(subnet.backend_id)
+
+        subnet.refresh_from_db()
+        if subnet.modified < import_time:
+            update_fields = ('name', 'description', 'cidr', 'allocation_pools', 'ip_version', 'gateway_ip',
+                             'enable_dhcp')
+            update_pulled_fields(subnet, imported_subnet, update_fields)
+
     @log_backend_action('create internal network for tenant')
     def _create_internal_network(self, tenant):
         neutron = self.neutron_admin_client
@@ -1457,7 +1536,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 'allocation_pools': [
                     {
                         'start': '192.168.42.10',
-                        'end': '192.168.42.250'  # 200
+                        'end': '192.168.42.200',
                     }
                 ],
                 'name': subnet_name,

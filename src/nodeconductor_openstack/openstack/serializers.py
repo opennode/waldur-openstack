@@ -5,6 +5,7 @@ import urlparse
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.core import validators
 from django.db import transaction
 from django.template.defaultfilters import slugify
 from django.utils import timezone
@@ -1495,6 +1496,12 @@ class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSeriali
         return fields
 
 
+class _NestedSubNetSerializer(serializers.ModelSerializer):
+    class Meta(object):
+        model = models.SubNet
+        fields = ('name', 'description', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+
+
 class NetworkSerializer(structure_serializers.BaseResourceSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -1504,12 +1511,15 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
     service_project_link = serializers.HyperlinkedRelatedField(
         view_name='openstack-spl-detail',
         read_only=True)
+    subnets = _NestedSubNetSerializer(many=True, read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Network
         view_name = 'openstack-network-detail'
-        fields = structure_serializers.BaseResourceSerializer.Meta.fields + ('tenant',)
-        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + ('tenant',)
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+            'tenant', 'is_external', 'type', 'segmentation_id', 'subnets')
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+            'tenant', 'is_external', 'type', 'segmentation_id')
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
@@ -1519,3 +1529,60 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
         return super(NetworkSerializer, self).create(validated_data)
+
+
+class SubNetSerializer(structure_serializers.BaseResourceSerializer):
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstack-detail',
+        read_only=True,
+        lookup_field='uuid')
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        read_only=True)
+    # XXX: It is better to define whole cidr and allocation pool fields and demand right values in validation.
+    third_octet = serializers.IntegerField(
+        validators=[validators.MinValueValidator(1), validators.MaxValueValidator(255)],
+        write_only=True,
+        help_text='Third octet of subnet cidr and allocation pool.',
+        initial=42,
+        default=42)
+    allocation_pools = JsonField(read_only=True)
+
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+        model = models.SubNet
+        view_name = 'openstack-subnet-detail'
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+            'network', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp', 'third_octet')
+        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('third_octet',)
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+            'network', 'cidr', 'gateway_ip', 'ip_version', 'enable_dhcp')
+        extra_kwargs = dict(
+            network={'lookup_field': 'uuid', 'view_name': 'openstack-network-detail'},
+            **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
+        )
+
+    def validate(self, attrs):
+        if self.instance is None:
+            attrs['network'] = network = self.context['view'].get_object()
+            if network.subnets.count() >= 1:
+                raise serializers.ValidationError('Internal network cannot have more than one subnet.')
+        return attrs
+
+    def create(self, validated_data):
+        subnet_settings = settings.NODECONDUCTOR_OPENSTACK_TENANT['SUBNET']
+        third_octet = validated_data.pop('third_octet')
+
+        network = validated_data['network']
+        validated_data['service_project_link'] = network.service_project_link
+        validated_data['cidr'] = subnet_settings['CIDR_TEMPLATE'].format(third_octet)
+        validated_data['allocation_pools'] = [{
+            'start': subnet_settings['ALLOCATION_POOL_START_TEMPLATE'].format(third_octet),
+            'end': subnet_settings['ALLOCATION_POOL_END_TEMPLATE'].format(third_octet),
+        }]
+        return super(SubNetSerializer, self).create(validated_data)
+
+
+# TODO:
+#  - provide filters.
+#  - modify tenant creation process: serializer and executor.

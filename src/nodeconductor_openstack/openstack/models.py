@@ -632,3 +632,21 @@ class Network(core_models.RuntimeStateMixin, structure_models.NewResource):
     @classmethod
     def get_url_name(cls):
         return 'openstack-network'
+
+
+class SubNet(structure_models.NewResource):
+    service_project_link = models.ForeignKey(
+        OpenStackServiceProjectLink, related_name='subnets', on_delete=models.PROTECT)
+    network = models.ForeignKey(Network, related_name='subnets')
+    cidr = models.CharField(max_length=32, blank=True)
+    gateway_ip = models.GenericIPAddressField(protocol='IPv4', null=True)
+    allocation_pools = JSONField(default={})
+    ip_version = models.SmallIntegerField(default=4)
+    enable_dhcp = models.BooleanField(default=True)
+
+    def get_backend(self):
+        return self.network.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-subnet'

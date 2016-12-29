@@ -1036,12 +1036,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     delete_executor = executors.TenantDeleteExecutor
-
-    @decorators.detail_route(methods=['post'])
-    def pull(self, request, instance, uuid=None):
-        executors.TenantPullExecutor.execute(instance)
-
-    pull_validators = [core_validators.StateValidator(models.Tenant.States.OK, models.Tenant.States.ERRED)]
+    pull_executor = executors.TenantPullExecutor
 
     @decorators.detail_route(methods=['post'])
     def create_service(self, request, uuid=None):
@@ -1264,14 +1259,32 @@ class DRBackupRestorationViewSet(core_mixins.CreateExecutorMixin,
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.Network.objects.all()
     serializer_class = serializers.NetworkSerializer
+    filter_class = filters.NetworkFilter
+
     disabled_actions = ['create']
     update_executor = executors.NetworkUpdateExecutor
     delete_executor = executors.NetworkDeleteExecutor
+    pull_executor = executors.NetworkPullExecutor
 
     @decorators.detail_route(methods=['post'])
-    def pull(self, request, uuid=None):
-        executors.NetworkPullExecutor.execute(self.get_object())
-        return response.Response(
-            {'detail': 'Pull operation was successfully scheduled'}, status=status.HTTP_201_CREATED)
+    def create_subnet(self, request, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        subnet = serializer.save()
 
-    pull_validators = [core_validators.StateValidator(models.Tenant.States.OK, models.Tenant.States.ERRED)]
+        executors.SubNetCreateExecutor.execute(subnet)
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    create_subnet_validators = [core_validators.StateValidator(models.Network.States.OK)]
+    create_subnet_serializer_class = serializers.SubNetSerializer
+
+
+class SubNetViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
+    queryset = models.SubNet.objects.all()
+    serializer_class = serializers.SubNetSerializer
+    filter_class = filters.SubNetFilter
+
+    disabled_actions = ['create']
+    update_executor = executors.SubNetUpdateExecutor
+    delete_executor = executors.SubNetDeleteExecutor
+    pull_executor = executors.SubNetPullExecutor

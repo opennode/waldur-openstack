@@ -1039,3 +1039,38 @@ class NetworkPullExecutor(core_executors.ActionExecutor):
     def get_task_signature(cls, network, serialized_network, **kwargs):
         return core_tasks.BackendMethodTask().si(
             serialized_network, 'pull_network', state_transition='begin_updating')
+
+
+class SubNetCreateExecutor(core_executors.CreateExecutor):
+
+    @classmethod
+    def get_task_signature(cls, subnet, serialized_subnet, **kwargs):
+        return core_tasks.BackendMethodTask().si(serialized_subnet, 'create_subnet', state_transition='begin_creating')
+
+
+class SubNetUpdateExecutor(core_executors.UpdateExecutor):
+
+    @classmethod
+    def get_task_signature(cls, subnet, serialized_subnet, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_subnet, 'update_subnet', state_transition='begin_updating')
+
+
+class SubNetDeleteExecutor(core_executors.DeleteExecutor):
+
+    @classmethod
+    def get_task_signature(cls, subnet, serialized_subnet, **kwargs):
+        if subnet.backend_id:
+            return core_tasks.BackendMethodTask().si(
+                serialized_subnet, 'delete_subnet', state_transition='begin_deleting')
+        else:
+            return core_tasks.StateTransitionTask().si(serialized_subnet, state_transition='begin_deleting')
+
+
+class SubNetPullExecutor(core_executors.ActionExecutor):
+    action = 'pull'
+
+    @classmethod
+    def get_task_signature(cls, subnet, serialized_subnet, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_subnet, 'pull_subnet', state_transition='begin_updating')

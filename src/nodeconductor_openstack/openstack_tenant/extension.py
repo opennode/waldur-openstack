@@ -3,6 +3,15 @@ from nodeconductor.core import NodeConductorExtension
 
 class OpenStackTenantExtension(NodeConductorExtension):
 
+    class Settings(object):
+        NODECONDUCTOR_OPENSTACK_TENANT = {
+            'SUBNET': {
+                'CIDR_TEMPLATE': '192.168.{}.0/24',
+                'ALLOCATION_POOL_START_TEMPLATE': '192.168.{}.10',
+                'ALLOCATION_POOL_END_TEMPLATE': '192.168.{}.200',
+            },
+        }
+
     @staticmethod
     def django_app():
         return 'nodeconductor_openstack.openstack_tenant'

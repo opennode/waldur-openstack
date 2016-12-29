@@ -22,3 +22,4 @@ def register_in(router):
     router.register(r'openstack-dr-backup-restorations', views.DRBackupRestorationViewSet,
                     base_name='openstack-dr-backup-restoration')
     router.register(r'openstack-networks', views.NetworkViewSet, base_name='openstack-network')
+    router.register(r'openstack-subnets', views.SubNetViewSet, base_name='openstack-subnet')
