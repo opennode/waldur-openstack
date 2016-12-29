@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import logging
 import pytz
 import re
@@ -1075,26 +1077,30 @@ class InstanceDeleteSerializer(serializers.Serializer):
 
 
 class TenantSerializer(structure_serializers.PrivateCloudSerializer):
-
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
         view_name='openstack-detail',
         read_only=True,
         lookup_field='uuid')
-
     service_project_link = serializers.HyperlinkedRelatedField(
         view_name='openstack-spl-detail',
         queryset=models.OpenStackServiceProjectLink.objects.all(),
         write_only=True)
-
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
+    # XXX: It is better to define whole cidr and allocation pool fields and demand right values in validation.
+    third_octet = serializers.IntegerField(
+        validators=[validators.MinValueValidator(1), validators.MaxValueValidator(255)],
+        write_only=True,
+        help_text='Third octet of subnet cidr and allocation pool.',
+        initial=42,
+        default=42)
 
     class Meta(structure_serializers.PrivateCloudSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas',
+            'user_username', 'user_password', 'quotas', 'third_octet',
         )
         read_only_fields = structure_serializers.PrivateCloudSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password',
@@ -1123,7 +1129,25 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             name = validated_data['name']
             validated_data['user_username'] = slugify(name)[:30] + '-user'
         validated_data['user_password'] = core_utils.pwgen()
-        return super(TenantSerializer, self).create(validated_data)
+
+        third_octet = validated_data['third_octet']
+        with transaction.atomic():
+            tenant = super(TenantSerializer, self).create(validated_data)
+            network = models.Network.objects.create(
+                name=slugify(name)[:30] + '-int-net',
+                description='Internal network for tenant %s' % tenant.name,
+                tenant=tenant,
+                service_project_link=tenant.service_project_link,
+            )
+            models.SubNet.objects.create(
+                name=slugify(name)[:30] + '-sub-net',
+                description='SubNet for tenant %s internal network' % tenant.name,
+                network=network,
+                service_project_link=tenant.service_project_link,
+                cidr=_generate_subnet_cidr(third_octet),
+                allocation_pools=_generate_subnet_allocation_pull(third_octet),
+            )
+        return tenant
 
 
 class LicenseSerializer(serializers.ModelSerializer):
@@ -1570,19 +1594,23 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         return attrs
 
     def create(self, validated_data):
-        subnet_settings = settings.NODECONDUCTOR_OPENSTACK_TENANT['SUBNET']
         third_octet = validated_data.pop('third_octet')
 
         network = validated_data['network']
         validated_data['service_project_link'] = network.service_project_link
-        validated_data['cidr'] = subnet_settings['CIDR_TEMPLATE'].format(third_octet)
-        validated_data['allocation_pools'] = [{
-            'start': subnet_settings['ALLOCATION_POOL_START_TEMPLATE'].format(third_octet),
-            'end': subnet_settings['ALLOCATION_POOL_END_TEMPLATE'].format(third_octet),
-        }]
+        validated_data['cidr'] = _generate_subnet_cidr(third_octet)
+        validated_data['allocation_pools'] = _generate_subnet_allocation_pull(third_octet)
         return super(SubNetSerializer, self).create(validated_data)
 
 
-# TODO:
-#  - provide filters.
-#  - modify tenant creation process: serializer and executor.
+def _generate_subnet_cidr(third_octet):
+    subnet_settings = settings.NODECONDUCTOR_OPENSTACK_TENANT['SUBNET']
+    return subnet_settings['CIDR_TEMPLATE'].format(third_octet)
+
+
+def _generate_subnet_allocation_pull(third_octet):
+    subnet_settings = settings.NODECONDUCTOR_OPENSTACK_TENANT['SUBNET']
+    return [{
+        'start': subnet_settings['ALLOCATION_POOL_START_TEMPLATE'].format(third_octet),
+        'end': subnet_settings['ALLOCATION_POOL_END_TEMPLATE'].format(third_octet),
+    }]
