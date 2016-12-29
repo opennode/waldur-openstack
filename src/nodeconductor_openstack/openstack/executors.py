@@ -1003,3 +1003,39 @@ class BackupRestorationCreateExecutor(core_executors.CreateExecutor):
     @classmethod
     def get_failure_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
         return tasks.SetBackupRestorationErredTask().s(serialized_backup_restoration)
+
+
+class NetworkCreateExecutor(core_executors.CreateExecutor):
+
+    @classmethod
+    def get_task_signature(cls, network, serialized_network, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_network, 'create_network', state_transition='begin_creating')
+
+
+class NetworkUpdateExecutor(core_executors.UpdateExecutor):
+
+    @classmethod
+    def get_task_signature(cls, network, serialized_network, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_network, 'update_network', state_transition='begin_updating')
+
+
+class NetworkDeleteExecutor(core_executors.DeleteExecutor):
+
+    @classmethod
+    def get_task_signature(cls, network, serialized_network, **kwargs):
+        if network.backend_id:
+            return core_tasks.BackendMethodTask().si(
+                serialized_network, 'delete_network', state_transition='begin_deleting')
+        else:
+            return core_tasks.StateTransitionTask().si(serialized_network, state_transition='begin_deleting')
+
+
+class NetworkPullExecutor(core_executors.ActionExecutor):
+    action = 'pull'
+
+    @classmethod
+    def get_task_signature(cls, network, serialized_network, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_network, 'pull_network', state_transition='begin_updating')

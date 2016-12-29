@@ -8,16 +8,15 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.reverse import reverse
 from taggit.models import TaggedItem
 
-from nodeconductor.core import mixins as core_mixins
-from nodeconductor.core import utils as core_utils
+from nodeconductor.core import (
+    mixins as core_mixins, utils as core_utils, validators as core_validators)
 from nodeconductor.core.exceptions import IncorrectStateException
 from nodeconductor.core.permissions import has_user_permission_for_instance
 from nodeconductor.core.tasks import send_task
 from nodeconductor.core.views import StateExecutorViewSet, UpdateOnlyStateExecutorViewSet
-from nodeconductor.structure import models as structure_models
-from nodeconductor.structure import views as structure_views, SupportedServices
-from nodeconductor.structure import executors as structure_executors
-from nodeconductor.structure import filters as structure_filters
+from nodeconductor.structure import (
+    views as structure_views, SupportedServices, executors as structure_executors,
+    filters as structure_filters, permissions as structure_permissions)
 from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import Types, models, filters, serializers, executors
@@ -1029,52 +1028,20 @@ class LicenseViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return response.Response(results)
 
 
-class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                       structure_views.ResourceViewMixin,
-                                       structure_views.PullMixin,
-                                       StateExecutorViewSet)):
+class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
+    filter_class = structure_filters.BaseResourceStateFilter
+
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     delete_executor = executors.TenantDeleteExecutor
-    pull_executor = executors.TenantPullExecutor
-    filter_class = structure_filters.BaseResourceStateFilter
 
-    serializers = {
-        'set_quotas': serializers.TenantQuotaSerializer,
-        'external_network': serializers.ExternalNetworkSerializer,
-        'create_service': serializers.ServiceNameSerializer
-    }
+    @decorators.detail_route(methods=['post'])
+    def pull(self, request, instance, uuid=None):
+        executors.TenantPullExecutor.execute(instance)
 
-    def check_operation(self, request, resource, action):
-        tenant = resource
-
-        admin_actions = ('pull', 'destroy', 'update', 'external_network')
-        if action in admin_actions and not tenant.service_project_link.service.is_admin_tenant():
-            raise ValidationError({
-                'non_field_errors': 'Tenant %s is only possible for admin service.' % action
-            })
-
-        custom_actions = ('create_service', 'set_quotas', 'allocate_floating_ip', 'external_network')
-        if action in custom_actions and tenant.state != models.Tenant.States.OK:
-            raise IncorrectStateException('Tenant should be in state OK.')
-
-        if action == 'create_service' and not request.user.is_staff and \
-                not tenant.customer.has_user(request.user, structure_models.CustomerRole.OWNER):
-            raise exceptions.PermissionDenied()
-
-        if action == 'set_quotas' and not request.user.is_staff:
-            raise exceptions.PermissionDenied()
-
-        if action == 'allocate_floating_ip' and not tenant.external_network_id:
-            raise IncorrectStateException('Tenant should have an external network ID.')
-
-        return super(TenantViewSet, self).check_operation(request, resource, action)
-
-    def get_serializer_class(self):
-        serializer = self.serializers.get(self.action)
-        return serializer or super(TenantViewSet, self).get_serializer_class()
+    pull_validators = [core_validators.StateValidator(models.Tenant.States.OK, models.Tenant.States.ERRED)]
 
     @decorators.detail_route(methods=['post'])
     def create_service(self, request, uuid=None):
@@ -1091,6 +1058,10 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         serializer = serializers.ServiceSerializer(service, context={'request': request})
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    create_service_permissions = [structure_permissions.is_owner]
+    create_service_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    create_service_serializer_class = serializers.ServiceNameSerializer
 
     @decorators.detail_route(methods=['post'])
     def set_quotas(self, request, uuid=None):
@@ -1155,75 +1126,21 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response(
             {'detail': 'Quota update has been scheduled'}, status=status.HTTP_202_ACCEPTED)
 
+    set_quotas_permissions = [structure_permissions.is_staff]
+    set_quotas_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    set_quotas_serializer_class = serializers.TenantQuotaSerializer
+
     @decorators.detail_route(methods=['post'])
-    def allocate_floating_ip(self, request, uuid=None):
-        tenant = self.get_object()
-        executors.TenantAllocateFloatingIPExecutor.execute(tenant)
-
-        return response.Response(
-            {'detail': 'Floating IP allocation has been scheduled.'},
-            status=status.HTTP_202_ACCEPTED)
-
-    allocate_floating_ip.title = 'Allocate floating IP'
-
-    # TODO: replace by two methods - create external network and delete external network.
-    @decorators.detail_route(methods=['post', 'delete'])
-    def external_network(self, request, uuid=None):
-        """
-        In order to create external network a user with admin role or staff should issue a **POST**
-        request to */api/openstack-tenants/<uuid>/external_network/*.
-        The body of the request should consist of following parameters:
-
-        - vlan_id (required if vxlan_id is not provided) - VLAN ID of the external network.
-        - vxlan_id (required if vlan_id is not provided) - VXLAN ID of the external network.
-        - network_ip (required) - network IP address for floating IP range.
-        - network_prefix (required) - prefix of the network address for the floating IP range.
-        - ips_count (optional) - number of floating IPs to create automatically.
-
-        Example of a valid request (token is user specific):
-
-        .. code-block:: http
-
-            POST /api/openstack-tenants/c84d653b9ec92c6cbac41c706593e66f567a7fa4/external_network/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Host: example.com
-
-            {
-                "vlan_id": "a325e56a-4689-4d10-abdb-f35918125af7",
-                "network_ip": "10.7.122.0",
-                "network_prefix": "26",
-                "ips_count": "6"
-            }
-
-        In order to delete external network, a user with admin role or staff should issue a **DELETE** request
-        to */api/openstack-tenants/<uuid>/external_network/* without any parameters in the request body.
-        """
-        tenant = self.get_object()
-
-        if request.method == 'DELETE':
-            return self._delete_external_network(request, tenant)
-        else:
-            return self._create_external_network(request, tenant)
-
-    def _create_external_network(self, request, tenant):
+    def create_network(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        executors.TenantCreateExternalNetworkExecutor.execute(tenant, external_network_data=serializer.data)
-        return response.Response(
-            {'detail': 'External network creation has been scheduled.'},
-            status=status.HTTP_202_ACCEPTED)
+        network = serializer.save()
 
-    def _delete_external_network(self, request, tenant):
-        if tenant.external_network_id:
-            executors.TenantDeleteExternalNetworkExecutor.execute(tenant)
-            return response.Response(
-                {'detail': 'External network deletion has been scheduled.'},
-                status=status.HTTP_202_ACCEPTED)
-        else:
-            return response.Response(
-                {'detail': 'External network does not exist.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        executors.NetworkCreateExecutor().execute(network)
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    create_network_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    create_network_serializer_class = serializers.NetworkSerializer
 
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
@@ -1342,3 +1259,19 @@ class DRBackupRestorationViewSet(core_mixins.CreateExecutorMixin,
     lookup_field = 'uuid'
     serializer_class = serializers.DRBackupRestorationSerializer
     create_executor = executors.DRBackupRestorationCreateExecutor
+
+
+class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
+    queryset = models.Network.objects.all()
+    serializer_class = serializers.NetworkSerializer
+    disabled_actions = ['create']
+    update_executor = executors.NetworkUpdateExecutor
+    delete_executor = executors.NetworkDeleteExecutor
+
+    @decorators.detail_route(methods=['post'])
+    def pull(self, request, uuid=None):
+        executors.NetworkPullExecutor.execute(self.get_object())
+        return response.Response(
+            {'detail': 'Pull operation was successfully scheduled'}, status=status.HTTP_201_CREATED)
+
+    pull_validators = [core_validators.StateValidator(models.Tenant.States.OK, models.Tenant.States.ERRED)]

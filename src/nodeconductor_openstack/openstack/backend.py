@@ -873,6 +873,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.NotFound as e:
             logger.error('Instance with id %s does not exist', instance.backend_id)
             six.reraise(OpenStackBackendError, e)
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
     def pull_instance(self, instance):
@@ -1369,8 +1371,70 @@ class OpenStackBackend(BaseOpenStackBackend):
             tenant.external_network_id = ''
             tenant.save()
 
+    @log_backend_action()
+    def create_network(self, network):
+        neutron = self.neutron_admin_client
+
+        data = {'name': network.name, 'description': network.description, 'tenant_id': network.tenant.backend_id}
+        try:
+            response = neutron.create_network({'networks': [data]})
+        except neutron_exceptions.NeutronException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            backend_network = response['networks'][0]
+            network.backend_id = backend_network['id']
+            network.type = backend_network['provider:network_type']
+            network.segmentation_id = backend_network['provider:segmentation_id']
+            network.runtime_state = backend_network['status']
+            network.save()
+
+    @log_backend_action()
+    def update_network(self, network):
+        neutron = self.neutron_admin_client
+
+        data = {'name': network.name, 'description': network.description}
+        try:
+            neutron.update_network(network.backend_id, {'network': data})
+        except neutron_exceptions.NeutronException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_network(self, network):
+        neutron = self.neutron_admin_client
+        try:
+            neutron.delete_network(network.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    def import_network(self, network_backend_id):
+        neutron = self.neutron_admin_client
+        try:
+            backend_network = neutron.show_network(network_backend_id)['network']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        network = models.Network(
+            name=backend_network['name'],
+            description=backend_network['description'] or '',
+            type=backend_network['provider:network_type'],
+            segmentation_id=backend_network['provider:segmentation_id'],
+            runtime_state=backend_network['status'],
+            state=models.Network.States.OK,
+        )
+        return network
+
+    @log_backend_action()
+    def pull_network(self, network):
+        import_time = timezone.now()
+        imported_network = self.import_network(network.backend_id)
+
+        network.refresh_from_db()
+        if network.modified < import_time:
+            update_fields = ('name', 'description', 'type', 'segmentation_id', 'runtime_state')
+            update_pulled_fields(network, imported_network, update_fields)
+
     @log_backend_action('create internal network for tenant')
-    def create_internal_network(self, tenant):
+    def _create_internal_network(self, tenant):
         neutron = self.neutron_admin_client
 
         network_name = '{0}-int-net'.format(tenant.name)
@@ -1393,7 +1457,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 'allocation_pools': [
                     {
                         'start': '192.168.42.10',
-                        'end': '192.168.42.250'
+                        'end': '192.168.42.250'  # 200
                     }
                 ],
                 'name': subnet_name,

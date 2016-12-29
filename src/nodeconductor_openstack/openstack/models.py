@@ -616,3 +616,19 @@ class DRBackupRestoration(core_models.UuidMixin, core_models.RuntimeStateMixin, 
     @classmethod
     def get_url_name(cls):
         return 'openstack-dr-backup-restoration'
+
+
+class Network(core_models.RuntimeStateMixin, structure_models.NewResource):
+    service_project_link = models.ForeignKey(
+        OpenStackServiceProjectLink, related_name='networks', on_delete=models.PROTECT)
+    tenant = models.ForeignKey(Tenant, related_name='networks')
+    is_external = models.BooleanField(default=False)
+    type = models.CharField(max_length=50, blank=True)
+    segmentation_id = models.IntegerField(null=True)
+
+    def get_backend(self):
+        return self.tenant.get_backend()
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-network'

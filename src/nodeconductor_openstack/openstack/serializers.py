@@ -1493,3 +1493,29 @@ class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSeriali
         fields['start'].default = core_utils.timeshift(hours=-1)
         fields['end'].default = core_utils.timeshift()
         return fields
+
+
+class NetworkSerializer(structure_serializers.BaseResourceSerializer):
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstack-detail',
+        read_only=True,
+        lookup_field='uuid')
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        read_only=True)
+
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+        model = models.Network
+        view_name = 'openstack-network-detail'
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + ('tenant',)
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + ('tenant',)
+        extra_kwargs = dict(
+            tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
+        )
+
+    def create(self, validated_data):
+        validated_data['tenant'] = tenant = self.context['view'].get_object()
+        validated_data['service_project_link'] = tenant.service_project_link
+        return super(NetworkSerializer, self).create(validated_data)
