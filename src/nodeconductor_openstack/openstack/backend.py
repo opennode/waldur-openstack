@@ -1383,9 +1383,11 @@ class OpenStackBackend(BaseOpenStackBackend):
         else:
             backend_network = response['networks'][0]
             network.backend_id = backend_network['id']
-            network.type = backend_network['provider:network_type']
-            network.segmentation_id = backend_network['provider:segmentation_id']
             network.runtime_state = backend_network['status']
+            if backend_network.get('provider:network_type'):
+                network.type = backend_network['provider:network_type']
+            if backend_network.get('provider:segmentation_id'):
+                network.segmentation_id = backend_network['provider:segmentation_id']
             network.save()
 
     @log_backend_action()
@@ -1419,8 +1421,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         network = models.Network(
             name=backend_network['name'],
             description=backend_network['description'] or '',
-            type=backend_network['provider:network_type'],
-            segmentation_id=backend_network['provider:segmentation_id'],
+            type=backend_network.get('provider:network_type'),
+            segmentation_id=backend_network.get('provider:segmentation_id'),
             runtime_state=backend_network['status'],
             state=models.Network.States.OK,
         )
@@ -1461,7 +1463,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         else:
             backend_subnet = response['subnets'][0]
             subnet.backend_id = backend_subnet['id']
-            subnet.gateway_ip = backend_subnet['gateway_ip']
+            if backend_subnet.get('gateway_ip'):
+                subnet.gateway_ip = backend_subnet['gateway_ip']
             subnet.save()
 
     @log_backend_action()
@@ -1494,9 +1497,9 @@ class OpenStackBackend(BaseOpenStackBackend):
             description=backend_subnet['description'] or '',
             allocation_pools=backend_subnet['allocation_pools'],
             cidr=backend_subnet['cidr'],
-            ip_version=backend_subnet['ip_version'],
-            gateway_ip=backend_subnet['gateway_ip'],
-            enable_dhcp=backend_subnet['enable_dhcp'],
+            ip_version=backend_subnet.get('ip_version'),
+            gateway_ip=backend_subnet.get('gateway_ip'),
+            enable_dhcp=backend_subnet.get('enable_dhcp', False),
             state=models.Network.States.OK,
         )
         return subnet
