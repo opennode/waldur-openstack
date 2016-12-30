@@ -1146,7 +1146,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
                 network=network,
                 service_project_link=tenant.service_project_link,
                 cidr=subnet_cidr,
-                allocation_pools=_generate_subnet_allocation_pull(subnet_cidr),
+                allocation_pools=_generate_subnet_allocation_pool(subnet_cidr),
             )
         return tenant
 
@@ -1592,15 +1592,15 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         network = validated_data['network']
         validated_data['service_project_link'] = network.service_project_link
-        validated_data['allocation_pools'] = _generate_subnet_allocation_pull(validated_data['cidr'])
+        validated_data['allocation_pools'] = _generate_subnet_allocation_pool(validated_data['cidr'])
         return super(SubNetSerializer, self).create(validated_data)
 
 
-def _generate_subnet_allocation_pull(cidr):
+def _generate_subnet_allocation_pool(cidr):
     first_octet, second_octet, third_octet, _ = cidr.split('.', 3)
     subnet_settings = settings.NODECONDUCTOR_OPENSTACK['SUBNET']
     format_data = {'first_octet': first_octet, 'second_octet': second_octet, 'third_octet': third_octet}
     return [{
-        'start': subnet_settings['ALLOCATION_PULL_START'].format(**format_data),
-        'end': subnet_settings['ALLOCATION_PULL_END'].format(**format_data),
+        'start': subnet_settings['ALLOCATION_POOL_START'].format(**format_data),
+        'end': subnet_settings['ALLOCATION_POOL_END'].format(**format_data),
     }]
