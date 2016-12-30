@@ -1076,6 +1076,12 @@ class InstanceDeleteSerializer(serializers.Serializer):
         return attrs
 
 
+subnet_cidr_validator = validators.RegexValidator(
+    re.compile(settings.NODECONDUCTOR_OPENSTACK['SUBNET']['CIDR_REGEX']),
+    settings.NODECONDUCTOR_OPENSTACK['SUBNET']['CIDR_REGEX_EXPLANATION'],
+)
+
+
 class TenantSerializer(structure_serializers.PrivateCloudSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -1087,20 +1093,15 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         queryset=models.OpenStackServiceProjectLink.objects.all(),
         write_only=True)
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
-    # XXX: It is better to define whole cidr and allocation pool fields and demand right values in validation.
-    third_octet = serializers.IntegerField(
-        validators=[validators.MinValueValidator(1), validators.MaxValueValidator(255)],
-        write_only=True,
-        help_text='Third octet of subnet cidr and allocation pool.',
-        initial=42,
-        default=42)
+    subnet_cidr = serializers.CharField(
+        validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24', write_only=True)
 
     class Meta(structure_serializers.PrivateCloudSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas', 'third_octet',
+            'user_username', 'user_password', 'quotas', 'subnet_cidr',
         )
         read_only_fields = structure_serializers.PrivateCloudSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password',
@@ -1130,7 +1131,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             validated_data['user_username'] = slugify(name)[:30] + '-user'
         validated_data['user_password'] = core_utils.pwgen()
 
-        third_octet = validated_data['third_octet']
+        subnet_cidr = validated_data.pop('subnet_cidr')
         with transaction.atomic():
             tenant = super(TenantSerializer, self).create(validated_data)
             network = models.Network.objects.create(
@@ -1144,8 +1145,8 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
                 description='SubNet for tenant %s internal network' % tenant.name,
                 network=network,
                 service_project_link=tenant.service_project_link,
-                cidr=_generate_subnet_cidr(third_octet),
-                allocation_pools=_generate_subnet_allocation_pull(third_octet),
+                cidr=subnet_cidr,
+                allocation_pools=_generate_subnet_allocation_pull(subnet_cidr),
             )
         return tenant
 
@@ -1564,23 +1565,18 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
     service_project_link = serializers.HyperlinkedRelatedField(
         view_name='openstack-spl-detail',
         read_only=True)
-    # XXX: It is better to define whole cidr and allocation pool fields and demand right values in validation.
-    third_octet = serializers.IntegerField(
-        validators=[validators.MinValueValidator(1), validators.MaxValueValidator(255)],
-        write_only=True,
-        help_text='Third octet of subnet cidr and allocation pool.',
-        initial=42,
-        default=42)
+    cidr = serializers.CharField(
+        validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24')
     allocation_pools = JsonField(read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SubNet
         view_name = 'openstack-subnet-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'network', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp', 'third_octet')
-        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('third_octet',)
+            'network', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('cidr',)
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'network', 'cidr', 'gateway_ip', 'ip_version', 'enable_dhcp')
+            'network', 'gateway_ip', 'ip_version', 'enable_dhcp')
         extra_kwargs = dict(
             network={'lookup_field': 'uuid', 'view_name': 'openstack-network-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
@@ -1594,23 +1590,17 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         return attrs
 
     def create(self, validated_data):
-        third_octet = validated_data.pop('third_octet')
-
         network = validated_data['network']
         validated_data['service_project_link'] = network.service_project_link
-        validated_data['cidr'] = _generate_subnet_cidr(third_octet)
-        validated_data['allocation_pools'] = _generate_subnet_allocation_pull(third_octet)
+        validated_data['allocation_pools'] = _generate_subnet_allocation_pull(validated_data['cidr'])
         return super(SubNetSerializer, self).create(validated_data)
 
 
-def _generate_subnet_cidr(third_octet):
-    subnet_settings = settings.NODECONDUCTOR_OPENSTACK_TENANT['SUBNET']
-    return subnet_settings['CIDR_TEMPLATE'].format(third_octet)
-
-
-def _generate_subnet_allocation_pull(third_octet):
-    subnet_settings = settings.NODECONDUCTOR_OPENSTACK_TENANT['SUBNET']
+def _generate_subnet_allocation_pull(cidr):
+    first_octet, second_octet, third_octet, _ = cidr.split('.', 3)
+    subnet_settings = settings.NODECONDUCTOR_OPENSTACK['SUBNET']
+    format_data = {'first_octet': first_octet, 'second_octet': second_octet, 'third_octet': third_octet}
     return [{
-        'start': subnet_settings['ALLOCATION_POOL_START_TEMPLATE'].format(third_octet),
-        'end': subnet_settings['ALLOCATION_POOL_END_TEMPLATE'].format(third_octet),
+        'start': subnet_settings['ALLOCATION_PULL_START'].format(**format_data),
+        'end': subnet_settings['ALLOCATION_PULL_END'].format(**format_data),
     }]
