@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import logging
 import pytz
 import re
@@ -5,6 +7,7 @@ import urlparse
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.core import validators
 from django.db import transaction
 from django.template.defaultfilters import slugify
 from django.utils import timezone
@@ -1073,27 +1076,32 @@ class InstanceDeleteSerializer(serializers.Serializer):
         return attrs
 
 
-class TenantSerializer(structure_serializers.PrivateCloudSerializer):
+subnet_cidr_validator = validators.RegexValidator(
+    re.compile(settings.NODECONDUCTOR_OPENSTACK['SUBNET']['CIDR_REGEX']),
+    settings.NODECONDUCTOR_OPENSTACK['SUBNET']['CIDR_REGEX_EXPLANATION'],
+)
 
+
+class TenantSerializer(structure_serializers.PrivateCloudSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
         view_name='openstack-detail',
         read_only=True,
         lookup_field='uuid')
-
     service_project_link = serializers.HyperlinkedRelatedField(
         view_name='openstack-spl-detail',
         queryset=models.OpenStackServiceProjectLink.objects.all(),
         write_only=True)
-
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
+    subnet_cidr = serializers.CharField(
+        validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24', write_only=True)
 
     class Meta(structure_serializers.PrivateCloudSerializer.Meta):
         model = models.Tenant
         view_name = 'openstack-tenant-detail'
         fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
-            'user_username', 'user_password', 'quotas',
+            'user_username', 'user_password', 'quotas', 'subnet_cidr',
         )
         read_only_fields = structure_serializers.PrivateCloudSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id', 'user_password',
@@ -1122,7 +1130,25 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             name = validated_data['name']
             validated_data['user_username'] = slugify(name)[:30] + '-user'
         validated_data['user_password'] = core_utils.pwgen()
-        return super(TenantSerializer, self).create(validated_data)
+
+        subnet_cidr = validated_data.pop('subnet_cidr')
+        with transaction.atomic():
+            tenant = super(TenantSerializer, self).create(validated_data)
+            network = models.Network.objects.create(
+                name=slugify(name)[:30] + '-int-net',
+                description='Internal network for tenant %s' % tenant.name,
+                tenant=tenant,
+                service_project_link=tenant.service_project_link,
+            )
+            models.SubNet.objects.create(
+                name=slugify(name)[:30] + '-sub-net',
+                description='SubNet for tenant %s internal network' % tenant.name,
+                network=network,
+                service_project_link=tenant.service_project_link,
+                cidr=subnet_cidr,
+                allocation_pools=_generate_subnet_allocation_pool(subnet_cidr),
+            )
+        return tenant
 
 
 class LicenseSerializer(serializers.ModelSerializer):
@@ -1493,3 +1519,88 @@ class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSeriali
         fields['start'].default = core_utils.timeshift(hours=-1)
         fields['end'].default = core_utils.timeshift()
         return fields
+
+
+class _NestedSubNetSerializer(serializers.ModelSerializer):
+    class Meta(object):
+        model = models.SubNet
+        fields = ('name', 'description', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+
+
+class NetworkSerializer(structure_serializers.BaseResourceSerializer):
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstack-detail',
+        read_only=True,
+        lookup_field='uuid')
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        read_only=True)
+    subnets = _NestedSubNetSerializer(many=True, read_only=True)
+
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+        model = models.Network
+        view_name = 'openstack-network-detail'
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+            'tenant', 'is_external', 'type', 'segmentation_id', 'subnets')
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+            'tenant', 'is_external', 'type', 'segmentation_id')
+        extra_kwargs = dict(
+            tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
+        )
+
+    def create(self, validated_data):
+        validated_data['tenant'] = tenant = self.context['view'].get_object()
+        validated_data['service_project_link'] = tenant.service_project_link
+        return super(NetworkSerializer, self).create(validated_data)
+
+
+class SubNetSerializer(structure_serializers.BaseResourceSerializer):
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstack-detail',
+        read_only=True,
+        lookup_field='uuid')
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        read_only=True)
+    cidr = serializers.CharField(
+        validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24')
+    allocation_pools = JsonField(read_only=True)
+
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
+        model = models.SubNet
+        view_name = 'openstack-subnet-detail'
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+            'network', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('cidr',)
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+            'network', 'gateway_ip', 'ip_version', 'enable_dhcp')
+        extra_kwargs = dict(
+            network={'lookup_field': 'uuid', 'view_name': 'openstack-network-detail'},
+            **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
+        )
+
+    def validate(self, attrs):
+        if self.instance is None:
+            attrs['network'] = network = self.context['view'].get_object()
+            if network.subnets.count() >= 1:
+                raise serializers.ValidationError('Internal network cannot have more than one subnet.')
+        return attrs
+
+    def create(self, validated_data):
+        network = validated_data['network']
+        validated_data['service_project_link'] = network.service_project_link
+        validated_data['allocation_pools'] = _generate_subnet_allocation_pool(validated_data['cidr'])
+        return super(SubNetSerializer, self).create(validated_data)
+
+
+def _generate_subnet_allocation_pool(cidr):
+    first_octet, second_octet, third_octet, _ = cidr.split('.', 3)
+    subnet_settings = settings.NODECONDUCTOR_OPENSTACK['SUBNET']
+    format_data = {'first_octet': first_octet, 'second_octet': second_octet, 'third_octet': third_octet}
+    return [{
+        'start': subnet_settings['ALLOCATION_POOL_START'].format(**format_data),
+        'end': subnet_settings['ALLOCATION_POOL_END'].format(**format_data),
+    }]

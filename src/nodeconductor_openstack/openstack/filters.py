@@ -201,3 +201,21 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
         model = models.Snapshot
         fields = structure_filters.BaseResourceStateFilter.Meta.fields + (
             'source_volume_uuid', 'source_volume', 'backup_uuid', 'backup')
+
+
+class NetworkFilter(structure_filters.BaseResourceFilter):
+    tenant_uuid = UUIDFilter(name='tenant__uuid')
+    tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
+
+    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+        model = models.Network
+
+
+class SubNetFilter(structure_filters.BaseResourceFilter):
+    tenant_uuid = UUIDFilter(name='network__tenant__uuid')
+    tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='network__tenant__uuid')
+    network__uuid = UUIDFilter(name='network__uuid')
+    network = core_filters.URLFilter(view_name='openstack-network-detail', name='network__uuid')
+
+    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+        model = models.SubNet
