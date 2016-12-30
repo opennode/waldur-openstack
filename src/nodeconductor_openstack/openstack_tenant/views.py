@@ -196,7 +196,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     def check_operation(self, request, resource, action):
         volume = resource
-        if action == 'attach' and volume.runtime_state != 'available':
+        if action in ('attach', 'snapshot') and volume.runtime_state != 'available':
             raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
         elif action == 'detach':
             if volume.bootable:
@@ -495,15 +495,14 @@ class InstanceViewSet(structure_views.PullMixin,
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                       structure_views.ResourceViewMixin,
-                                       core_mixins.DeleteExecutorMixin,
-                                       core_views.UpdateOnlyViewSet)):
+class BackupViewSet(core_mixins.DeleteExecutorMixin, core_views.UpdateOnlyViewSet):
     queryset = models.Backup.objects.all()
     serializer_class = serializers.BackupSerializer
     lookup_field = 'uuid'
     filter_class = filters.BackupFilter
     delete_executor = executors.BackupDeleteExecutor
+    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
+    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
     serializers = {
         'restore': serializers.BackupRestorationSerializer,
     }

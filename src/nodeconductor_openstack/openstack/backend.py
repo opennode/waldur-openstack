@@ -425,6 +425,12 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
+    def get_resources_for_import(self, resource_type=None):
+        if self.settings.get_option('is_admin'):
+            return self.get_tenants_for_import()
+        else:
+            return []
+
     def get_tenants_for_import(self):
         cur_tenants = set(models.Tenant.objects.filter(
             service_project_link__service__settings=self.settings

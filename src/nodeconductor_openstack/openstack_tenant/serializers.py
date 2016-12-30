@@ -457,6 +457,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             if floating_ip.status != 'DOWN':
                 raise serializers.ValidationError({'floating_ip': 'Floating IP status must be DOWN.'})
 
+            if floating_ip.settings != spl.service.settings:
+                raise serializers.ValidationError({
+                    'floating_ip': 'Floating IP must belong to the same service settings.'
+                })
+
         # Case 2. If floating_ip=None and allocate_floating_ip=True
         # then new floating IP is allocated and assigned to the instance.
         elif allocate_floating_ip:
@@ -626,6 +631,11 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
 
+    def validate(self, attrs):
+        if self.instance.backups.exists():
+            raise serializers.ValidationError('Cannot delete instance that has backups.')
+        return attrs
+
 
 class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
     security_groups = NestedSecurityGroupSerializer(
@@ -751,7 +761,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             'instance', 'service_project_link')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
             # 'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
         }
 
@@ -811,7 +821,7 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
         read_only_fields = ('url', 'uuid', 'is_active', 'backups', 'next_trigger_at', 'instance')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
         }
 
     def create(self, validated_data):
