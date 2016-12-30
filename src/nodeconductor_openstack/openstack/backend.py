@@ -1515,45 +1515,6 @@ class OpenStackBackend(BaseOpenStackBackend):
                              'enable_dhcp')
             update_pulled_fields(subnet, imported_subnet, update_fields)
 
-    @log_backend_action('create internal network for tenant')
-    def _create_internal_network(self, tenant):
-        neutron = self.neutron_admin_client
-
-        network_name = '{0}-int-net'.format(tenant.name)
-        try:
-            network = {
-                'name': network_name,
-                'tenant_id': self.tenant_id,
-            }
-
-            create_response = neutron.create_network({'networks': [network]})
-            internal_network_id = create_response['networks'][0]['id']
-
-            subnet_name = 'nc-{0}-subnet01'.format(network_name)
-
-            logger.info('Creating subnet %s for tenant "%s" (PK: %s).', subnet_name, tenant.name, tenant.pk)
-            subnet_data = {
-                'network_id': internal_network_id,
-                'tenant_id': tenant.backend_id,
-                'cidr': '192.168.42.0/24',
-                'allocation_pools': [
-                    {
-                        'start': '192.168.42.10',
-                        'end': '192.168.42.200',
-                    }
-                ],
-                'name': subnet_name,
-                'ip_version': 4,
-                'enable_dhcp': True,
-            }
-            create_response = neutron.create_subnet({'subnets': [subnet_data]})
-            self.get_or_create_router(network_name, create_response['subnets'][0]['id'])
-        except neutron_exceptions.NeutronException as e:
-            six.reraise(OpenStackBackendError, e)
-        else:
-            tenant.internal_network_id = internal_network_id
-            tenant.save(update_fields=['internal_network_id'])
-
     def _check_tenant_network(self, tenant):
         neutron = self.neutron_client
         # verify if the internal network to connect to exists
