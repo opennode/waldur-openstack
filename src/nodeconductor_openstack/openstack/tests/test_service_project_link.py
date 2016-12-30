@@ -2,6 +2,7 @@ from rest_framework import test, status
 
 from nodeconductor.structure.models import CustomerRole, ProjectRole, ProjectGroupRole
 from nodeconductor.structure.tests import factories as structure_factories
+
 from . import factories
 
 

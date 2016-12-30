@@ -7,10 +7,10 @@ from novaclient import exceptions as nova_exceptions
 from rest_framework import status, test
 
 from nodeconductor.structure.tests import factories as structure_factories
+from nodeconductor_openstack.openstack.tests.test_backend import BaseBackendTestCase
 
 from .. import models, views
 from . import factories
-from .test_backend import BaseBackendTestCase
 
 
 class BaseInstanceDeletionTest(BaseBackendTestCase):
@@ -91,8 +91,8 @@ class InstanceDeletedWithVolumesTest(BaseInstanceDeletionTest):
     def test_quotas_updated(self):
         self.delete_instance()
 
-        self.instance.tenant.refresh_from_db()
-        quotas = self.instance.tenant.quotas
+        self.instance.service_project_link.service.settings.refresh_from_db()
+        quotas = self.instance.service_project_link.service.settings.quotas
 
         self.assert_quota_usage(quotas, 'instances', 0)
         self.assert_quota_usage(quotas, 'vcpu', 0)
@@ -133,15 +133,15 @@ class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
             'delete_volumes': False
         })
 
-        self.instance.tenant.refresh_from_db()
-        quotas = self.instance.tenant.quotas
+        settings = self.instance.service_project_link.service.settings
+        settings.refresh_from_db()
 
-        self.assert_quota_usage(quotas, 'instances', 0)
-        self.assert_quota_usage(quotas, 'vcpu', 0)
-        self.assert_quota_usage(quotas, 'ram', 0)
+        self.assert_quota_usage(settings.quotas, 'instances', 0)
+        self.assert_quota_usage(settings.quotas, 'vcpu', 0)
+        self.assert_quota_usage(settings.quotas, 'ram', 0)
 
-        self.assert_quota_usage(quotas, 'volumes', 1)
-        self.assert_quota_usage(quotas, 'storage', self.data_volume.size)
+        self.assert_quota_usage(settings.quotas, 'volumes', 1)
+        self.assert_quota_usage(settings.quotas, 'storage', self.data_volume.size)
 
 
 class InstanceDeletedWithBackupsTest(test.APITransactionTestCase):
