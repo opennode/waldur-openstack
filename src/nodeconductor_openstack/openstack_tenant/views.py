@@ -1,8 +1,11 @@
 from django.utils import six
 from rest_framework import decorators, response, status, permissions, filters as rf_filters, exceptions
 
-from nodeconductor.core import (views as core_views, exceptions as core_exceptions, mixins as core_mixins,
-                                permissions as core_permissions)
+from nodeconductor.core import (views as core_views,
+                                exceptions as core_exceptions,
+                                permissions as core_permissions,
+                                validators as core_validators,
+                                )
 from nodeconductor.structure import views as structure_views, filters as structure_filters
 
 from . import models, serializers, filters, executors
@@ -130,9 +133,7 @@ class SecurityGroupViewSet(structure_views.BaseServicePropertyViewSet):
 
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                       structure_views.ResourceViewMixin,
-                                       structure_views.PullMixin,
-                                       core_views.StateExecutorViewSet)):
+                                       structure_views.ResourceViewSet)):
     queryset = models.Volume.objects.all()
     serializer_class = serializers.VolumeSerializer
     create_executor = executors.VolumeCreateExecutor
@@ -145,6 +146,44 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         'snapshot': serializers.SnapshotSerializer,
         'attach': serializers.VolumeAttachSerializer,
     }
+    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
+
+    create_validators = partial_create_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+
+    def _is_volume_available(volume):
+        if volume.runtime_state != 'available':
+            raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
+
+    def _is_volume_bootable(volume):
+        if volume.bootable:
+            raise core_exceptions.IncorrectStateException('It is impossible to detach bootable volume.')
+
+    def _is_volume_in_use(volume):
+        if volume.runtime_state != 'in-use':
+            raise core_exceptions.IncorrectStateException('Volume runtime state should be "in-use".')
+
+    def _is_volume_instance_ok(volume):
+        if not volume.instance:
+            raise core_exceptions.IncorrectStateException('Volume is not attached to any instance.')
+        if volume.instance.state != models.Instance.States.OK:
+            raise core_exceptions.IncorrectStateException('Volume can be detached only if instance is offline.')
+
+    def _is_volume_instance_shutoff(volume):
+        if volume.instance and volume.instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF:
+            raise core_exceptions.IncorrectStateException('Volume instance should be shutoff and in OK state.')
+
+    def _volume_has_backend_id(volume):
+        if not volume.backend_id:
+            raise core_exceptions.IncorrectStateException('Unable to extend volume without backend_id.')
+
+    def _volume_snapshots_exist(volume):
+        if volume.snapshots.exists():
+            raise core_exceptions.IncorrectStateException('Volume has dependent snapshots.')
+
+    extend_validators = [_volume_has_backend_id, _is_volume_bootable, _is_volume_instance_shutoff]
+    destroy_validators = [_volume_snapshots_exist]
+    detach_validators = [_is_volume_bootable, _is_volume_in_use, _is_volume_instance_ok]
+    attach_validators = [_is_volume_available]
 
     def get_serializer_class(self):
         return self.actions_serializers.get(self.action, super(VolumeViewSet, self).get_serializer_class())
@@ -156,7 +195,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return context
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    @structure_views.safe_operation()
     def extend(self, request, volume, uuid=None):
         """ Increase volume size """
         old_size = volume.size
@@ -168,7 +207,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.VolumeExtendExecutor().execute(volume, old_size=old_size, new_size=volume.size)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    @structure_views.safe_operation()
     def snapshot(self, request, volume, uuid=None):
         """ Create snapshot from volume """
         serializer = self.get_serializer(data=request.data)
@@ -179,7 +218,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    @structure_views.safe_operation()
     def attach(self, request, volume, uuid=None):
         """ Attach volume to instance """
         serializer = self.get_serializer(volume, data=request.data)
@@ -189,42 +228,14 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.VolumeAttachExecutor().execute(volume)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation(valid_state=models.Volume.States.OK)
+    @structure_views.safe_operation()
     def detach(self, request, volume, uuid=None):
         """ Detach instance from volume """
         executors.VolumeDetachExecutor().execute(volume)
 
-    def check_operation(self, request, resource, action):
-        volume = resource
-        if action == 'attach' and volume.runtime_state != 'available':
-            raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
-        elif action == 'detach':
-            if volume.bootable:
-                raise core_exceptions.IncorrectStateException('It is impossible to detach bootable volume.')
-            if volume.runtime_state != 'in-use':
-                raise core_exceptions.IncorrectStateException('Volume runtime state should be "in-use".')
-            if not volume.instance:
-                raise core_exceptions.IncorrectStateException('Volume is not attached to any instance.')
-            if volume.instance.state != models.Instance.States.OK:
-                raise core_exceptions.IncorrectStateException('Volume can be detached only if instance is offline.')
-        if action == 'extend':
-            if not volume.backend_id:
-                raise core_exceptions.IncorrectStateException('Unable to extend volume without backend_id.')
-            if volume.instance and (volume.instance.state != models.Instance.States.OK or
-                                    volume.instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF):
-                raise core_exceptions.IncorrectStateException('Volume instance should be shutoff and in OK state.')
-            if volume.bootable:
-                raise core_exceptions.IncorrectStateException("Can't detach root device volume.")
-        if action == 'destroy':
-            if volume.snapshots.exists():
-                raise core_exceptions.IncorrectStateException('Volume has dependent snapshots.')
-        return super(VolumeViewSet, self).check_operation(request, resource, action)
-
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                         structure_views.ResourceViewMixin,
-                                         structure_views.PullMixin,
-                                         core_views.UpdateOnlyStateExecutorViewSet)):
+                                         structure_views.ResourceViewSet)):
     queryset = models.Snapshot.objects.all()
     serializer_class = serializers.SnapshotSerializer
     update_executor = executors.SnapshotUpdateExecutor
@@ -233,9 +244,8 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     filter_class = filters.SnapshotFilter
 
 
-class InstanceViewSet(structure_views.PullMixin,
-                      core_mixins.UpdateExecutorMixin,
-                      structure_views._BaseResourceViewSet):
+class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         structure_views.ResourceViewSet)):
     """
     OpenStack instance permissions
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -251,6 +261,7 @@ class InstanceViewSet(structure_views.PullMixin,
     serializer_class = serializers.InstanceSerializer
     pull_executor = executors.InstancePullExecutor
     update_executor = executors.InstanceUpdateExecutor
+    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
 
     serializers = {
         'assign_floating_ip': serializers.AssignFloatingIpSerializer,
@@ -261,40 +272,42 @@ class InstanceViewSet(structure_views.PullMixin,
         'create_backup_schedule': serializers.BackupScheduleSerializer,
     }
 
+    def perform_create(self, serializer):
+        # TODO [TM:1/3/17] find a better way to skip create executor. Reuse ActionViewSet?
+        return NotImplemented
+
+    def _is_instance_ok_or_shutoff(instance):
+        if instance and (instance.state != models.Instance.States.OK or
+                         instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF):
+            raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
+
+    def _is_instance_ok_or_active(instance):
+        if instance and (instance.state != models.Instance.States.OK or
+                         instance.runtime_state != models.Instance.RuntimeStates.ACTIVE):
+            raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
+
+    def _instance_has_external_ips(instance):
+        if instance.external_ips:
+            raise core_exceptions.IncorrectStateException('Instance already has floating IP.')
+
+    start_validators = [_is_instance_ok_or_shutoff]
+    change_flavor_validators = [_is_instance_ok_or_shutoff]
+    resize_validators = [_is_instance_ok_or_shutoff]
+    destroy_validators = [core_validators.StateValidator(models.Instance.States.OK, models.Instance.States.ERRED),
+                          _is_instance_ok_or_shutoff]
+
+    stop_validators = [_is_instance_ok_or_active]
+    restart_validators = [_is_instance_ok_or_active]
+
+    partial_update_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+    update_validators = partial_update_validators
+    assign_floating_ip_validators = [_instance_has_external_ips]
+
     def get_serializer_context(self):
         context = super(InstanceViewSet, self).get_serializer_context()
         if self.action in ('backup', 'create_backup_schedule'):
             context['instance'] = self.get_object()
         return context
-
-    def initial(self, request, *args, **kwargs):
-        # Disable old-style checks.
-        super(structure_views._BaseResourceViewSet, self).initial(request, *args, **kwargs)
-
-    def check_operation(self, request, resource, action):
-        instance = self.get_object()
-        States = models.Instance.States
-        RuntimeStates = models.Instance.RuntimeStates
-        if self.action in ('update', 'partial_update') and instance.state != States.OK:
-            raise core_exceptions.IncorrectStateException('Instance should be in state OK.')
-        if action == 'start' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
-            raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
-        if action == 'stop' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.ACTIVE):
-            raise core_exceptions.IncorrectStateException('Instance state has to be active and in state OK.')
-        if action == 'restart' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.ACTIVE):
-            raise core_exceptions.IncorrectStateException('Instance state has to be active and in state OK.')
-        if action == 'change_flavor' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
-            raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
-        if action == 'resize' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
-            raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
-        if action == 'assign_floating_ip' and instance.external_ips:
-            raise core_exceptions.IncorrectStateException('Instance already has floating IP.')
-        if action == 'destroy':
-            if instance.state not in (States.OK, States.ERRED):
-                raise core_exceptions.IncorrectStateException('Instance state has to be OK or erred.')
-            if instance.state == States.OK and instance.runtime_state != RuntimeStates.SHUTOFF:
-                raise core_exceptions.IncorrectStateException('Instance has to be shutoff.')
-        return super(InstanceViewSet, self).check_operation(request, resource, action)
 
     def list(self, request, *args, **kwargs):
         """
@@ -495,7 +508,8 @@ class InstanceViewSet(structure_views.PullMixin,
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class BackupViewSet(core_mixins.DeleteExecutorMixin, core_views.UpdateOnlyViewSet):
+class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                       structure_views.ResourceViewSet)):
     queryset = models.Backup.objects.all()
     serializer_class = serializers.BackupSerializer
     lookup_field = 'uuid'
