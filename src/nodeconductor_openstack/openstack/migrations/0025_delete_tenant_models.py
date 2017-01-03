@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('openstack', '0023_instance_state'),
+        ('openstack', '0024_network_subnet'),
     ]
 
     operations = [

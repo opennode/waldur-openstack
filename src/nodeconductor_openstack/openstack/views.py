@@ -308,10 +308,7 @@ class FloatingIPViewSet(viewsets.ReadOnlyModelViewSet):
         return super(FloatingIPViewSet, self).list(request, *args, **kwargs)
 
 
-class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                       structure_views.ResourceViewMixin,
-                                       structure_views.PullMixin,
-                                       StateExecutorViewSet)):
+class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
     filter_class = structure_filters.BaseResourceStateFilter
