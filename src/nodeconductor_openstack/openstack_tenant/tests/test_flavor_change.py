@@ -1,7 +1,7 @@
 from ddt import ddt, data
 from rest_framework import test, status
 
-from nodeconductor.structure.models import ProjectRole, ProjectGroupRole
+from nodeconductor.structure.models import ProjectRole
 from nodeconductor.structure.tests import factories as structure_factories
 
 from ..models import Instance
@@ -18,15 +18,10 @@ class FlavorChangeInstanceTestCase(test.APITransactionTestCase):
         self.instance.save(update_fields=['runtime_state', 'state'])
 
         # User manages managed_instance through its project group
-        self.project_group_manager = structure_factories.UserFactory()
         self.managed_instance = factories.InstanceFactory(
             state=Instance.States.OK,
             runtime_state=Instance.RuntimeStates.SHUTOFF,
         )
-        project = self.managed_instance.service_project_link.project
-        managed_project_group = structure_factories.ProjectGroupFactory()
-        managed_project_group.projects.add(project)
-        managed_project_group.add_user(self.project_group_manager, ProjectGroupRole.MANAGER)
 
     @data('admin', 'manager')
     def test_user_with_access_can_change_flavor_of_stopped_instance(self, user):

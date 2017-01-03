@@ -1,6 +1,6 @@
 from rest_framework import test, status
 
-from nodeconductor.structure.models import CustomerRole, ProjectRole, ProjectGroupRole
+from nodeconductor.structure.models import CustomerRole, ProjectRole
 from nodeconductor.structure.tests import factories as structure_factories
 
 from . import factories
@@ -12,7 +12,6 @@ class ServiceProjectLinkPermissionTest(test.APITransactionTestCase):
             'owner': structure_factories.UserFactory(),
             'admin': structure_factories.UserFactory(),
             'manager': structure_factories.UserFactory(),
-            'group_manager': structure_factories.UserFactory(),
             'no_role': structure_factories.UserFactory(),
             'not_connected': structure_factories.UserFactory(),
         }
@@ -21,13 +20,10 @@ class ServiceProjectLinkPermissionTest(test.APITransactionTestCase):
         self.customer = structure_factories.CustomerFactory()
         self.customer.add_user(self.users['owner'], CustomerRole.OWNER)
 
-        # that has 3 users connected: admin, manager, group_manager
+        # that has 3 users connected: admin, manager
         self.connected_project = structure_factories.ProjectFactory(customer=self.customer)
         self.connected_project.add_user(self.users['admin'], ProjectRole.ADMINISTRATOR)
         self.connected_project.add_user(self.users['manager'], ProjectRole.MANAGER)
-        project_group = structure_factories.ProjectGroupFactory()
-        project_group.projects.add(self.connected_project)
-        project_group.add_user(self.users['group_manager'], ProjectGroupRole.MANAGER)
 
         # has defined a service and connected service to a project
         self.service = factories.OpenStackServiceFactory(customer=self.customer)
@@ -58,17 +54,6 @@ class ServiceProjectLinkPermissionTest(test.APITransactionTestCase):
         response = self.client.post(self.url, payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_group_manager_can_connect_project_and_service(self):
-        user = self.users['group_manager']
-        self.client.force_authenticate(user=user)
-
-        service = factories.OpenStackServiceFactory(customer=self.customer)
-        project = self.connected_project
-        payload = self._get_valid_payload(service, project)
-
-        response = self.client.post(self.url, payload)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
     def test_admin_cannot_connect_new_service_and_project_if_he_is_project_admin(self):
         user = self.users['admin']
         self.client.force_authenticate(user=user)
@@ -90,14 +75,6 @@ class ServiceProjectLinkPermissionTest(test.APITransactionTestCase):
         url = factories.OpenStackServiceProjectLinkFactory.get_url(self.service_project_link)
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_user_can_revoke_service_and_project_permission_if_he_is_project_group_manager(self):
-        user = self.users['group_manager']
-        self.client.force_authenticate(user=user)
-
-        url = factories.OpenStackServiceProjectLinkFactory.get_url(self.service_project_link)
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
     def _get_valid_payload(self, service=None, project=None):
         return {
