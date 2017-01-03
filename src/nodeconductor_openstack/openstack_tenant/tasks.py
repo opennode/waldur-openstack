@@ -2,6 +2,8 @@ from __future__ import unicode_literals
 
 import logging
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -11,6 +13,7 @@ from nodeconductor.quotas import exceptions as quotas_exceptions
 from nodeconductor.structure import SupportedServices, models as structure_models, ServiceBackendError
 
 from nodeconductor_openstack.openstack_base.backend import update_pulled_fields
+
 from . import models, apps, serializers
 
 
@@ -184,6 +187,15 @@ class SetBackupRestorationErredTask(core_tasks.ErrorStateTransitionTask):
                 volume.save(update_fields=['state'])
 
 
+class VolumeExtendErredTask(core_tasks.ErrorStateTransitionTask):
+    """ Mark volume and its instance as erred on fail """
+
+    def execute(self, volume):
+        super(VolumeExtendErredTask, self).execute(volume)
+        if volume.instance is not None:
+            super(VolumeExtendErredTask, self).execute(volume.instance)
+
+
 # CELERYBEAT
 
 class PullResources(core_tasks.BackgroundTask):
@@ -259,7 +271,11 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
             except KeyError:
                 self._set_erred(instance)
             else:
-                self._update(instance, backend_instance, backend.INSTANCE_UPDATE_FIELDS)
+                with transaction.atomic():
+                    self._update(instance, backend_instance, backend.INSTANCE_UPDATE_FIELDS)
+                    if set(instance.security_groups.all()) != set(backend_instance._security_groups):
+                        instance.security_groups.clear()
+                        instance.security_groups.add(*backend_instance._security_groups)
 
     def _set_erred(self, resource):
         resource.set_erred()
@@ -318,3 +334,19 @@ class DeleteExpiredBackups(core_tasks.BackgroundTask):
         from . import executors
         for backup in models.Backup.objects.filter(kept_until__lt=timezone.now(), state=models.Backup.States.OK):
             executors.BackupDeleteExecutor.execute(backup)
+
+
+class SetErredStuckResources(core_tasks.BackgroundTask):
+    name = 'openstack_tenant.SetErredStuckResources'
+
+    def run(self):
+        for model in (models.Instance, models.Volume, models.Snapshot):
+            cutoff = timezone.now() - timedelta(minutes=30)
+            for resource in model.objects.filter(modified__lt=cutoff,
+                                                 state=structure_models.NewResource.States.CREATING):
+                resource.set_erred()
+                resource.error_message = 'Provisioning is timed out.'
+                resource.save(update_fields=['state', 'error_message'])
+                logger.warning('Switching resource %s to erred state, '
+                               'because provisioning is timed out.',
+                               core_utils.serialize_instance(resource))

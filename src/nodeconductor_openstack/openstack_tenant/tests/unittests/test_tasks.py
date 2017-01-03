@@ -20,9 +20,9 @@ class DeleteExpiredBackupsTaskTest(TestCase):
         self.expired_backup2 = factories.BackupFactory(
             state=models.Backup.States.OK, kept_until=timezone.now() - timedelta(minutes=10))
 
-    @mock.patch('nodeconductor_openstack.openstack.executors.BackupDeleteExecutor.execute')
+    @mock.patch('nodeconductor_openstack.openstack_tenant.executors.BackupDeleteExecutor.execute')
     def test_command_starts_backend_deletion(self, mocked_execute):
-        tasks.delete_expired_backups()
+        tasks.DeleteExpiredBackups().run()
         mocked_execute.assert_has_calls([
             mock.call(self.expired_backup1),
             mock.call(self.expired_backup2),
@@ -46,15 +46,15 @@ class ExecuteScheduleTaskTest(TestCase):
         self.future_schedule.save()
 
     def test_command_does_not_create_backups_created_for_not_active_schedules(self):
-        tasks.schedule_backups()
+        tasks.ScheduleBackups().run()
         self.assertEqual(self.not_active_schedule.backups.count(), 0)
 
     def test_command_create_one_backup_created_for_schedule_with_next_trigger_in_past(self):
-        tasks.schedule_backups()
+        tasks.ScheduleBackups().run()
         self.assertEqual(self.schedule_for_execution.backups.count(), 1)
 
     def test_command_does_not_create_backups_created_for_schedule_with_next_trigger_in_future(self):
-        tasks.schedule_backups()
+        tasks.ScheduleBackups().run()
         self.assertEqual(self.future_schedule.backups.count(), 0)
 
 
@@ -65,7 +65,7 @@ class SetErredProvisioningResourcesTaskTest(TestCase):
             stuck_vm = factories.InstanceFactory(state=models.Instance.States.CREATING)
             stuck_volume = factories.VolumeFactory(state=models.Volume.States.CREATING)
 
-        tasks.set_erred_stuck_resources()
+        tasks.SetErredStuckResources().run()
 
         stuck_vm.refresh_from_db()
         stuck_volume.refresh_from_db()
@@ -82,7 +82,7 @@ class SetErredProvisioningResourcesTaskTest(TestCase):
             state=models.Volume.States.CREATING,
             modified=timezone.now() - timedelta(minutes=1)
         )
-        tasks.set_erred_stuck_resources()
+        tasks.SetErredStuckResources().run()
 
         ok_vm.refresh_from_db()
         ok_volume.refresh_from_db()
@@ -99,7 +99,7 @@ class ThrottleProvisionTaskTest(TestCase):
         dict(size=tasks.ThrottleProvisionTask.DEFAULT_LIMIT - 1, retried=False),
     )
     def test_if_limit_is_reached_provisioning_is_delayed(self, params):
-        link = factories.OpenStackServiceProjectLinkFactory()
+        link = factories.OpenStackTenantServiceProjectLinkFactory()
         factories.InstanceFactory.create_batch(
             size=params['size'],
             state=models.Instance.States.CREATING,

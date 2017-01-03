@@ -8,10 +8,10 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from nodeconductor.core import serializers as core_serializers, fields as core_fields
+from nodeconductor.core import serializers as core_serializers, fields as core_fields, utils as core_utils
 from nodeconductor.structure import serializers as structure_serializers
 
-from . import models
+from . import models, fields
 
 
 logger = logging.getLogger(__name__)
@@ -358,7 +358,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
 
-    skip_external_ip_assignment = serializers.BooleanField(write_only=True, default=False)
+    allocate_floating_ip = serializers.BooleanField(write_only=True, default=False)
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
     data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024, write_only=True)
 
@@ -378,13 +378,13 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         model = models.Instance
         view_name = 'openstacktenant-instance-detail'
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
             'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
             'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'skip_external_ip_assignment',
-            'floating_ip',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
+            'floating_ip', 'security_groups',
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
             'flavor_disk', 'runtime_state', 'flavor_name', 'action',
@@ -449,7 +449,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     def _validate_external_ip(self, attrs):
         floating_ip = attrs.get('floating_ip')
         spl = attrs['service_project_link']
-        skip_external_ip_assignment = attrs['skip_external_ip_assignment']
+        allocate_floating_ip = attrs['allocate_floating_ip']
 
         # Case 1. If floating_ip!=None then requested floating IP is assigned to the instance.
         if floating_ip:
@@ -457,17 +457,22 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             if floating_ip.status != 'DOWN':
                 raise serializers.ValidationError({'floating_ip': 'Floating IP status must be DOWN.'})
 
-        # Case 2. If floating_ip=None and skip_external_ip_assignment=False
+            if floating_ip.settings != spl.service.settings:
+                raise serializers.ValidationError({
+                    'floating_ip': 'Floating IP must belong to the same service settings.'
+                })
+
+        # Case 2. If floating_ip=None and allocate_floating_ip=True
         # then new floating IP is allocated and assigned to the instance.
-        elif not skip_external_ip_assignment:
+        elif allocate_floating_ip:
 
             floating_ip_count_quota = spl.service.settings.quotas.get(name='floating_ip_count')
             if floating_ip_count_quota.is_exceeded(delta=1):
                 raise serializers.ValidationError({
-                    'skip_external_ip_assignment': 'Can not allocate floating IP - quota has been filled.'
+                    'allocate_floating_ip': 'Can not allocate floating IP - quota has been filled.'
                 })
 
-        # Case 3. If floating_ip=None and skip_external_ip_assignment=True
+        # Case 3. If floating_ip=None and allocate_floating_ip=False
         # floating IP allocation is not attempted, only internal IP is created.
         else:
             logger.debug('Floating IP allocation is not attempted.')
@@ -535,7 +540,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 class AssignFloatingIpSerializer(serializers.Serializer):
     floating_ip = serializers.HyperlinkedRelatedField(
         label='Floating IP',
-        required=True,
+        required=False,
+        allow_null=True,
         view_name='openstacktenant-fip-detail',
         lookup_field='uuid',
         queryset=models.FloatingIP.objects.all()
@@ -555,9 +561,6 @@ class AssignFloatingIpSerializer(serializers.Serializer):
             field.display_name_field = 'address'
         return fields
 
-    def get_floating_ip_uuid(self):
-        return self.validated_data.get('floating_ip').uuid.hex
-
     def validate_floating_ip(self, floating_ip):
         if floating_ip is not None:
             if floating_ip.status != 'DOWN':
@@ -565,6 +568,13 @@ class AssignFloatingIpSerializer(serializers.Serializer):
             elif floating_ip.settings != self.instance.service_project_link.service.settings:
                 raise serializers.ValidationError("Floating IP must belong to same settings as instance.")
         return floating_ip
+
+    def save(self):
+        # Increase service settings quota on floating IP quota if new one will be created.
+        if not self.validated_data.get('floating_ip'):
+            settings = self.instance.service_project_link.service.settings
+            settings.add_quota_usage(settings.Quotas.floating_ip_count, 1, validate=True)
+        return self.validated_data.get('floating_ip')
 
 
 class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.Serializer):
@@ -620,6 +630,11 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 
 class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
+
+    def validate(self, attrs):
+        if self.instance.backups.exists():
+            raise serializers.ValidationError('Cannot delete instance that has backups.')
+        return attrs
 
 
 class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
@@ -746,7 +761,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             'instance', 'service_project_link')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
             # 'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
         }
 
@@ -806,9 +821,26 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
         read_only_fields = ('url', 'uuid', 'is_active', 'backups', 'next_trigger_at', 'instance')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
         }
 
     def create(self, validated_data):
         validated_data['instance'] = self.context['instance']
         return super(BackupScheduleSerializer, self).create(validated_data)
+
+
+class MeterSampleSerializer(serializers.Serializer):
+    name = serializers.CharField(source='counter_name')
+    value = serializers.FloatField(source='counter_volume')
+    type = serializers.CharField(source='counter_type')
+    unit = serializers.CharField(source='counter_unit')
+    timestamp = fields.StringTimestampField(formats=('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'))
+    recorded_at = fields.StringTimestampField(formats=('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'))
+
+
+class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSerializer):
+    def get_fields(self):
+        fields = super(MeterTimestampIntervalSerializer, self).get_fields()
+        fields['start'].default = core_utils.timeshift(hours=-1)
+        fields['end'].default = core_utils.timeshift()
+        return fields

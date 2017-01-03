@@ -18,7 +18,6 @@ class OpenStackConfig(AppConfig):
         from . import handlers
 
         FloatingIP = self.get_model('FloatingIP')
-        BackupSchedule = self.get_model('BackupSchedule')
         Tenant = self.get_model('Tenant')
 
         # structure
@@ -47,18 +46,6 @@ class OpenStackConfig(AppConfig):
             handlers.change_floating_ip_quota_on_status_change,
             sender=FloatingIP,
             dispatch_uid='openstack.handlers.change_floating_ip_quota_on_status_change',
-        )
-
-        signals.post_save.connect(
-            handlers.log_backup_schedule_save,
-            sender=BackupSchedule,
-            dispatch_uid='openstack.handlers.log_backup_schedule_save',
-        )
-
-        signals.post_delete.connect(
-            handlers.log_backup_schedule_delete,
-            sender=BackupSchedule,
-            dispatch_uid='openstack.handlers.log_backup_schedule_delete',
         )
 
         for model in (structure_models.Project, structure_models.Customer):

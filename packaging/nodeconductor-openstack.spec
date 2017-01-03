@@ -1,20 +1,20 @@
 Name: nodeconductor-openstack
 Summary: OpenStack plugin for NodeConductor
 Group: Development/Libraries
-Version: 0.11.0
+Version: 0.12.0
 Release: 1.el7
 License: MIT
 Url: http://nodeconductor.com
 Source0: %{name}-%{version}.tar.gz
 
-Requires: nodeconductor >= 0.111.0
+Requires: nodeconductor >= 0.114.0
 Requires: python-ceilometerclient >= 2.3.0
 Requires: python-cinderclient >= 1.6.0
 Requires: python-glanceclient >= 1:2.0.0
 Requires: python-iptools >= 0.6.1
 Requires: python-keystoneclient >= 1:2.3.1
 Requires: python-neutronclient >= 4.1.1
-Requires: python-novaclient >= 1:3.3.0
+Requires: python-novaclient == 1:3.3.0
 
 BuildArch: noarch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -43,6 +43,9 @@ rm -rf %{buildroot}
 %{python_sitelib}/*
 
 %changelog
+* Tue Jan 3 2017 Jenkins <jenkins@opennodecloud.com> - 0.12.0-1.el7
+- New upstream release
+
 * Mon Dec 19 2016 Jenkins <jenkins@opennodecloud.com> - 0.11.0-1.el7
 - New upstream release
 

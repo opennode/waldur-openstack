@@ -1,15 +1,9 @@
-import base64
-import json
 import logging
-import os
-import time
 import uuid
 
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
-from django.utils import six, dateparse, timezone
+from django.utils import six, timezone
 
-from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
 from glanceclient import exc as glance_exceptions
 from keystoneclient import exceptions as keystone_exceptions
@@ -17,7 +11,6 @@ from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
 
 from nodeconductor.core.models import StateMixin
-from nodeconductor.core.tasks import send_task
 from nodeconductor.structure import log_backend_action, SupportedServices
 
 from nodeconductor_openstack.openstack_base.backend import (
@@ -49,26 +42,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         self._pull_flavors()
         self._pull_images()
         self._pull_service_settings_quotas()
-
-    def destroy(self, instance, force=False):
-        instance.schedule_deletion()
-        instance.save()
-        send_task('openstack', 'destroy')(instance.uuid.hex, force=force)
-
-    def start(self, instance):
-        instance.schedule_updating()
-        instance.save()
-        send_task('openstack', 'start')(instance.uuid.hex)
-
-    def stop(self, instance):
-        instance.schedule_updating()
-        instance.save()
-        send_task('openstack', 'stop')(instance.uuid.hex)
-
-    def restart(self, instance):
-        instance.schedule_updating()
-        instance.save()
-        send_task('openstack', 'restart')(instance.uuid.hex)
 
     def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
         nova = self.nova_client
@@ -129,75 +102,6 @@ class OpenStackBackend(BaseOpenStackBackend):
             rule['ip_range']['cidr'] = '0.0.0.0/0'
 
         return rule
-
-    def _wait_for_instance_status(self, instance, nova, complete_status,
-                                  error_status=None, retries=300, poll_interval=3):
-        complete_state_predicate = lambda o: o.status == complete_status
-        if error_status is not None:
-            error_state_predicate = lambda o: o.status == error_status
-        else:
-            error_state_predicate = lambda _: False
-
-        for _ in range(retries):
-            obj = nova.servers.get(instance.backend_id)
-            logger.debug('Instance %s status: "%s"' % (obj, obj.status))
-            if instance.runtime_state != obj.status:
-                instance.runtime_state = obj.status
-                instance.save(update_fields=['runtime_state'])
-
-            if complete_state_predicate(obj):
-                return True
-
-            if error_state_predicate(obj):
-                return False
-
-            time.sleep(poll_interval)
-        else:
-            return False
-
-    @log_backend_action('check is volume deleted')
-    def is_volume_deleted(self, volume):
-        cinder = self.cinder_client
-        try:
-            cinder.volumes.get(volume.backend_id)
-            return False
-        except cinder_exceptions.NotFound:
-            return True
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action('check is snapshot deleted')
-    def is_snapshot_deleted(self, snapshot):
-        cinder = self.cinder_client
-        try:
-            cinder.volume_snapshots.get(snapshot.backend_id)
-            return False
-        except cinder_exceptions.NotFound:
-            return True
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action('check is volume backup deleted')
-    def is_volume_backup_deleted(self, volume_backup):
-        cinder = self.cinder_client
-        try:
-            cinder.backups.get(volume_backup.backend_id)
-            return False
-        except cinder_exceptions.NotFound:
-            return True
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action('check is instance deleted')
-    def is_instance_deleted(self, instance):
-        nova = self.nova_client
-        try:
-            nova.servers.get(instance.backend_id)
-            return False
-        except nova_exceptions.NotFound:
-            return True
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
 
     def _pull_flavors(self):
         nova = self.nova_client
@@ -445,76 +349,6 @@ class OpenStackBackend(BaseOpenStackBackend):
                 logger.info('Created new security group rule %s in database', rule.id)
 
     @log_backend_action()
-    def push_instance_security_groups(self, instance):
-        nova = self.nova_client
-        server_id = instance.backend_id
-        try:
-            backend_ids = set(g.id for g in nova.servers.list_security_group(server_id))
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-        nc_ids = set(
-            models.SecurityGroup.objects
-            .filter(instances=instance)
-            .exclude(backend_id='')
-            .values_list('backend_id', flat=True)
-        )
-
-        # remove stale groups
-        for group_id in backend_ids - nc_ids:
-            try:
-                nova.servers.remove_security_group(server_id, group_id)
-            except nova_exceptions.ClientException:
-                logger.exception('Failed to remove security group %s from instance %s',
-                                 group_id, server_id)
-            else:
-                logger.info('Removed security group %s from instance %s',
-                            group_id, server_id)
-
-        # add missing groups
-        for group_id in nc_ids - backend_ids:
-            try:
-                nova.servers.add_security_group(server_id, group_id)
-            except nova_exceptions.ClientException:
-                logger.exception('Failed to add security group %s to instance %s',
-                                 group_id, server_id)
-            else:
-                logger.info('Added security group %s to instance %s',
-                            group_id, server_id)
-
-    @log_backend_action()
-    def pull_instance_security_groups(self, instance):
-        nova = self.nova_client
-        server_id = instance.backend_id
-        try:
-            backend_groups = nova.servers.list_security_group(server_id)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-        backend_ids = set(g.id for g in backend_groups)
-        nc_ids = set(
-            models.SecurityGroup.objects
-            .filter(instances=instance)
-            .exclude(backend_id='')
-            .values_list('backend_id', flat=True)
-        )
-
-        # remove stale groups
-        stale_groups = models.SecurityGroup.objects.filter(backend_id__in=(nc_ids - backend_ids))
-        instance.security_groups.remove(*stale_groups)
-
-        # add missing groups
-        for group_id in backend_ids - nc_ids:
-            try:
-                security_group = models.SecurityGroup.objects.filter(tenant=instance.tenant).get(
-                    backend_id=group_id)
-            except models.SecurityGroup.DoesNotExist:
-                logger.exception(
-                    'Security group with id %s does not exist at NC. Tenant : %s' % (group_id, instance.tenant))
-            else:
-                instance.security_groups.add(security_group)
-
-    @log_backend_action()
     def create_tenant(self, tenant):
         keystone = self.keystone_admin_client
         try:
@@ -591,128 +425,11 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    def import_instance(self, backend_instance_id, save=True):
-        tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
-        nova = self.nova_client
-        try:
-            backend_instance = nova.servers.get(backend_instance_id)
-            flavor = nova.flavors.get(backend_instance.flavor['id'])
-            attached_volume_ids = [v.volumeId for v in nova.volumes.get_server_volumes(backend_instance_id)]
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-        # import and parse IPs.
-        ips = {}
-        for net_conf in backend_instance.addresses.values():
-            for ip in net_conf:
-                if ip['OS-EXT-IPS:type'] == 'fixed':
-                    ips['internal'] = ip['addr']
-                if ip['OS-EXT-IPS:type'] == 'floating':
-                    ips['external'] = ip['addr']
-
-        # import launch time.
-        try:
-            d = dateparse.parse_datetime(backend_instance.to_dict()['OS-SRV-USG:launched_at'])
-        except (KeyError, ValueError, TypeError):
-            launch_time = None
-        else:
-            # At the moment OpenStack does not provide any timezone info,
-            # but in future it might do.
-            if timezone.is_naive(d):
-                launch_time = timezone.make_aware(d, timezone.utc)
-
-        with transaction.atomic():
-            # import instance volumes, or use existed if they already exist in NodeConductor.
-            volumes = []
-            for backend_volume_id in attached_volume_ids:
-                try:
-                    volumes.append(models.Volume.objects.get(tenant=tenant, backend_id=backend_volume_id))
-                except models.Volume.DoesNotExist:
-                    volumes.append(self.import_volume(backend_volume_id, save=save))
-
-            # security groups should exist in NodeConductor.
-            security_groups_names = [sg['name'] for sg in getattr(backend_instance, 'security_groups', [])]
-            if tenant.security_groups.filter(name__in=security_groups_names).count() != len(security_groups_names):
-                self.pull_tenant_security_groups(tenant)
-            security_groups = []
-            for name in security_groups_names:
-                try:
-                    security_groups.append(tenant.security_groups.get(name=name))
-                except models.SecurityGroup.DoesNotExist:
-                    raise OpenStackBackendError('Security group with name "%s" does not exist in NodeConductor.' % name)
-
-            instance = models.Instance(
-                name=backend_instance.name or backend_instance.id,
-                tenant=tenant,
-                service_project_link=tenant.service_project_link,
-                key_name=backend_instance.key_name or '',
-                start_time=launch_time,
-                state=models.Instance.States.OK,
-                runtime_state=backend_instance.status,
-                created=dateparse.parse_datetime(backend_instance.created),
-
-                flavor_name=flavor.name,
-                flavor_disk=flavor.disk,
-                cores=flavor.vcpus,
-                ram=flavor.ram,
-                disk=sum([v.size for v in volumes]),
-
-                internal_ips=ips.get('internal', ''),
-                external_ips=ips.get('external', ''),
-                backend_id=backend_instance_id,
-            )
-
-            if hasattr(backend_instance, 'fault'):
-                instance.error_message = backend_instance.fault['message']
-
-            if save:
-                instance.save()
-                instance.volumes.add(*volumes)
-                instance.security_groups.add(*security_groups)
-
-        return instance
-
-    def get_resources_for_import(self, resource_type=None, tenant=None):
-        if tenant:
-            if resource_type == SupportedServices.get_name_for_model(models.Instance):
-                return self.get_instances_for_import(tenant)
-            elif resource_type == SupportedServices.get_name_for_model(models.Volume):
-                return self.get_volumes_for_import(tenant)
-        elif self.settings.get_option('is_admin'):
+    def get_resources_for_import(self, resource_type=None):
+        if self.settings.get_option('is_admin'):
             return self.get_tenants_for_import()
         else:
             return []
-
-    def get_instances_for_import(self, tenant):
-        cur_instances = set(tenant.instances.values_list('backend_id', flat=True))
-        nova = tenant.get_backend().nova_client
-        try:
-            instances = nova.servers.list()
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        return [{
-            'id': instance.id,
-            'name': instance.name or instance.id,
-            'runtime_state': instance.status,
-            'type': SupportedServices.get_name_for_model(models.Instance)
-        } for instance in instances
-            if instance.id not in cur_instances and
-            instance.status != models.Instance.RuntimeStates.ERROR]
-
-    def get_volumes_for_import(self, tenant):
-        cur_volumes = set(tenant.volumes.values_list('backend_id', flat=True))
-        cinder = tenant.get_backend().cinder_client
-        try:
-            volumes = cinder.volumes.list()
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        return [{
-            'id': volume.id,
-            'name': volume.name,
-            'size': self.gb2mb(volume.size),
-            'runtime_state': volume.status,
-            'type': SupportedServices.get_name_for_model(models.Volume)
-        } for volume in volumes if volume.id not in cur_volumes]
 
     def get_tenants_for_import(self):
         cur_tenants = set(models.Tenant.objects.filter(
@@ -733,157 +450,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     def get_managed_resources(self):
         return []
-
-    @log_backend_action()
-    def create_instance(self, instance, backend_flavor_id=None,
-                        skip_external_ip_assignment=False, public_key=None, floating_ip_uuid=None):
-        logger.info('About to create instance %s', instance.uuid)
-
-        nova = self.nova_client
-        tenant = instance.tenant
-
-        self._check_tenant_network(tenant)
-
-        floating_ip = None
-        if floating_ip_uuid:
-            try:
-                floating_ip = tenant.floating_ips.get(uuid=floating_ip_uuid)
-            except ObjectDoesNotExist:
-                raise OpenStackBackendError('Floating IP with id %s does not exist.', floating_ip_uuid)
-        elif not skip_external_ip_assignment:
-            if tenant.external_network_id:
-                floating_ip = self._get_or_create_floating_ip(tenant)
-            else:
-                logger.warning("Assignment of a floating IP is not possible for instance %s with no external network",
-                               instance.uuid)
-
-        if floating_ip:
-            floating_ip.status = 'BOOKED'
-            floating_ip.save(update_fields=['status'])
-
-        try:
-            backend_flavor = nova.flavors.get(backend_flavor_id)
-
-            # instance key name and fingerprint are optional
-            if instance.key_name:
-                backend_public_key = self.get_or_create_ssh_key_for_tenant(
-                    instance.key_name, instance.key_fingerprint, public_key)
-            else:
-                backend_public_key = None
-
-            if instance.volumes.count() != 2:
-                raise OpenStackBackendError('Current installation can create instance with 2 volumes only.')
-            try:
-                system_volume = instance.volumes.get(bootable=True)
-                data_volume = instance.volumes.get(bootable=False)
-            except models.Volume.DoesNotExist:
-                raise OpenStackBackendError(
-                    'Current installation can create only instance with 1 system volume and 1 data volume.')
-
-            security_group_ids = instance.security_groups.values_list('backend_id', flat=True)
-
-            server_create_parameters = dict(
-                name=instance.name,
-                image=None,  # Boot from volume, see boot_index below
-                flavor=backend_flavor,
-                block_device_mapping_v2=[
-                    {
-                        'boot_index': 0,
-                        'destination_type': 'volume',
-                        'device_type': 'disk',
-                        'source_type': 'volume',
-                        'uuid': system_volume.backend_id,
-                        'delete_on_termination': True,
-                    },
-                    {
-                        'destination_type': 'volume',
-                        'device_type': 'disk',
-                        'source_type': 'volume',
-                        'uuid': data_volume.backend_id,
-                        'delete_on_termination': True,
-                    },
-                ],
-                nics=[
-                    {'net-id': tenant.internal_network_id}
-                ],
-                key_name=backend_public_key.name if backend_public_key is not None else None,
-                security_groups=security_group_ids,
-            )
-            availability_zone = tenant.availability_zone
-            if availability_zone:
-                server_create_parameters['availability_zone'] = availability_zone
-            if instance.user_data:
-                server_create_parameters['userdata'] = instance.user_data
-
-            server = nova.servers.create(**server_create_parameters)
-
-            instance.backend_id = server.id
-            instance.save()
-
-            if not self._wait_for_instance_status(instance, nova, 'ACTIVE', 'ERROR'):
-                logger.error(
-                    "Failed to provision instance %s: timed out waiting "
-                    "for instance to become online",
-                    instance.uuid)
-                raise OpenStackBackendError("Timed out waiting for instance %s to provision" % instance.uuid)
-
-            logger.debug("About to infer internal ip addresses of instance %s", instance.uuid)
-            try:
-                server = nova.servers.get(server.id)
-                fixed_address = server.addresses.values()[0][0]['addr']
-            except (nova_exceptions.ClientException, KeyError, IndexError):
-                logger.exception(
-                    "Failed to infer internal ip addresses of instance %s", instance.uuid)
-            else:
-                instance.internal_ips = fixed_address
-                instance.save()
-                logger.info(
-                    "Successfully inferred internal ip addresses of instance %s", instance.uuid)
-
-            if floating_ip:
-                self.assign_floating_ip_to_instance(instance, floating_ip)
-            else:
-                logger.info("Skipping floating IP assignment for instance %s", instance.uuid)
-
-            backend_security_groups = server.list_security_group()
-            for bsg in backend_security_groups:
-                if instance.security_groups.filter(name=bsg.name).exists():
-                    continue
-                try:
-                    security_group = tenant.security_groups.get(name=bsg.name)
-                except models.SecurityGroup.DoesNotExist:
-                    logger.error(
-                        'Tenant %s (PK: %s) does not have security group "%s", but its instance %s (PK: %s) has.' %
-                        (tenant, tenant.pk, bsg.name, instance, instance.pk)
-                    )
-                else:
-                    instance.security_groups.add(security_group)
-
-        except nova_exceptions.ClientException as e:
-            logger.exception("Failed to provision instance %s", instance.uuid)
-            six.reraise(OpenStackBackendError, e)
-        else:
-            logger.info("Successfully provisioned instance %s", instance.uuid)
-
-    @log_backend_action()
-    def update_instance(self, instance):
-        nova = self.nova_client
-        try:
-            nova.servers.update(instance.backend_id, name=instance.name)
-        except keystone_exceptions.NotFound as e:
-            logger.error('Instance with id %s does not exist', instance.backend_id)
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def pull_instance(self, instance):
-        import_time = timezone.now()
-        imported_instance = self.import_instance(instance.backend_id, save=False)
-
-        instance.refresh_from_db()
-        if instance.modified < import_time:
-            update_fields = ('ram', 'cores', 'disk', 'internal_ips',
-                             'external_ips', 'runtime_state', 'error_message')
-            update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
     def delete_tenant_floating_ips(self, tenant):
@@ -1090,66 +656,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.NotFound:
             logger.debug("Tenant %s is already gone", tenant.backend_id)
         except keystone_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def resize_instance(self, instance, flavor_id):
-        nova = self.nova_client
-        try:
-            nova.servers.resize(instance.backend_id, flavor_id, 'MANUAL')
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def confirm_instance_resize(self, instance):
-        nova = self.nova_client
-        try:
-            nova.servers.confirm_resize(instance.backend_id)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def pull_instance_runtime_state(self, instance):
-        nova = self.nova_client
-        try:
-            backend_instance = nova.servers.get(instance.backend_id)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        if backend_instance.status != instance.runtime_state:
-            instance.runtime_state = backend_instance.status
-            instance.save(update_fields=['runtime_state'])
-
-    @log_backend_action()
-    def attach_volume(self, volume, instance_uuid, device=None):
-        instance = models.Instance.objects.get(uuid=instance_uuid)
-        nova = self.nova_client
-        try:
-            nova.volumes.create_server_volume(instance.backend_id, volume.backend_id, device=device)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        else:
-            volume.instance = instance
-            volume.device = device
-            volume.save(update_fields=['instance', 'device'])
-
-    @log_backend_action()
-    def detach_volume(self, volume):
-        nova = self.nova_client
-        try:
-            nova.volumes.delete_server_volume(volume.instance.backend_id, volume.backend_id)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        else:
-            volume.instance = None
-            volume.device = ''
-            volume.save(update_fields=['instance', 'device'])
-
-    @log_backend_action()
-    def extend_volume(self, volume, new_size):
-        cinder = self.cinder_client
-        try:
-            cinder.volumes.extend(volume.backend_id, self.mb2gb(new_size))
-        except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
     def _push_security_group_rules(self, security_group):
@@ -1369,44 +875,149 @@ class OpenStackBackend(BaseOpenStackBackend):
             tenant.external_network_id = ''
             tenant.save()
 
-    @log_backend_action('create internal network for tenant')
-    def create_internal_network(self, tenant):
+    @log_backend_action()
+    def create_network(self, network):
         neutron = self.neutron_admin_client
 
-        network_name = '{0}-int-net'.format(tenant.name)
+        data = {'name': network.name, 'description': network.description, 'tenant_id': network.tenant.backend_id}
         try:
-            network = {
-                'name': network_name,
-                'tenant_id': self.tenant_id,
-            }
-
-            create_response = neutron.create_network({'networks': [network]})
-            internal_network_id = create_response['networks'][0]['id']
-
-            subnet_name = 'nc-{0}-subnet01'.format(network_name)
-
-            logger.info('Creating subnet %s for tenant "%s" (PK: %s).', subnet_name, tenant.name, tenant.pk)
-            subnet_data = {
-                'network_id': internal_network_id,
-                'tenant_id': tenant.backend_id,
-                'cidr': '192.168.42.0/24',
-                'allocation_pools': [
-                    {
-                        'start': '192.168.42.10',
-                        'end': '192.168.42.250'
-                    }
-                ],
-                'name': subnet_name,
-                'ip_version': 4,
-                'enable_dhcp': True,
-            }
-            create_response = neutron.create_subnet({'subnets': [subnet_data]})
-            self.get_or_create_router(network_name, create_response['subnets'][0]['id'])
+            response = neutron.create_network({'networks': [data]})
         except neutron_exceptions.NeutronException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            tenant.internal_network_id = internal_network_id
-            tenant.save(update_fields=['internal_network_id'])
+            backend_network = response['networks'][0]
+            network.backend_id = backend_network['id']
+            network.runtime_state = backend_network['status']
+            if backend_network.get('provider:network_type'):
+                network.type = backend_network['provider:network_type']
+            if backend_network.get('provider:segmentation_id'):
+                network.segmentation_id = backend_network['provider:segmentation_id']
+            network.save()
+
+    @log_backend_action()
+    def update_network(self, network):
+        neutron = self.neutron_admin_client
+
+        data = {'name': network.name, 'description': network.description}
+        try:
+            neutron.update_network(network.backend_id, {'network': data})
+        except neutron_exceptions.NeutronException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_network(self, network):
+        for subnet in network.subnets.all():
+            self.delete_subnet(subnet)
+
+        neutron = self.neutron_admin_client
+        try:
+            neutron.delete_network(network.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    def import_network(self, network_backend_id):
+        neutron = self.neutron_admin_client
+        try:
+            backend_network = neutron.show_network(network_backend_id)['network']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        network = models.Network(
+            name=backend_network['name'],
+            description=backend_network['description'] or '',
+            type=backend_network.get('provider:network_type'),
+            segmentation_id=backend_network.get('provider:segmentation_id'),
+            runtime_state=backend_network['status'],
+            state=models.Network.States.OK,
+        )
+        return network
+
+    @log_backend_action()
+    def pull_network(self, network):
+        import_time = timezone.now()
+        imported_network = self.import_network(network.backend_id)
+
+        network.refresh_from_db()
+        if network.modified < import_time:
+            update_fields = ('name', 'description', 'type', 'segmentation_id', 'runtime_state')
+            update_pulled_fields(network, imported_network, update_fields)
+
+    @log_backend_action()
+    def create_subnet(self, subnet):
+        neutron = self.neutron_admin_client
+
+        data = {
+            'name': subnet.name,
+            'description': subnet.description,
+            'network_id': subnet.network.backend_id,
+            'tenant_id': subnet.network.tenant.backend_id,
+            'cidr': subnet.cidr,
+            'allocation_pools': subnet.allocation_pools,
+            'ip_version': subnet.ip_version,
+            'enable_dhcp': subnet.enable_dhcp,
+        }
+        try:
+            response = neutron.create_subnet({'subnets': [data]})
+            # Automatically create router for subnet
+            # TODO: Ideally: Create separate model for router and create it separately.
+            #       Good enough: refactor `get_or_create_router` method: split it into several method.
+            self.get_or_create_router(subnet.network.name, response['subnets'][0]['id'])
+        except neutron_exceptions.NeutronException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            backend_subnet = response['subnets'][0]
+            subnet.backend_id = backend_subnet['id']
+            if backend_subnet.get('gateway_ip'):
+                subnet.gateway_ip = backend_subnet['gateway_ip']
+            subnet.save()
+
+    @log_backend_action()
+    def update_subnet(self, subnet):
+        neutron = self.neutron_admin_client
+
+        data = {'name': subnet.name, 'description': subnet.description}
+        try:
+            neutron.update_subnet(subnet.backend_id, {'subnet': data})
+        except neutron_exceptions.NeutronException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def delete_subnet(self, subnet):
+        neutron = self.neutron_admin_client
+        try:
+            neutron.delete_subnet(subnet.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    def import_subnet(self, subnet_backend_id):
+        neutron = self.neutron_admin_client
+        try:
+            backend_subnet = neutron.show_subnet(subnet_backend_id)['subnet']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        subnet = models.SubNet(
+            name=backend_subnet['name'],
+            description=backend_subnet['description'] or '',
+            allocation_pools=backend_subnet['allocation_pools'],
+            cidr=backend_subnet['cidr'],
+            ip_version=backend_subnet.get('ip_version'),
+            gateway_ip=backend_subnet.get('gateway_ip'),
+            enable_dhcp=backend_subnet.get('enable_dhcp', False),
+            state=models.Network.States.OK,
+        )
+        return subnet
+
+    @log_backend_action()
+    def pull_subnet(self, subnet):
+        import_time = timezone.now()
+        imported_subnet = self.import_subnet(subnet.backend_id)
+
+        subnet.refresh_from_db()
+        if subnet.modified < import_time:
+            update_fields = ('name', 'description', 'cidr', 'allocation_pools', 'ip_version', 'gateway_ip',
+                             'enable_dhcp')
+            update_pulled_fields(subnet, imported_subnet, update_fields)
 
     def _check_tenant_network(self, tenant):
         neutron = self.neutron_client
@@ -1450,37 +1061,6 @@ class OpenStackBackend(BaseOpenStackBackend):
                 backend_network_id=ip_address['floating_network_id'],
                 service_project_link=tenant.service_project_link
             )
-
-    @log_backend_action()
-    def assign_floating_ip_to_instance(self, instance, floating_ip):
-        logger.debug('About to assign floating IP %s to the instance with id %s',
-                     floating_ip.address, instance.uuid)
-
-        nova = self.nova_client
-        try:
-            nova.servers.add_floating_ip(
-                server=instance.backend_id,
-                address=floating_ip.address,
-                fixed_address=instance.internal_ips
-            )
-        except nova_exceptions.ClientException as e:
-            logger.exception('Failed to assign floating IP %s to the instance with id %s',
-                             floating_ip.address, instance.uuid)
-
-            logger.info('Releasing booked floating IP %s', floating_ip.address)
-            floating_ip.status = 'DOWN'
-            floating_ip.save(update_fields=['status'])
-
-            six.reraise(OpenStackBackendError, e)
-        else:
-            floating_ip.status = 'ACTIVE'
-            floating_ip.save(update_fields=['status'])
-
-            instance.external_ips = floating_ip.address
-            instance.save(update_fields=['external_ips'])
-
-            logger.info('Floating IP %s was successfully assigned to the instance with id %s.',
-                        floating_ip.address, instance.uuid)
 
     @log_backend_action()
     def connect_tenant_to_external_network(self, tenant, external_network_id):
@@ -1549,75 +1129,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         return router['id']
 
     @log_backend_action()
-    def start_instance(self, instance):
-        nova = self.nova_client
-        try:
-            backend_instance = nova.servers.find(id=instance.backend_id)
-
-            if backend_instance.status == models.Instance.RuntimeStates.ACTIVE:
-                logger.warning('Instance %s is already started', instance.uuid)
-                return
-
-            nova.servers.start(instance.backend_id)
-
-            if not self._wait_for_instance_status(instance, nova, 'ACTIVE'):
-                raise OpenStackBackendError('Timed out waiting for instance %s to start' % instance.uuid)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def stop_instance(self, instance):
-        nova = self.nova_client
-        try:
-            backend_instance = nova.servers.find(id=instance.backend_id)
-
-            if backend_instance.status == models.Instance.RuntimeStates.SHUTOFF:
-                logger.warning('Instance %s is already stopped', instance.uuid)
-                return
-
-            nova.servers.stop(instance.backend_id)
-
-            if not self._wait_for_instance_status(instance, nova, 'SHUTOFF'):
-                raise OpenStackBackendError('Timed out waiting for instance %s to stop' % instance.uuid)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        else:
-            instance.start_time = None
-            instance.save(update_fields=['start_time'])
-
-    @log_backend_action()
-    def restart_instance(self, instance):
-        nova = self.nova_client
-        try:
-            nova.servers.reboot(instance.backend_id)
-
-            if not self._wait_for_instance_status(instance, nova, 'ACTIVE', retries=80):
-                raise OpenStackBackendError('Timed out waiting for instance %s to restart' % instance.uuid)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def delete_instance(self, instance):
-        nova = self.nova_client
-        try:
-            nova.servers.delete(instance.backend_id)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-        if instance.tenant.floating_ips.filter(address=instance.external_ips).update(status='DOWN'):
-            logger.info('Successfully released floating ip %s from instance %s',
-                        instance.external_ips, instance.uuid)
-        instance.decrease_backend_quotas_usage()
-
-    @log_backend_action()
-    def pull_instance_volumes(self, instance):
-        for volume in instance.volumes.all():
-            if self.is_volume_deleted(volume):
-                with transaction.atomic():
-                    volume.decrease_backend_quotas_usage()
-                    volume.delete()
-
-    @log_backend_action()
     def update_tenant(self, tenant):
         keystone = self.keystone_admin_client
         try:
@@ -1625,315 +1136,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.NotFound as e:
             logger.error('Tenant with id %s does not exist', tenant.backend_id)
             six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def create_volume(self, volume):
-        kwargs = {
-            'size': self.mb2gb(volume.size),
-            'name': volume.name,
-            'description': volume.description,
-        }
-        if volume.source_snapshot:
-            kwargs['snapshot_id'] = volume.source_snapshot.backend_id
-        if volume.type:
-            kwargs['volume_type'] = volume.type
-        if volume.image:
-            kwargs['imageRef'] = volume.image.backend_id
-        # TODO: set backend volume metadata if it is defined in NC.
-        cinder = self.cinder_client
-        try:
-            backend_volume = cinder.volumes.create(**kwargs)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        volume.backend_id = backend_volume.id
-        if hasattr(backend_volume, 'volume_image_metadata'):
-            volume.image_metadata = backend_volume.volume_image_metadata
-        volume.bootable = backend_volume.bootable == 'true'
-        volume.runtime_state = backend_volume.status
-        volume.save()
-        return volume
-
-    @log_backend_action()
-    def pull_volume_runtime_state(self, volume):
-        cinder = self.cinder_client
-        try:
-            backend_volume = cinder.volumes.get(volume.backend_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        if backend_volume.status != volume.runtime_state:
-            volume.runtime_state = backend_volume.status
-            volume.save(update_fields=['runtime_state'])
-
-    @log_backend_action()
-    def update_volume(self, volume):
-        # TODO: add metadata update
-        cinder = self.cinder_client
-        try:
-            cinder.volumes.update(volume.backend_id, name=volume.name, description=volume.description)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def delete_volume(self, volume):
-        cinder = self.cinder_client
-        try:
-            cinder.volumes.delete(volume.backend_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        volume.decrease_backend_quotas_usage()
-
-    def import_volume(self, backend_volume_id, save=True):
-        """ Restore NC Volume instance based on backend data. """
-        cinder = self.cinder_client
-        try:
-            backend_volume = cinder.volumes.get(backend_volume_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
-        spl = tenant.service_project_link
-        volume = models.Volume(
-            name=backend_volume.name,
-            description=backend_volume.description or '',
-            size=self.gb2mb(backend_volume.size),
-            metadata=backend_volume.metadata,
-            backend_id=backend_volume_id,
-            type=backend_volume.volume_type or '',
-            bootable=backend_volume.bootable == 'true',
-            tenant=tenant,
-            runtime_state=backend_volume.status,
-            service_project_link=spl,
-            state=models.Volume.States.OK,
-        )
-        if hasattr(backend_volume, 'volume_image_metadata'):
-            volume.image_metadata = backend_volume.volume_image_metadata
-            try:
-                volume.image = models.Image.objects.get(
-                    settings=spl.service.settings, backend_id=volume.image_metadata['image_id'])
-            except models.Image.DoesNotExist:
-                pass
-        # In our setup volume could be attached only to one instance.
-        if getattr(backend_volume, 'attachments', False):
-            if 'device' in backend_volume.attachments[0]:
-                volume.device = backend_volume.attachments[0]['device']
-        if save:
-            volume.save()
-        return volume
-
-    @log_backend_action()
-    def pull_volume(self, volume, update_fields=None):
-        import_time = timezone.now()
-        imported_volume = self.import_volume(volume.backend_id, save=False)
-
-        volume.refresh_from_db()
-        if volume.modified < import_time:
-            if not update_fields:
-                update_fields = ('name', 'description', 'size', 'metadata',
-                                 'type', 'bootable', 'runtime_state', 'device')
-
-            update_pulled_fields(volume, imported_volume, update_fields)
-
-    @log_backend_action()
-    def create_snapshot(self, snapshot, force=False):
-        kwargs = {
-            'name': snapshot.name,
-            'description': snapshot.description,
-            'force': force,
-        }
-        # TODO: set backend snapshot metadata if it is defined in NC.
-        cinder = self.cinder_client
-        try:
-            backend_snapshot = cinder.volume_snapshots.create(snapshot.source_volume.backend_id, **kwargs)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        snapshot.backend_id = backend_snapshot.id
-        snapshot.runtime_state = backend_snapshot.status
-        snapshot.size = self.gb2mb(backend_snapshot.size)
-        snapshot.save()
-        return snapshot
-
-    def import_snapshot(self, backend_snapshot_id, save=True):
-        """ Restore NC Snapshot instance based on backend data. """
-        cinder = self.cinder_client
-        try:
-            backend_snapshot = cinder.volume_snapshots.get(backend_snapshot_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        tenant = models.Tenant.objects.get(backend_id=self.tenant_id)
-        spl = tenant.service_project_link
-        snapshot = models.Snapshot(
-            name=backend_snapshot.name,
-            description=backend_snapshot.description or '',
-            size=self.gb2mb(backend_snapshot.size),
-            metadata=backend_snapshot.metadata,
-            backend_id=backend_snapshot_id,
-            tenant=tenant,
-            runtime_state=backend_snapshot.status,
-            service_project_link=spl,
-            state=models.Snapshot.States.OK,
-        )
-        if hasattr(backend_snapshot, 'volume_id'):
-            snapshot.source_volume = models.Volume.objects.filter(backend_id=backend_snapshot.volume_id).first()
-
-        if save:
-            snapshot.save()
-        return snapshot
-
-    @log_backend_action()
-    def pull_snapshot(self, snapshot):
-        import_time = timezone.now()
-        imported_snapshot = self.import_snapshot(snapshot.backend_id, save=False)
-
-        snapshot.refresh_from_db()
-        if snapshot.modified < import_time:
-            update_fields = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
-            update_pulled_fields(snapshot, imported_snapshot, update_fields)
-
-    @log_backend_action()
-    def pull_snapshot_runtime_state(self, snapshot):
-        cinder = self.cinder_client
-        try:
-            backend_snapshot = cinder.volume_snapshots.get(snapshot.backend_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        if backend_snapshot.status != snapshot.runtime_state:
-            snapshot.runtime_state = backend_snapshot.status
-            snapshot.save(update_fields=['runtime_state'])
-        return snapshot
-
-    @log_backend_action()
-    def delete_snapshot(self, snapshot):
-        cinder = self.cinder_client
-        try:
-            cinder.volume_snapshots.delete(snapshot.backend_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        snapshot.decrease_backend_quotas_usage()
-
-    @log_backend_action()
-    def update_snapshot(self, snapshot):
-        # TODO: add metadata update
-        cinder = self.cinder_client
-        try:
-            cinder.volume_snapshots.update(
-                snapshot.backend_id, name=snapshot.name, description=snapshot.description)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def create_volume_backup(self, volume_backup):
-        cinder = self.cinder_client
-        try:
-            backend_volume_backup = cinder.backups.create(
-                volume_id=volume_backup.source_volume.backend_id,
-                name=volume_backup.name,
-                description=volume_backup.description,
-                container=volume_backup.tenant.backend_id,
-            )
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        volume_backup.backend_id = backend_volume_backup.id
-        volume_backup.runtime_state = backend_volume_backup.status
-        volume_backup.save()
-        return volume_backup
-
-    @log_backend_action()
-    def pull_volume_backup_record(self, volume_backup):
-        cinder = self.cinder_client
-        try:
-            backend_record = cinder.backups.export_record(volume_backup.backend_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        record = volume_backup.record or models.VolumeBackupRecord()
-        record.service = backend_record['backup_service']
-        # Store encoded details to have more information about record for debugging.
-        record.details = json.loads(base64.b64decode(backend_record['backup_url']))
-        record.save()
-        volume_backup.record = record
-        volume_backup.save(update_fields=['record'])
-        return volume_backup
-
-    @log_backend_action()
-    def pull_volume_backup_runtime_state(self, volume_backup):
-        cinder = self.cinder_client
-        try:
-            backend_volume_backup = cinder.backups.get(volume_backup.backend_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        if backend_volume_backup.status != volume_backup.runtime_state:
-            volume_backup.runtime_state = backend_volume_backup.status
-            volume_backup.save(update_fields=['runtime_state'])
-        return volume_backup
-
-    @log_backend_action()
-    def delete_volume_backup(self, volume_backup):
-        cinder = self.cinder_client
-        try:
-            cinder.backups.delete(volume_backup.backend_id)
-        except cinder_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        if volume_backup.record:
-            volume_backup.record.delete()
-            volume_backup.decrease_backend_quotas_usage()
-
-    @log_backend_action()
-    def import_volume_backup_from_record(self, volume_backup):
-        """ Create volume backup on backend based on its record """
-        cinder = self.cinder_client
-        try:
-            imported_record = cinder.backups.import_record(
-                volume_backup.record.service,
-                base64.b64encode(json.dumps(volume_backup.record.details))
-            )
-        except (cinder_exceptions.ClientException, KeyError) as e:
-            six.reraise(OpenStackBackendError, e)
-        volume_backup.backend_id = imported_record['id']
-        volume_backup.save()
-        return volume_backup
-
-    @log_backend_action()
-    def restore_volume_backup(self, volume_backup, volume):
-        cinder = self.cinder_client
-        try:
-            cinder.restores.restore(volume_id=volume.backend_id, backup_id=volume_backup.backend_id)
-        except (cinder_exceptions.ClientException, KeyError) as e:
-            six.reraise(OpenStackBackendError, e)
-        return volume_backup
-
-    def _get_meters_file_name(self, model_class):
-        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'meters')
-        return {
-            models.Instance: os.path.join(base, 'instance.json'),
-            models.Volume: os.path.join(base, 'volume.json'),
-            models.Snapshot: os.path.join(base, 'snapshot.json'),
-        }[model_class]
-
-    @log_backend_action()
-    def list_meters(self, resource):
-        try:
-            file_name = self._get_meters_file_name(resource.__class__)
-            with open(file_name) as meters_file:
-                meters = json.load(meters_file)
-        except (KeyError, IOError):
-            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % resource.__class__.__name__)
-
-        return meters
-
-    @log_backend_action()
-    def get_meter_samples(self, resource, meter_name, start=None, end=None):
-        query = [dict(field='resource_id', op='eq', value=resource.backend_id)]
-
-        if start is not None:
-            query.append(dict(field='timestamp', op='ge', value=start.strftime('%Y-%m-%dT%H:%M:%S')))
-        if end is not None:
-            query.append(dict(field='timestamp', op='le', value=end.strftime('%Y-%m-%dT%H:%M:%S')))
-
-        ceilometer = self.ceilometer_client
-        try:
-            samples = ceilometer.samples.list(meter_name=meter_name, q=query)
-        except ceilometer_exceptions.BaseException as e:
-            six.reraise(OpenStackBackendError, e)
-
-        return samples
 
     def _pull_service_settings_quotas(self):
         if isinstance(self.settings.scope, models.Tenant):

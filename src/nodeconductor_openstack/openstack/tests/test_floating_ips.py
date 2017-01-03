@@ -1,35 +1,22 @@
 from rest_framework import test, status
 
-from nodeconductor.structure import models
-from nodeconductor.structure.tests import factories as structure_factories
-from . import factories
+from . import factories, fixtures
 
 
 class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def setUp(self):
-        # objects
-        self.customer = structure_factories.CustomerFactory()
-        self.project = structure_factories.ProjectFactory(customer=self.customer)
-        self.service = factories.OpenStackServiceFactory(customer=self.customer)
-        self.service_project_link = factories.OpenStackServiceProjectLinkFactory(service=self.service, project=self.project)
-        self.active_ip = factories.FloatingIPFactory(status='ACTIVE', service_project_link=self.service_project_link)
-        self.down_ip = factories.FloatingIPFactory(status='DOWN', service_project_link=self.service_project_link)
+        self.fixture = fixtures.OpenStackFixture()
+        self.active_ip = factories.FloatingIPFactory(status='ACTIVE', service_project_link=self.fixture.openstack_spl)
+        self.down_ip = factories.FloatingIPFactory(status='DOWN', service_project_link=self.fixture.openstack_spl)
         self.other_ip = factories.FloatingIPFactory(status='UNDEFINED')
-        # users
-        self.staff = structure_factories.UserFactory(is_staff=True)
-        self.owner = structure_factories.UserFactory()
-        self.customer.add_user(self.owner, models.CustomerRole.OWNER)
-        self.admin = structure_factories.UserFactory()
-        self.project.add_user(self.admin, models.ProjectRole.ADMINISTRATOR)
-        self.user = structure_factories.UserFactory()
 
     def test_floating_ip_list_can_be_filtered_by_project(self):
         data = {
-            'project': self.project.uuid.hex,
+            'project': self.fixture.project.uuid.hex,
         }
         # when
-        self.client.force_authenticate(self.staff)
+        self.client.force_authenticate(self.fixture.staff)
         response = self.client.get(factories.FloatingIPFactory.get_list_url(), data)
         # then
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -39,10 +26,10 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def test_floating_ip_list_can_be_filtered_by_service(self):
         data = {
-            'service': self.service.uuid.hex,
+            'service': self.fixture.openstack_service.uuid.hex,
         }
         # when
-        self.client.force_authenticate(self.staff)
+        self.client.force_authenticate(self.fixture.staff)
         response = self.client.get(factories.FloatingIPFactory.get_list_url(), data)
         # then
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -55,7 +42,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
             'status': 'ACTIVE',
         }
         # when
-        self.client.force_authenticate(self.staff)
+        self.client.force_authenticate(self.fixture.staff)
         response = self.client.get(factories.FloatingIPFactory.get_list_url(), data)
         # then
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -65,7 +52,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def test_admin_receive_only_ips_from_his_project(self):
         # when
-        self.client.force_authenticate(self.admin)
+        self.client.force_authenticate(self.fixture.admin)
         response = self.client.get(factories.FloatingIPFactory.get_list_url())
         # then
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -75,7 +62,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def test_owner_receive_only_ips_from_his_customer(self):
         # when
-        self.client.force_authenticate(self.owner)
+        self.client.force_authenticate(self.fixture.owner)
         response = self.client.get(factories.FloatingIPFactory.get_list_url())
         # then
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -85,7 +72,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def test_regular_user_does_not_receive_any_ips(self):
         # when
-        self.client.force_authenticate(self.user)
+        self.client.force_authenticate(self.fixture.user)
         response = self.client.get(factories.FloatingIPFactory.get_list_url())
         # then
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -95,7 +82,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def test_admin_can_retreive_floating_ip_from_his_project(self):
         # when
-        self.client.force_authenticate(self.admin)
+        self.client.force_authenticate(self.fixture.admin)
         response = self.client.get(factories.FloatingIPFactory.get_url(self.active_ip))
         # then
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -103,7 +90,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def test_owner_can_not_retreive_floating_ip_not_from_his_customer(self):
         # when
-        self.client.force_authenticate(self.owner)
+        self.client.force_authenticate(self.fixture.owner)
         response = self.client.get(factories.FloatingIPFactory.get_url(self.other_ip))
         # then
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

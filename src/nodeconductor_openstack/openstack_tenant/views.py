@@ -8,6 +8,83 @@ from nodeconductor.structure import views as structure_views, filters as structu
 from . import models, serializers, filters, executors
 
 
+class TelemetryMixin(object):
+    """
+    This mixin adds /meters endpoint to the resource.
+
+    List of available resource meters must be specified in separate JSON file in meters folder. In addition,
+    mapping between resource model and meters file path must be specified
+    in "_get_meters_file_name" method in "backend.py" file.
+    """
+
+    telemetry_serializers = {
+        'meter_samples': serializers.MeterSampleSerializer
+    }
+
+    @decorators.detail_route(methods=['get'])
+    def meters(self, request, uuid=None):
+        """
+        To list available meters for the resource, make **GET** request to
+        */api/<resource_type>/<uuid>/meters/*.
+        """
+        resource = self.get_object()
+        backend = resource.get_backend()
+
+        meters = backend.list_meters(resource)
+
+        page = self.paginate_queryset(meters)
+        if page is not None:
+            return self.get_paginated_response(page)
+
+        return response.Response(meters)
+
+    @decorators.detail_route(methods=['get'], url_path='meter-samples/(?P<name>[a-z0-9_.]+)')
+    def meter_samples(self, request, name, uuid=None):
+        """
+        To get resource meter samples make **GET** request to */api/<resource_type>/<uuid>/meter-samples/<meter_name>/*.
+        Note that *<meter_name>* must be from meters list.
+
+        In order to get a list of samples for the specific period of time, *start* timestamp and *end* timestamp query
+        parameters can be provided:
+
+            - start - timestamp (default: one hour ago)
+            - end - timestamp (default: current datetime)
+
+        Example of a valid request:
+
+        .. code-block:: http
+
+            GET /api/openstack-instances/1143357799fc4cb99636c767136bef86/meter-samples/memory/?start=1470009600&end=1470843282
+            Content-Type: application/json
+            Accept: application/json
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+        """
+        resource = self.get_object()
+        backend = resource.get_backend()
+
+        meters = backend.list_meters(resource)
+        names = [meter['name'] for meter in meters]
+        if name not in names:
+            raise exceptions.ValidationError('Meter must be from meters list.')
+        if not resource.backend_id:
+            raise exceptions.ValidationError('%s must have backend_id.' % resource.__class__.__name__)
+
+        serializer = serializers.MeterTimestampIntervalSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        start = serializer.validated_data['start']
+        end = serializer.validated_data['end']
+
+        samples = backend.get_meter_samples(resource, name, start=start, end=end)
+        serializer = self.get_serializer(samples, many=True)
+
+        return response.Response(serializer.data)
+
+    def get_serializer_class(self):
+        serializer = self.telemetry_serializers.get(self.action)
+        return serializer or super(TelemetryMixin, self).get_serializer_class()
+
+
 class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
     queryset = models.OpenStackTenantService.objects.all()
     serializer_class = serializers.ServiceSerializer
@@ -119,9 +196,11 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     def check_operation(self, request, resource, action):
         volume = resource
-        if action in ('attach', 'snapshot') and volume.runtime_state != 'available':
+        if action == 'attach' and volume.runtime_state != 'available':
             raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
         elif action == 'detach':
+            if volume.bootable:
+                raise core_exceptions.IncorrectStateException('It is impossible to detach bootable volume.')
             if volume.runtime_state != 'in-use':
                 raise core_exceptions.IncorrectStateException('Volume runtime state should be "in-use".')
             if not volume.instance:
@@ -208,6 +287,8 @@ class InstanceViewSet(structure_views.PullMixin,
             raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
         if action == 'resize' and (instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF):
             raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
+        if action == 'assign_floating_ip' and instance.external_ips:
+            raise core_exceptions.IncorrectStateException('Instance already has floating IP.')
         if action == 'destroy':
             if instance.state not in (States.OK, States.ERRED):
                 raise core_exceptions.IncorrectStateException('Instance state has to be OK or erred.')
@@ -215,13 +296,62 @@ class InstanceViewSet(structure_views.PullMixin,
                 raise core_exceptions.IncorrectStateException('Instance has to be shutoff.')
         return super(InstanceViewSet, self).check_operation(request, resource, action)
 
+    def list(self, request, *args, **kwargs):
+        """
+        To get a list of instances, run **GET** against */api/openstack-instances/* as authenticated user.
+        Note that a user can only see connected instances:
+        - instances that belong to a project where a user has a role.
+        - instances that belong to a customer that a user owns.
+        """
+        return super(InstanceViewSet, self).list(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        """
+        A new instance can be created by users with project administrator role or with staff privilege (is_staff=True).
+        Example of a valid request:
+        .. code-block:: http
+            POST /api/openstack-instances/ HTTP/1.1
+            Content-Type: application/json
+            Accept: application/json
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+            {
+                "name": "test VM",
+                "description": "sample description",
+                "image": "http://example.com/api/openstack-images/1ee380602b6283c446ad9420b3230bf0/",
+                "flavor": "http://example.com/api/openstack-flavors/1ee385bc043249498cfeb8c7e3e079f0/",
+                "ssh_public_key": "http://example.com/api/keys/6fbd6b24246f4fb38715c29bafa2e5e7/",
+                "service_project_link": "http://example.com/api/openstack-service-project-link/674/",
+                "tenant": "http://example.com/api/openstack-tenants/33bf0f83d4b948119038d6e16f05c129/",
+                "data_volume_size": 1024,
+                "system_volume_size": 20480,
+                "security_groups": [
+                    { "url": "http://example.com/api/security-groups/16c55dad9b3048db8dd60e89bd4d85bc/"},
+                    { "url": "http://example.com/api/security-groups/232da2ad9b3048db8dd60eeaa23d8123/"}
+                ]
+            }
+        """
+        return super(InstanceViewSet, self).create(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        To stop/start/restart an instance, run an authorized **POST** request against the instance UUID,
+        appending the requested command.
+        Examples of URLs:
+        - POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/start/
+        - POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/stop/
+        - POST /api/openstack-instances/6c9b01c251c24174a6691a1f894fae31/restart/
+        If instance is in the state that does not allow this transition, error code will be returned.
+        """
+        return super(InstanceViewSet, self).retrieve(request, *args, **kwargs)
+
     def perform_provision(self, serializer):
         instance = serializer.save()
         executors.InstanceCreateExecutor.execute(
             instance,
             ssh_key=serializer.validated_data.get('ssh_public_key'),
             flavor=serializer.validated_data['flavor'],
-            skip_external_ip_assignment=serializer.validated_data['skip_external_ip_assignment'],
+            allocate_floating_ip=serializer.validated_data['allocate_floating_ip'],
             floating_ip=serializer.validated_data.get('floating_ip'),
             is_heavy_task=True,
         )
@@ -283,6 +413,7 @@ class InstanceViewSet(structure_views.PullMixin,
         """
         To assign floating IP to the instance, make **POST** request to
         */api/openstacktenant-instances/<uuid>/assign_floating_ip/* with link to the floating IP.
+        Make empty POST request to allocate new floating IP and assign it to instance.
         Note that instance should be in stable state, service project link of the instance should be in stable state
         and have external network.
 
@@ -302,7 +433,11 @@ class InstanceViewSet(structure_views.PullMixin,
         """
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
-        executors.InstanceAssignFloatingIpExecutor.execute(instance, floating_ip_uuid=serializer.get_floating_ip_uuid())
+        floating_ip = serializer.save()
+        if floating_ip:
+            executors.InstanceAssignFloatingIpExecutor.execute(instance, floating_ip_uuid=floating_ip.uuid)
+        else:
+            executors.InstanceAssignFloatingIpExecutor.execute(instance)
 
     assign_floating_ip.title = 'Assign floating IP'
 
@@ -360,18 +495,50 @@ class InstanceViewSet(structure_views.PullMixin,
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                       structure_views.ResourceViewMixin,
-                                       core_mixins.DeleteExecutorMixin,
-                                       core_views.UpdateOnlyViewSet)):
+class BackupViewSet(core_mixins.DeleteExecutorMixin, core_views.UpdateOnlyViewSet):
     queryset = models.Backup.objects.all()
     serializer_class = serializers.BackupSerializer
     lookup_field = 'uuid'
     filter_class = filters.BackupFilter
     delete_executor = executors.BackupDeleteExecutor
+    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
+    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
     serializers = {
         'restore': serializers.BackupRestorationSerializer,
     }
+
+    def list(self, request, *args, **kwargs):
+        """
+        To create a backup, issue the following **POST** request:
+
+        .. code-block:: http
+
+            POST /api/openstack-backups/ HTTP/1.1
+            Content-Type: application/json
+            Accept: application/json
+            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
+            Host: example.com
+
+            {
+                "instance": "http://example.com/api/openstack-instances/a04a26e46def4724a0841abcb81926ac/",
+                "description": "a new manual backup"
+            }
+
+        On creation of backup it's projected size is validated against a remaining storage quota.
+        """
+        return super(BackupViewSet, self).list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Created backups support several operations. Only users with write access to backup source
+        are allowed to perform these operations:
+
+        - */api/openstack-backup/<backup_uuid>/restore/* - restore a specified backup.
+        - */api/openstack-backup/<backup_uuid>/delete/* - delete a specified backup.
+
+        If a backup is in a state that prohibits this operation, it will be returned in error message of the response.
+        """
+        return super(BackupViewSet, self).retrieve(request, *args, **kwargs)
 
     def get_serializer_class(self):
         serializer = self.serializers.get(self.action)

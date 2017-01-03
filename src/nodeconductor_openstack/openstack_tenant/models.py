@@ -23,7 +23,7 @@ class OpenStackTenantService(structure_models.Service):
     class Meta:
         unique_together = ('customer', 'settings')
         verbose_name = 'OpenStackTenant service'
-        verbose_name_plural = 'OpenStackTenan services'
+        verbose_name_plural = 'OpenStackTenant services'
 
     @classmethod
     def get_url_name(cls):
@@ -267,7 +267,6 @@ class BackupSchedule(core_models.UuidMixin,
     class Permissions(object):
         customer_path = 'instance__service_project_link__project__customer'
         project_path = 'instance__service_project_link__project'
-        project_group_path = 'instance__service_project_link__project__project_groups'
 
     instance = models.ForeignKey(Instance, related_name='backup_schedules')
     retention_time = models.PositiveIntegerField(

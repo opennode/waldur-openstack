@@ -74,6 +74,14 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
         }
 
     @classmethod
+    def pre_apply(cls, volume, **kwargs):
+        super(VolumeExtendExecutor, cls).pre_apply(volume, **kwargs)
+        if volume.instance is not None:
+            volume.instance.action = 'Extend volume'
+            volume.instance.schedule_updating()
+            volume.instance.save()
+
+    @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         if volume.instance is None:
             return chain(
@@ -129,6 +137,22 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                 erred_state='error'
             ),
         )
+
+    @classmethod
+    def get_success_signature(cls, volume, serialized_volume, **kwargs):
+        if volume.instance is None:
+            return super(VolumeExtendExecutor, cls).get_success_signature(volume, serialized_volume, **kwargs)
+        else:
+            instance = volume.instance
+            serialized_instance = core_utils.serialize_instance(instance)
+            return chain(
+                super(VolumeExtendExecutor, cls).get_success_signature(volume, serialized_volume, **kwargs),
+                super(VolumeExtendExecutor, cls).get_success_signature(instance, serialized_instance, **kwargs),
+            )
+
+    @classmethod
+    def get_failure_signature(cls, volume, serialized_volume, **kwargs):
+        return tasks.VolumeExtendErredTask().s(serialized_volume)
 
 
 class VolumeAttachExecutor(core_executors.ActionExecutor):
@@ -241,7 +265,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance,
-                           ssh_key=None, flavor=None, floating_ip=None, skip_external_ip_assignment=False):
+                           ssh_key=None, flavor=None, floating_ip=None, allocate_floating_ip=False):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
@@ -265,7 +289,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         # Create instance based on volumes
         kwargs = {
             'backend_flavor_id': flavor.backend_id,
-            'skip_external_ip_assignment': skip_external_ip_assignment,
+            'allocate_floating_ip': allocate_floating_ip,
         }
         if ssh_key is not None:
             kwargs['public_key'] = ssh_key.public_key
@@ -435,20 +459,28 @@ class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
     action = 'Assign floating IP'
 
     @classmethod
-    def get_action_details(cls, instance, **kwargs):
-        floating_ip_address = models.FloatingIP.objects.get(uuid=kwargs.get('floating_ip_uuid')).address
+    def get_action_details(cls, instance, floating_ip_uuid=None, **kwargs):
+        if floating_ip_uuid is None:
+            return {'message': 'Allocate new floating IP and assign it to instance'}
+        floating_ip_address = models.FloatingIP.objects.get(uuid=floating_ip_uuid).address
         return {
             'message': 'Assign floating IP %s' % floating_ip_address,
             'floating_ip_address': floating_ip_address,
         }
 
     @classmethod
-    def get_task_signature(cls, instance, serialized_instance, floating_ip_uuid, **kwargs):
-        return core_tasks.BackendMethodTask().si(
-            serialized_instance, 'assign_floating_ip_to_instance',
-            floating_ip_uuid=floating_ip_uuid,
-            state_transition='begin_updating',
-        )
+    def get_task_signature(cls, instance, serialized_instance, floating_ip_uuid=None, **kwargs):
+        if floating_ip_uuid is not None:
+            return core_tasks.BackendMethodTask().si(
+                serialized_instance, 'assign_floating_ip_to_instance',
+                floating_ip_uuid=floating_ip_uuid,
+                state_transition='begin_updating',
+            )
+        else:
+            return core_tasks.BackendMethodTask().si(
+                serialized_instance, 'allocate_and_assign_floating_ip_to_instance',
+                state_transition='begin_updating',
+            )
 
 
 class InstanceStopExecutor(core_executors.ActionExecutor):
@@ -597,7 +629,7 @@ class BackupRestorationExecutor(core_executors.CreateExecutor):
         # Create instance. Wait 10 seconds after volumes creation due to OpenStack restrictions.
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance',
-            skip_external_ip_assignment=False,
+            allocate_floating_ip=False,
             backend_flavor_id=backup_restoration.flavor.backend_id
         ).set(countdown=10))
         return chain(*_tasks)

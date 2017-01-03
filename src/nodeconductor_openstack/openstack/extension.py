@@ -25,11 +25,13 @@ class OpenStackExtension(NodeConductorExtension):
                     ),
                 },
             ),
-            'MAX_CONCURRENT_PROVISION': {
-                'OpenStack.Instance': 4,
-                'OpenStack.Volume': 4,
-                'OpenStack.Snapshot': 4
-            }
+            'SUBNET': {
+                # Allow cidr: 192.168.[1-255].0/24
+                'CIDR_REGEX': r'192\.168\.(?:25[0-4]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?)\.0/24',
+                'CIDR_REGEX_EXPLANATION': 'Value should be 192.168.[1-254].0/24',
+                'ALLOCATION_POOL_START': '{first_octet}.{second_octet}.{third_octet}.10',
+                'ALLOCATION_POOL_END': '{first_octet}.{second_octet}.{third_octet}.200',
+            },
         }
 
     @staticmethod
@@ -45,38 +47,8 @@ class OpenStackExtension(NodeConductorExtension):
     def celery_tasks():
         from datetime import timedelta
         return {
-            'openstack-schedule-backups': {
-                'task': 'openstack.schedule_backups',
-                'schedule': timedelta(minutes=10),
-                'args': (),
-            },
-
-            'openstack-delete-expired-backups': {
-                'task': 'openstack.delete_expired_backups',
-                'schedule': timedelta(minutes=10),
-                'args': (),
-            },
-
-            'openstack-set-erred-stuck-resources': {
-                'task': 'openstack.set_erred_stuck_resources',
-                'schedule': timedelta(minutes=10),
-                'args': (),
-            },
-
             'openstack-pull-tenants': {
                 'task': 'openstack.TenantListPullTask',
-                'schedule': timedelta(minutes=30),
-                'args': (),
-            },
-
-            'openstack-pull-instances': {
-                'task': 'openstack.InstanceListPullTask',
-                'schedule': timedelta(minutes=30),
-                'args': (),
-            },
-
-            'openstack-pull-volumes': {
-                'task': 'openstack.VolumeListPullTask',
                 'schedule': timedelta(minutes=30),
                 'args': (),
             },

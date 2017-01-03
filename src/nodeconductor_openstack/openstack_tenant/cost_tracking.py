@@ -1,4 +1,4 @@
-from nodeconductor.cost_tracking import CostTrackingRegister, CostTrackingStrategy, ConsumableItem
+from nodeconductor.cost_tracking import CostTrackingStrategy, ConsumableItem
 
 from . import models, ApplicationTypes, OsTypes, SupportTypes, PriceItemTypes
 
@@ -46,9 +46,6 @@ class InstanceStrategy(CostTrackingStrategy):
         return consumables
 
 
-CostTrackingRegister.register_strategy(InstanceStrategy)
-
-
 class VolumeStrategy(CostTrackingStrategy):
     resource_class = models.Volume
 
@@ -67,9 +64,6 @@ class VolumeStrategy(CostTrackingStrategy):
         return {ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE): float(volume.size) / 1024}
 
 
-CostTrackingRegister.register_strategy(VolumeStrategy)
-
-
 class SnapshotStrategy(CostTrackingStrategy):
     resource_class = models.Snapshot
 
@@ -86,6 +80,3 @@ class SnapshotStrategy(CostTrackingStrategy):
     @classmethod
     def get_configuration(cls, snapshot):
         return {ConsumableItem(item_type=cls.Types.STORAGE, key=cls.Keys.STORAGE): float(snapshot.size) / 1024}
-
-
-CostTrackingRegister.register_strategy(SnapshotStrategy)

@@ -1,9 +1,11 @@
+import json
 import logging
 import time
 
 from django.db import transaction
 from django.utils import six, timezone, dateparse
 
+from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
 from glanceclient import exc as glance_exceptions
 from keystoneclient import exceptions as keystone_exceptions
@@ -434,13 +436,13 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def create_instance(self, instance, backend_flavor_id=None,
-                        skip_external_ip_assignment=False, public_key=None, floating_ip_uuid=None):
+                        allocate_floating_ip=False, public_key=None, floating_ip_uuid=None):
         nova = self.nova_client
 
         floating_ip = None
         if floating_ip_uuid:
             floating_ip = models.FloatingIP.objects.get(uuid=floating_ip_uuid)
-        elif not skip_external_ip_assignment:
+        elif allocate_floating_ip:
             floating_ip = self._get_or_create_floating_ip()
 
         if floating_ip:
@@ -555,10 +557,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         # TODO: check availability and quota
         filters = {'status': 'DOWN', 'backend_network_id': self.external_network_id, 'settings': self.settings}
         if not models.FloatingIP.objects.filter(**filters).exists():
-            self._allocate_floating_ip_address()
+            self._allocate_floating_ip()
         return models.FloatingIP.objects.filter(**filters).first()
 
-    def _allocate_floating_ip_address(self):
+    def _allocate_floating_ip(self):
         neutron = self.neutron_client
         try:
             ip_address = neutron.create_floatingip({
@@ -570,13 +572,18 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            models.FloatingIP.objects.create(
+            return models.FloatingIP.objects.create(
                 status='DOWN',
                 settings=self.settings,
                 address=ip_address['floating_ip_address'],
                 backend_id=ip_address['id'],
                 backend_network_id=ip_address['floating_network_id'],
             )
+
+    @log_backend_action()
+    def allocate_and_assign_floating_ip_to_instance(self, instance):
+        floating_ip = self._allocate_floating_ip()
+        self.assign_floating_ip_to_instance(instance, floating_ip.uuid)
 
     @log_backend_action()
     def assign_floating_ip_to_instance(self, instance, floating_ip_uuid):
@@ -712,7 +719,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             if timezone.is_naive(d):
                 launch_time = timezone.make_aware(d, timezone.utc)
 
-        return models.Instance(
+        instance = models.Instance(
             name=backend_instance.name or backend_instance.id,
             key_name=backend_instance.key_name or '',
             start_time=launch_time,
@@ -729,6 +736,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             external_ips=ips.get('external', ''),
             backend_id=backend_instance.id,
         )
+        backend_security_groups_names = [sg['name'] for sg in backend_instance.security_groups]
+        instance._security_groups = models.SecurityGroup.objects.filter(
+            name__in=backend_security_groups_names, settings=self.settings)
+        return instance
 
     def get_instances(self):
         nova = self.nova_client
@@ -755,6 +766,38 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             if update_fields is None:
                 update_fields = self.INSTANCE_UPDATE_FIELDS
             update_pulled_fields(instance, imported_instance, update_fields)
+
+    @log_backend_action()
+    def pull_instance_security_groups(self, instance):
+        nova = self.nova_client
+        server_id = instance.backend_id
+        try:
+            backend_groups = nova.servers.list_security_group(server_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        backend_ids = set(g.id for g in backend_groups)
+        nc_ids = set(
+            models.SecurityGroup.objects
+            .filter(instances=instance)
+            .exclude(backend_id='')
+            .values_list('backend_id', flat=True)
+        )
+
+        # remove stale groups
+        stale_groups = models.SecurityGroup.objects.filter(backend_id__in=(nc_ids - backend_ids))
+        instance.security_groups.remove(*stale_groups)
+
+        # add missing groups
+        for group_id in backend_ids - nc_ids:
+            try:
+                security_group = models.SecurityGroup.objects.filter(tenant=instance.tenant).get(
+                    backend_id=group_id)
+            except models.SecurityGroup.DoesNotExist:
+                logger.exception(
+                    'Security group with id %s does not exist at NC. Tenant : %s' % (group_id, instance.tenant))
+            else:
+                instance.security_groups.add(security_group)
 
     @log_backend_action()
     def push_instance_security_groups(self, instance):
@@ -877,3 +920,31 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             nova.servers.confirm_resize(instance.backend_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def list_meters(self, resource):
+        try:
+            file_name = self._get_meters_file_name(resource.__class__)
+            with open(file_name) as meters_file:
+                meters = json.load(meters_file)
+        except (KeyError, IOError):
+            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % resource.__class__.__name__)
+
+        return meters
+
+    @log_backend_action()
+    def get_meter_samples(self, resource, meter_name, start=None, end=None):
+        query = [dict(field='resource_id', op='eq', value=resource.backend_id)]
+
+        if start is not None:
+            query.append(dict(field='timestamp', op='ge', value=start.strftime('%Y-%m-%dT%H:%M:%S')))
+        if end is not None:
+            query.append(dict(field='timestamp', op='le', value=end.strftime('%Y-%m-%dT%H:%M:%S')))
+
+        ceilometer = self.ceilometer_client
+        try:
+            samples = ceilometer.samples.list(meter_name=meter_name, q=query)
+        except ceilometer_exceptions.BaseException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return samples

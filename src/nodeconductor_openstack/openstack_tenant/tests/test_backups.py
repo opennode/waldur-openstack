@@ -1,13 +1,13 @@
 from __future__ import unicode_literals
 
+from mock import patch
 from rest_framework import status
 from rest_framework import test
 
 from nodeconductor.core.tests import helpers
-from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.tests import factories as structure_factories
 from .. import models
-from . import factories
+from . import factories, fixtures
 
 
 class BackupUsageTest(test.APITransactionTestCase):
@@ -17,34 +17,21 @@ class BackupUsageTest(test.APITransactionTestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_backup_manually_create(self):
-        # success:
         backupable = factories.InstanceFactory(
             state=models.Instance.States.OK,
             runtime_state=models.Instance.RuntimeStates.SHUTOFF,
         )
-        backup_data = {
-            'instance': factories.InstanceFactory.get_url(backupable),
-        }
-        url = factories.BackupFactory.get_list_url()
-        response = self.client.post(url, data=backup_data)
+        url = factories.InstanceFactory.get_url(backupable, action='backup')
+        response = self.client.post(url, data={'name': 'test backup'})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         models.Backup.objects.get(instance_id=backupable.id)
-        # fail:
-        backup_data = {
-            'instance': 'some_random_url',
-        }
-        response = self.client.post(url, data=backup_data)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('instance', response.content)
 
     def test_user_cannot_backup_unstable_instance(self):
         instance = factories.InstanceFactory(state=models.Instance.States.UPDATING)
-        backup_data = {
-            'instance': factories.InstanceFactory.get_url(instance),
-        }
-        url = factories.BackupFactory.get_list_url()
-        response = self.client.post(url, data=backup_data)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        url = factories.InstanceFactory.get_url(instance, action='backup')
+
+        response = self.client.post(url, data={'name': 'test backup'})
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
     def test_backup_delete(self):
         backup = factories.BackupFactory(state=models.Backup.States.OK)
@@ -86,44 +73,30 @@ class BackupPermissionsTest(helpers.PermissionsTest):
 
     def setUp(self):
         super(BackupPermissionsTest, self).setUp()
-        # objects
-        self.customer = structure_factories.CustomerFactory()
-        self.project = structure_factories.ProjectFactory(customer=self.customer)
-        self.project_group = structure_factories.ProjectGroupFactory(customer=self.customer)
-        self.project_group.projects.add(self.project)
-        self.service = factories.OpenStackServiceFactory(customer=self.customer)
-        self.spl = factories.OpenStackServiceProjectLinkFactory(service=self.service, project=self.project)
-        self.instance = factories.InstanceFactory(service_project_link=self.spl, state=models.Instance.States.OK)
-        self.backup = factories.BackupFactory(instance=self.instance)
-        # users
-        self.staff = structure_factories.UserFactory(username='staff', is_staff=True)
-        self.regular_user = structure_factories.UserFactory(username='regular user')
-        self.project_admin = structure_factories.UserFactory(username='admin')
-        self.project.add_user(self.project_admin, structure_models.ProjectRole.ADMINISTRATOR)
-        self.project_manager = structure_factories.UserFactory(username='manager')
-        self.project.add_user(self.project_manager, structure_models.ProjectRole.MANAGER)
-        self.customer_owner = structure_factories.UserFactory(username='owner')
-        self.customer.add_user(self.customer_owner, structure_models.CustomerRole.OWNER)
-        self.project_group_manager = structure_factories.UserFactory(username='project_group_manager')
-        self.project_group.add_user(self.project_group_manager, structure_models.ProjectGroupRole.MANAGER)
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.instance = self.fixture.openstack_instance
+        self.backup = factories.BackupFactory(
+            service_project_link=self.fixture.openstack_tenant_spl,
+            state=models.Backup.States.OK,
+            instance=self.instance,
+        )
 
     def get_users_with_permission(self, url, method):
         if method == 'GET':
-            return [self.staff, self.project_admin, self.project_manager, self.project_group_manager]
+            return [self.fixture.staff, self.fixture.admin, self.fixture.manager]
         else:
-            return [self.staff, self.project_admin, self.project_manager, self.customer_owner]
+            return [self.fixture.staff, self.fixture.admin, self.fixture.manager, self.fixture.owner]
 
     def get_users_without_permissions(self, url, method):
-        if method == 'GET':
-            return [self.regular_user]
-        else:
-            return [self.regular_user, self.project_group_manager]
+        return [self.fixture.user]
 
     def get_urls_configs(self):
         yield {'url': factories.BackupFactory.get_url(self.backup), 'method': 'GET'}
-        yield {'url': factories.BackupFactory.get_list_url(), 'method': 'POST',
-               'data': {'instance': factories.InstanceFactory.get_url(self.instance)}}
         yield {'url': factories.BackupFactory.get_url(self.backup), 'method': 'DELETE'}
+
+    def test_permissions(self):
+        with patch('nodeconductor_openstack.openstack_tenant.executors.BackupDeleteExecutor.execute'):
+            super(BackupPermissionsTest, self).test_permissions()
 
 
 class BackupSourceFilterTest(test.APITransactionTestCase):
@@ -143,7 +116,7 @@ class BackupSourceFilterTest(test.APITransactionTestCase):
         self.assertEqual(3, len(response.data))
 
         response = self.client.get(factories.BackupFactory.get_list_url(), data={
-            'instance': instance1.uuid.hex})
+            'instance_uuid': instance1.uuid.hex})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(2, len(response.data))
         self.assertEqual(factories.InstanceFactory.get_url(instance1), response.data[0]['instance'])

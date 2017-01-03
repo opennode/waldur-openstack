@@ -1,4 +1,5 @@
 from __future__ import unicode_literals
+
 import logging
 
 from django.conf import settings
@@ -73,26 +74,6 @@ def change_floating_ip_quota_on_status_change(sender, instance, created=False, *
         add_quota('floating_ip_count', 1)
     if floating_ip.status == 'DOWN' and not created and floating_ip.tracker.previous('status') != 'DOWN':
         add_quota('floating_ip_count', -1)
-
-
-def log_backup_schedule_save(sender, instance, created=False, **kwargs):
-    if created:
-        event_logger.openstack_backup.info(
-            'Backup schedule for {resource_name} has been created.',
-            event_type='resource_backup_schedule_creation_succeeded',
-            event_context={'resource': instance.instance})
-    else:
-        event_logger.openstack_backup.info(
-            'Backup schedule for {resource_name} has been updated.',
-            event_type='resource_backup_schedule_update_succeeded',
-            event_context={'resource': instance.instance})
-
-
-def log_backup_schedule_delete(sender, instance, **kwargs):
-    event_logger.openstack_backup.info(
-        'Backup schedule for {resource_name} has been deleted.',
-        event_type='resource_backup_schedule_deletion_succeeded',
-        event_context={'resource': instance.instance})
 
 
 def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
