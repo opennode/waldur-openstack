@@ -5,8 +5,12 @@ from nodeconductor.core import (views as core_views,
                                 exceptions as core_exceptions,
                                 permissions as core_permissions,
                                 validators as core_validators,
+                                models as core_models,
                                 )
-from nodeconductor.structure import views as structure_views, filters as structure_filters
+from nodeconductor.structure import (views as structure_views,
+                                     filters as structure_filters,
+                                     permissions as structure_permissions,
+                                     ServiceBackendError)
 
 from . import models, serializers, filters, executors
 
@@ -272,10 +276,6 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         'create_backup_schedule': serializers.BackupScheduleSerializer,
     }
 
-    def perform_create(self, serializer):
-        # TODO [TM:1/3/17] find a better way to skip create executor. Reuse ActionViewSet?
-        return NotImplemented
-
     def _is_instance_ok_or_shutoff(instance):
         if instance and (instance.state != models.Instance.States.OK or
                          instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF):
@@ -303,6 +303,8 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_validators = partial_update_validators
     assign_floating_ip_validators = [_instance_has_external_ips]
 
+    create_permissions = [structure_permissions.is_staff]
+
     def get_serializer_context(self):
         context = super(InstanceViewSet, self).get_serializer_context()
         if self.action in ('backup', 'create_backup_schedule'):
@@ -317,6 +319,18 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         - instances that belong to a customer that a user owns.
         """
         return super(InstanceViewSet, self).list(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        service_project_link = serializer.validated_data['service_project_link']
+
+        if service_project_link.service.settings.state == core_models.SynchronizationStates.ERRED:
+            raise core_exceptions.IncorrectStateException(
+                detail='Cannot create resource if its service is in erred state.')
+
+        try:
+            self.perform_provision(serializer)
+        except ServiceBackendError as e:
+            raise exceptions.APIException(e)
 
     def create(self, request, *args, **kwargs):
         """
