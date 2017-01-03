@@ -23,7 +23,7 @@ class OpenStackTenantService(structure_models.Service):
     class Meta:
         unique_together = ('customer', 'settings')
         verbose_name = 'OpenStackTenant service'
-        verbose_name_plural = 'OpenStackTenan services'
+        verbose_name_plural = 'OpenStackTenant services'
 
     @classmethod
     def get_url_name(cls):

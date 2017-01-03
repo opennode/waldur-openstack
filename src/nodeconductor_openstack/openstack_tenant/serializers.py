@@ -8,10 +8,10 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from nodeconductor.core import serializers as core_serializers, fields as core_fields
+from nodeconductor.core import serializers as core_serializers, fields as core_fields, utils as core_utils
 from nodeconductor.structure import serializers as structure_serializers
 
-from . import models
+from . import models, fields
 
 
 logger = logging.getLogger(__name__)
@@ -457,6 +457,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             if floating_ip.status != 'DOWN':
                 raise serializers.ValidationError({'floating_ip': 'Floating IP status must be DOWN.'})
 
+            if floating_ip.settings != spl.service.settings:
+                raise serializers.ValidationError({
+                    'floating_ip': 'Floating IP must belong to the same service settings.'
+                })
+
         # Case 2. If floating_ip=None and allocate_floating_ip=True
         # then new floating IP is allocated and assigned to the instance.
         elif allocate_floating_ip:
@@ -626,6 +631,11 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
 
+    def validate(self, attrs):
+        if self.instance.backups.exists():
+            raise serializers.ValidationError('Cannot delete instance that has backups.')
+        return attrs
+
 
 class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
     security_groups = NestedSecurityGroupSerializer(
@@ -751,7 +761,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             'instance', 'service_project_link')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
             # 'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
         }
 
@@ -811,9 +821,26 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
         read_only_fields = ('url', 'uuid', 'is_active', 'backups', 'next_trigger_at', 'instance')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
-            'instance': {'lookup_field': 'uuid', 'view_name': 'openstack-instance-detail'},
+            'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
         }
 
     def create(self, validated_data):
         validated_data['instance'] = self.context['instance']
         return super(BackupScheduleSerializer, self).create(validated_data)
+
+
+class MeterSampleSerializer(serializers.Serializer):
+    name = serializers.CharField(source='counter_name')
+    value = serializers.FloatField(source='counter_volume')
+    type = serializers.CharField(source='counter_type')
+    unit = serializers.CharField(source='counter_unit')
+    timestamp = fields.StringTimestampField(formats=('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'))
+    recorded_at = fields.StringTimestampField(formats=('%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'))
+
+
+class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSerializer):
+    def get_fields(self):
+        fields = super(MeterTimestampIntervalSerializer, self).get_fields()
+        fields['start'].default = core_utils.timeshift(hours=-1)
+        fields['end'].default = core_utils.timeshift()
+        return fields

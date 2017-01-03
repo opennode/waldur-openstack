@@ -2,6 +2,8 @@ from __future__ import unicode_literals
 
 import logging
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -11,6 +13,7 @@ from nodeconductor.quotas import exceptions as quotas_exceptions
 from nodeconductor.structure import SupportedServices, models as structure_models, ServiceBackendError
 
 from nodeconductor_openstack.openstack_base.backend import update_pulled_fields
+
 from . import models, apps, serializers
 
 
@@ -331,3 +334,19 @@ class DeleteExpiredBackups(core_tasks.BackgroundTask):
         from . import executors
         for backup in models.Backup.objects.filter(kept_until__lt=timezone.now(), state=models.Backup.States.OK):
             executors.BackupDeleteExecutor.execute(backup)
+
+
+class SetErredStuckResources(core_tasks.BackgroundTask):
+    name = 'openstack_tenant.SetErredStuckResources'
+
+    def run(self):
+        for model in (models.Instance, models.Volume, models.Snapshot):
+            cutoff = timezone.now() - timedelta(minutes=30)
+            for resource in model.objects.filter(modified__lt=cutoff,
+                                                 state=structure_models.NewResource.States.CREATING):
+                resource.set_erred()
+                resource.error_message = 'Provisioning is timed out.'
+                resource.save(update_fields=['state', 'error_message'])
+                logger.warning('Switching resource %s to erred state, '
+                               'because provisioning is timed out.',
+                               core_utils.serialize_instance(resource))

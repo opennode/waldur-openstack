@@ -7,6 +7,7 @@ from nodeconductor.structure.tests import factories as structure_factories
 from . import factories, fixtures
 from .. import models
 
+
 @ddt
 class VolumeExtendTestCase(test.APITransactionTestCase):
     def setUp(self):
@@ -33,8 +34,9 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
 
     def test_user_can_not_extend_volume_if_resulting_quota_usage_is_greater_then_limit(self):
         self.client.force_authenticate(user=self.admin)
-        self.admined_volume.tenant.set_quota_usage('storage', self.admined_volume.size)
-        self.admined_volume.tenant.set_quota_limit('storage', self.admined_volume.size + 512)
+        settings = self.admined_volume.service_project_link.service.settings
+        settings.set_quota_usage('storage', self.admined_volume.size)
+        settings.set_quota_limit('storage', self.admined_volume.size + 512)
 
         new_size = self.admined_volume.size + 1024
         url = factories.VolumeFactory.get_url(self.admined_volume, action='extend')
@@ -62,12 +64,12 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
         url = factories.VolumeFactory.get_url(self.admined_volume, action='extend')
 
         response = self.client.post(url, {'disk_size': new_size})
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT, response.data)
 
 
 class VolumeAttachTestCase(test.APITransactionTestCase):
     def setUp(self):
-        self.fixture = fixtures.OpenStackFixture()
+        self.fixture = fixtures.OpenStackTenantFixture()
         self.volume = self.fixture.openstack_volume
         self.instance = self.fixture.openstack_instance
         self.url = factories.VolumeFactory.get_url(self.volume, action='attach')
@@ -116,7 +118,7 @@ class VolumeAttachTestCase(test.APITransactionTestCase):
 
 class VolumeSnapshotTestCase(test.APITransactionTestCase):
     def setUp(self):
-        self.fixture = fixtures.OpenStackFixture()
+        self.fixture = fixtures.OpenStackTenantFixture()
         self.volume = self.fixture.openstack_volume
         self.url = factories.VolumeFactory.get_url(self.volume, action='snapshot')
 
@@ -130,15 +132,3 @@ class VolumeSnapshotTestCase(test.APITransactionTestCase):
 
         response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_user_cannot_create_snapshot_for_volume_with_invalid_runtime_state(self):
-        self.volume.state = models.Volume.States.OK
-        self.volume.runtime_state = 'in-use'
-        self.volume.save()
-
-        self.client.force_authenticate(self.fixture.owner)
-        payload = {'name': '%s snapshot' % self.volume.name}
-
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(response.data['detail'], 'Volume runtime state should be "available".')

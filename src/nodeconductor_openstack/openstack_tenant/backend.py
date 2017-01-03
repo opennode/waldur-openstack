@@ -1,9 +1,11 @@
+import json
 import logging
 import time
 
 from django.db import transaction
 from django.utils import six, timezone, dateparse
 
+from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
 from glanceclient import exc as glance_exceptions
 from keystoneclient import exceptions as keystone_exceptions
@@ -766,6 +768,38 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
+    def pull_instance_security_groups(self, instance):
+        nova = self.nova_client
+        server_id = instance.backend_id
+        try:
+            backend_groups = nova.servers.list_security_group(server_id)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        backend_ids = set(g.id for g in backend_groups)
+        nc_ids = set(
+            models.SecurityGroup.objects
+            .filter(instances=instance)
+            .exclude(backend_id='')
+            .values_list('backend_id', flat=True)
+        )
+
+        # remove stale groups
+        stale_groups = models.SecurityGroup.objects.filter(backend_id__in=(nc_ids - backend_ids))
+        instance.security_groups.remove(*stale_groups)
+
+        # add missing groups
+        for group_id in backend_ids - nc_ids:
+            try:
+                security_group = models.SecurityGroup.objects.filter(tenant=instance.tenant).get(
+                    backend_id=group_id)
+            except models.SecurityGroup.DoesNotExist:
+                logger.exception(
+                    'Security group with id %s does not exist at NC. Tenant : %s' % (group_id, instance.tenant))
+            else:
+                instance.security_groups.add(security_group)
+
+    @log_backend_action()
     def push_instance_security_groups(self, instance):
         nova = self.nova_client
         server_id = instance.backend_id
@@ -886,3 +920,31 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             nova.servers.confirm_resize(instance.backend_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def list_meters(self, resource):
+        try:
+            file_name = self._get_meters_file_name(resource.__class__)
+            with open(file_name) as meters_file:
+                meters = json.load(meters_file)
+        except (KeyError, IOError):
+            raise OpenStackBackendError("Cannot find meters for the '%s' resources" % resource.__class__.__name__)
+
+        return meters
+
+    @log_backend_action()
+    def get_meter_samples(self, resource, meter_name, start=None, end=None):
+        query = [dict(field='resource_id', op='eq', value=resource.backend_id)]
+
+        if start is not None:
+            query.append(dict(field='timestamp', op='ge', value=start.strftime('%Y-%m-%dT%H:%M:%S')))
+        if end is not None:
+            query.append(dict(field='timestamp', op='le', value=end.strftime('%Y-%m-%dT%H:%M:%S')))
+
+        ceilometer = self.ceilometer_client
+        try:
+            samples = ceilometer.samples.list(meter_name=meter_name, q=query)
+        except ceilometer_exceptions.BaseException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return samples

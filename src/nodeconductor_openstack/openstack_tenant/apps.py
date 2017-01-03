@@ -21,11 +21,12 @@ class OpenStackTenantConfig(AppConfig):
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
         from nodeconductor_openstack.openstack.models import Tenant
-        for quota_name in Tenant.get_quotas_names():
+        for quota in Tenant.get_quotas_fields():
             ServiceSettings.add_quota_field(
-                name=quota_name,
+                name=quota.name,
                 quota_field=QuotaField(
                     is_backend=True,
+                    default_limit=quota.default_limit,
                     creation_condition=lambda service_settings:
                         service_settings.type == OpenStackTenantConfig.service_name
                 )

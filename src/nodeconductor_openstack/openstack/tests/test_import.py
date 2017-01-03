@@ -1,11 +1,11 @@
 import mock
 
-from django.utils import timezone
 from rest_framework import status
 
 from nodeconductor.structure.tests import factories as structure_factories
 
 from .test_backend import BaseBackendTestCase
+
 from . import factories
 from .. import models
 
@@ -73,112 +73,3 @@ class TenantImportTestCase(BaseImportTestCase):
             'resource_type': 'OpenStack.Tenant',
             'project': structure_factories.ProjectFactory.get_url(self.project)
         }
-
-
-class InstanceImportTestCase(BaseImportTestCase):
-    def setUp(self):
-        super(InstanceImportTestCase, self).setUp()
-        self.tenant = factories.TenantFactory(service_project_link=self.link, backend_id='VALID_ID')
-
-        self.mocked_flavor = mock.Mock()
-        self.mocked_flavor.name = 'standard'
-        self.mocked_flavor.disk = 10240
-        self.mocked_flavor.ram = 2048
-        self.mocked_flavor.vcpus = 3
-
-        self.mocked_instance = mock.Mock()
-        self.mocked_instance.id = '1'
-        self.mocked_instance.name = 'Webserver'
-        self.mocked_instance.status = 'ACTIVE'
-        self.mocked_instance.flavor = {'id': 1}
-        self.mocked_instance.addresses = {}
-        self.mocked_instance.security_groups = []
-        self.mocked_instance.created = timezone.now().isoformat()
-        del self.mocked_instance.fault
-
-        self.mocked_nova().flavors.get.return_value = self.mocked_flavor
-        self.mocked_nova().servers.get.return_value = self.mocked_instance
-        self.mocked_nova().servers.list.return_value = [self.mocked_instance]
-
-    def test_user_can_list_importable_instances(self):
-        response = self.client.get(self.url, {
-            'tenant_uuid': self.tenant.uuid.hex,
-            'resource_type': 'OpenStack.Instance'
-        })
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertEqual(response.data, [{
-            'id': self.mocked_instance.id,
-            'name': self.mocked_instance.name,
-            'runtime_state': self.mocked_instance.status,
-            'type': 'OpenStack.Instance'
-        }])
-
-    def test_user_can_import_instance(self):
-        response = self.client.post(self.url, {
-            'backend_id': self.mocked_instance.id,
-            'resource_type': 'OpenStack.Instance',
-            'tenant': factories.TenantFactory.get_url(self.tenant),
-            'project': structure_factories.ProjectFactory.get_url(self.project)
-        })
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        instance = models.Instance.objects.get(uuid=response.data['uuid'])
-        self.assertEqual(instance.tenant, self.tenant)
-        self.assertEqual(instance.service_project_link, self.link)
-        self.assertEqual(instance.name, self.mocked_instance.name)
-        self.assertEqual(instance.backend_id, self.mocked_instance.id)
-        self.assertEqual(instance.state, models.Instance.States.OK)
-
-        self.assertEqual(instance.flavor_name, self.mocked_flavor.name)
-        self.assertEqual(instance.flavor_disk, self.mocked_flavor.disk)
-        self.assertEqual(instance.cores, self.mocked_flavor.vcpus)
-        self.assertEqual(instance.ram, self.mocked_flavor.ram)
-
-
-class VolumeImportTestCase(BaseImportTestCase):
-    def setUp(self):
-        super(VolumeImportTestCase, self).setUp()
-        self.tenant = factories.TenantFactory(service_project_link=self.link, backend_id='VALID_ID')
-        self.mocked_volume = mock.Mock()
-        self.mocked_volume.id = '1'
-        self.mocked_volume.size = 10
-        self.mocked_volume.name = 'Webserver data volume'
-        self.mocked_volume.status = 'AVAILABLE'
-        self.mocked_volume.metadata = {}
-        self.mocked_volume.attachments = [{'device': '/dev/vba'}]
-        del self.mocked_volume.volume_image_metadata
-
-        self.mocked_cinder().volumes.list.return_value = [self.mocked_volume]
-        self.mocked_cinder().volumes.get.return_value = self.mocked_volume
-
-    def test_user_can_list_importable_volumes(self):
-        response = self.client.get(self.url, {
-            'tenant_uuid': self.tenant.uuid.hex,
-            'resource_type': 'OpenStack.Volume'
-        })
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertEqual(response.data, [{
-            'id': self.mocked_volume.id,
-            'name': self.mocked_volume.name,
-            'size': self.mocked_volume.size * 1024,
-            'runtime_state': self.mocked_volume.status,
-            'type': 'OpenStack.Volume'
-        }])
-
-    def test_user_can_import_volume(self):
-        response = self.client.post(self.url, {
-            'backend_id': self.mocked_volume.id,
-            'resource_type': 'OpenStack.Volume',
-            'tenant': factories.TenantFactory.get_url(self.tenant),
-            'project': structure_factories.ProjectFactory.get_url(self.project)
-        })
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        volume = models.Volume.objects.get(uuid=response.data['uuid'])
-        self.assertEqual(volume.tenant, self.tenant)
-        self.assertEqual(volume.service_project_link, self.link)
-        self.assertEqual(volume.name, self.mocked_volume.name)
-        self.assertEqual(volume.size, self.mocked_volume.size * 1024)
-        self.assertEqual(volume.backend_id, self.mocked_volume.id)
-        self.assertEqual(volume.state, models.Volume.States.OK)
-        self.assertEqual(volume.runtime_state, self.mocked_volume.status)
