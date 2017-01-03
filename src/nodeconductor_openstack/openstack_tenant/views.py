@@ -196,7 +196,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     def check_operation(self, request, resource, action):
         volume = resource
-        if action in ('attach', 'snapshot') and volume.runtime_state != 'available':
+        if action == 'attach' and volume.runtime_state != 'available':
             raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
         elif action == 'detach':
             if volume.bootable:

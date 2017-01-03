@@ -132,15 +132,3 @@ class VolumeSnapshotTestCase(test.APITransactionTestCase):
 
         response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_user_cannot_create_snapshot_for_volume_with_invalid_runtime_state(self):
-        self.volume.state = models.Volume.States.OK
-        self.volume.runtime_state = 'in-use'
-        self.volume.save()
-
-        self.client.force_authenticate(self.fixture.owner)
-        payload = {'name': '%s snapshot' % self.volume.name}
-
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(response.data['detail'], 'Volume runtime state should be "available".')
