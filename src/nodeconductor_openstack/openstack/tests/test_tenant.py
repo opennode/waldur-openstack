@@ -2,6 +2,7 @@ from ddt import data, ddt
 from mock import patch
 
 from rest_framework import test, status
+
 from nodeconductor.structure.tests import factories as structure_factories
 from nodeconductor_openstack.openstack.models import Tenant, OpenStackService
 
