@@ -4,7 +4,7 @@ from django.utils import six
 
 from nodeconductor.structure import ServiceBackendError, tasks as structure_tasks
 
-from . import models
+from nodeconductor_openstack.openstack import models
 
 
 logger = logging.getLogger(__name__)

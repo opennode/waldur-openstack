@@ -4,6 +4,9 @@ from celery import chain
 
 from nodeconductor.core import tasks as core_tasks, executors as core_executors, utils as core_utils
 
+from . import tasks
+
+
 logger = logging.getLogger(__name__)
 
 
