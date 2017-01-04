@@ -879,7 +879,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def create_network(self, network):
         neutron = self.neutron_admin_client
 
-        data = {'name': network.name, 'description': network.description, 'tenant_id': network.tenant.backend_id}
+        data = {'name': network.name, 'tenant_id': network.tenant.backend_id}
         try:
             response = neutron.create_network({'networks': [data]})
         except neutron_exceptions.NeutronException as e:
@@ -898,7 +898,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def update_network(self, network):
         neutron = self.neutron_admin_client
 
-        data = {'name': network.name, 'description': network.description}
+        data = {'name': network.name}
         try:
             neutron.update_network(network.backend_id, {'network': data})
         except neutron_exceptions.NeutronException as e:
@@ -924,7 +924,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         network = models.Network(
             name=backend_network['name'],
-            description=backend_network['description'] or '',
             type=backend_network.get('provider:network_type'),
             segmentation_id=backend_network.get('provider:segmentation_id'),
             runtime_state=backend_network['status'],
@@ -939,7 +938,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         network.refresh_from_db()
         if network.modified < import_time:
-            update_fields = ('name', 'description', 'type', 'segmentation_id', 'runtime_state')
+            update_fields = ('name', 'type', 'segmentation_id', 'runtime_state')
             update_pulled_fields(network, imported_network, update_fields)
 
     @log_backend_action()
@@ -948,7 +947,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         data = {
             'name': subnet.name,
-            'description': subnet.description,
             'network_id': subnet.network.backend_id,
             'tenant_id': subnet.network.tenant.backend_id,
             'cidr': subnet.cidr,
@@ -975,7 +973,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def update_subnet(self, subnet):
         neutron = self.neutron_admin_client
 
-        data = {'name': subnet.name, 'description': subnet.description}
+        data = {'name': subnet.name}
         try:
             neutron.update_subnet(subnet.backend_id, {'subnet': data})
         except neutron_exceptions.NeutronException as e:
@@ -998,7 +996,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         subnet = models.SubNet(
             name=backend_subnet['name'],
-            description=backend_subnet['description'] or '',
             allocation_pools=backend_subnet['allocation_pools'],
             cidr=backend_subnet['cidr'],
             ip_version=backend_subnet.get('ip_version'),
@@ -1015,8 +1012,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         subnet.refresh_from_db()
         if subnet.modified < import_time:
-            update_fields = ('name', 'description', 'cidr', 'allocation_pools', 'ip_version', 'gateway_ip',
-                             'enable_dhcp')
+            update_fields = ('name', 'cidr', 'allocation_pools', 'ip_version', 'gateway_ip', 'enable_dhcp')
             update_pulled_fields(subnet, imported_subnet, update_fields)
 
     def _check_tenant_network(self, tenant):
