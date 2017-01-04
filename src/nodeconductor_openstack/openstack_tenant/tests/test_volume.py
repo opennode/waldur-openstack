@@ -58,6 +58,7 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
     def test_user_can_not_extend_volume_if_volume_does_not_have_backend_id(self):
         self.client.force_authenticate(user=self.admin)
         self.admined_volume.backend_id = ''
+        self.admined_volume.state = models.Instance.States.ERRED
         self.admined_volume.save()
 
         new_size = self.admined_volume.size + 1024

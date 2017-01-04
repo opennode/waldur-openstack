@@ -147,22 +147,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     pull_executor = executors.VolumePullExecutor
     filter_class = filters.VolumeFilter
 
-    extend_serializer_class = serializers.VolumeExtendSerializer
     snapshot_serializer_class = serializers.SnapshotSerializer
-    attach_serializer_class = serializers.VolumeAttachSerializer
-
-    def _extend_permission(request, view, obj=None):
-        user = request.user
-        if user.is_staff or not obj:
-            return
-
-        if obj.project and (obj.project.has_user(user, structure_models.ProjectRole.ADMINISTRATOR) or
-                            obj.project.has_user(user, structure_models.ProjectRole.MANAGER)):
-            return
-
-        raise exceptions.PermissionDenied()
-
-    extend_permissions = [_extend_permission]
 
     def _is_volume_bootable(volume):
         if volume.bootable:
@@ -172,23 +157,11 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if volume.instance and volume.instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF:
             raise core_exceptions.IncorrectStateException('Volume instance should be in shutoff state.')
 
-    def _volume_has_backend_id(volume):
-        if not volume.backend_id:
-            raise core_exceptions.IncorrectStateException('Unable to extend volume without backend_id.')
-
     def _volume_snapshots_exist(volume):
         if volume.snapshots.exists():
             raise core_exceptions.IncorrectStateException('Volume has dependent snapshots.')
 
-    extend_validators = [_volume_has_backend_id, _is_volume_bootable,
-                         _is_volume_instance_shutoff,
-                         core_validators.StateValidator(models.Instance.States.OK)]
     destroy_validators = [_volume_snapshots_exist, core_validators.StateValidator(models.Instance.States.OK)]
-    detach_validators = [_is_volume_bootable,
-                         core_validators.RuntimeStateValidator('in-use'),
-                         core_validators.StateValidator(models.Instance.States.OK)]
-    attach_validators = [core_validators.RuntimeStateValidator('available'),
-                         core_validators.StateValidator(models.Instance.States.OK)]
 
     def get_serializer_context(self):
         context = super(VolumeViewSet, self).get_serializer_context()
@@ -209,6 +182,12 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.VolumeExtendExecutor().execute(volume, old_size=old_size, new_size=volume.size)
 
         return response.Response({'status': 'extend was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
+    extend_permissions = [structure_permissions.is_administrator]
+    extend_validators = [_is_volume_bootable,
+                         _is_volume_instance_shutoff,
+                         core_validators.StateValidator(models.Instance.States.OK)]
+    extend_serializer_class = serializers.VolumeExtendSerializer
 
     @decorators.detail_route(methods=['post'])
     def snapshot(self, request, uuid=None):
@@ -231,11 +210,19 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.VolumeAttachExecutor().execute(volume)
         return response.Response({'status': 'attach was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
+    attach_validators = [core_validators.RuntimeStateValidator('available'),
+                         core_validators.StateValidator(models.Instance.States.OK)]
+    attach_serializer_class = serializers.VolumeAttachSerializer
+
     @decorators.detail_route(methods=['post'])
     def detach(self, request, uuid=None):
         """ Detach instance from volume """
         volume = self.get_object()
         executors.VolumeDetachExecutor().execute(volume)
+
+    detach_validators = [_is_volume_bootable,
+                         core_validators.RuntimeStateValidator('in-use'),
+                         core_validators.StateValidator(models.Instance.States.OK)]
 
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
@@ -267,51 +254,12 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_executor = executors.InstanceUpdateExecutor
     permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
 
-    assign_floating_ip_serializer_class = serializers.AssignFloatingIpSerializer
-    change_flavor_serializer_class = serializers.InstanceFlavorChangeSerializer
-    destroy_serializer_class = serializers.InstanceDeleteSerializer
-    update_security_groups_serializer_class = serializers.InstanceSecurityGroupsUpdateSerializer
-    backup_serializer_class = serializers.BackupSerializer
-    create_backup_schedule_serializer_class = serializers.BackupScheduleSerializer
-
     def _instance_has_external_ips(instance):
         if instance.external_ips:
             raise core_exceptions.IncorrectStateException('Instance already has floating IP.')
 
-    start_validators = [core_validators.StateValidator(models.Instance.States.OK),
-                        core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
-
-    change_flavor_validators = [core_validators.StateValidator(models.Instance.States.OK),
-                                core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
-
-    resize_validators = [core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF),
-                         core_validators.StateValidator(models.Instance.States.OK)]
-
-    destroy_validators = [core_validators.StateValidator(models.Instance.States.OK, models.Instance.States.ERRED),
-                          core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
-
-    pull_validators = [core_validators.StateValidator(models.Instance.States.OK, models.Instance.States.ERRED)]
-
-    stop_validators = [core_validators.StateValidator(models.Instance.States.OK),
-                       core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
-
-    restart_validators = [core_validators.StateValidator(models.Instance.States.OK),
-                          core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
-
-    partial_update_validators = [core_validators.StateValidator(models.Instance.States.OK)]
-
-    update_validators = partial_update_validators
-
-    assign_floating_ip_validators = [core_validators.StateValidator(models.Instance.States.OK),
-                                     _instance_has_external_ips]
-
-    create_backup_schedule_validators = [core_validators.StateValidator(models.Instance.States.OK)]
-
-    backup_validators = [core_validators.StateValidator(models.Instance.States.OK)]
-
-    update_security_groups_validators = [core_validators.StateValidator(models.Instance.States.OK)]
-
-    create_permissions = [structure_permissions.is_staff]
+    update_validators = partial_update_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+    create_permissions = [structure_permissions.is_administrator]
 
     def get_serializer_context(self):
         context = super(InstanceViewSet, self).get_serializer_context()
@@ -435,10 +383,16 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         return response.Response({'status': 'destroy was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
+    destroy_validators = [core_validators.StateValidator(models.Instance.States.OK, models.Instance.States.ERRED),
+                          core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
+    destroy_serializer_class = serializers.InstanceDeleteSerializer
+
     @decorators.detail_route(methods=['post'])
     def pull(self, request, uuid=None):
         instance = self.get_object()
         self.pull_executor.execute(instance)
+
+    pull_validators = [core_validators.StateValidator(models.Instance.States.OK, models.Instance.States.ERRED)]
 
     @decorators.detail_route(methods=['post'])
     def assign_floating_ip(self, request, uuid=None):
@@ -475,6 +429,9 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response({'status': 'assign_floating_ip was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     assign_floating_ip.title = 'Assign floating IP'
+    assign_floating_ip_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                                     _instance_has_external_ips]
+    assign_floating_ip_serializer_class = serializers.AssignFloatingIpSerializer
 
     @decorators.detail_route(methods=['post'])
     def change_flavor(self, request, uuid=None):
@@ -488,11 +445,18 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor, old_flavor_name=old_flavor_name)
         return response.Response({'status': 'change_flavor was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
+    change_flavor_serializer_class = serializers.InstanceFlavorChangeSerializer
+    change_flavor_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                                core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
+
     @decorators.detail_route(methods=['post'])
     def start(self, request, uuid=None):
         instance = self.get_object()
         executors.InstanceStartExecutor().execute(instance)
         return response.Response({'status': 'start was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
+    start_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                        core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
 
     @decorators.detail_route(methods=['post'])
     def stop(self, request, uuid=None):
@@ -500,11 +464,17 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.InstanceStopExecutor().execute(instance)
         return response.Response({'status': 'stop was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
+    stop_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                       core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
+
     @decorators.detail_route(methods=['post'])
     def restart(self, request, uuid=None):
         instance = self.get_object()
         executors.InstanceRestartExecutor().execute(instance)
         return response.Response({'status': 'restart was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
+    restart_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                          core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
 
     @decorators.detail_route(methods=['post'])
     def update_security_groups(self, request, uuid=None):
@@ -516,6 +486,9 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.InstanceUpdateSecurityGroupsExecutor().execute(instance)
         return response.Response({'status': 'security groups update was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
+    update_security_groups_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+    update_security_groups_serializer_class = serializers.InstanceSecurityGroupsUpdateSerializer
+
     @decorators.detail_route(methods=['post'])
     def backup(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
@@ -525,12 +498,18 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.BackupCreateExecutor().execute(backup)
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    backup_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+    backup_serializer_class = serializers.BackupSerializer
+
     @decorators.detail_route(methods=['post'])
     def create_backup_schedule(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    create_backup_schedule_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+    create_backup_schedule_serializer_class = serializers.BackupScheduleSerializer
 
 
 class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
@@ -541,6 +520,7 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     filter_class = filters.BackupFilter
     delete_executor = executors.BackupDeleteExecutor
     filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
+    #   TODO [TM:1/4/17] remove
     permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
     serializers = {
         'restore': serializers.BackupRestorationSerializer,
