@@ -251,7 +251,6 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     serializer_class = serializers.InstanceSerializer
     pull_executor = executors.InstancePullExecutor
     update_executor = executors.InstanceUpdateExecutor
-    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
 
     def _instance_has_external_ips(instance):
         if instance.external_ips:
