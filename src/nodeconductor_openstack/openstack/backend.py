@@ -893,6 +893,10 @@ class OpenStackBackend(BaseOpenStackBackend):
             if backend_network.get('provider:segmentation_id'):
                 network.segmentation_id = backend_network['provider:segmentation_id']
             network.save()
+            # XXX: temporary fix - right now backend logic is based on statement "one tenant has one network"
+            # We need to fix this in the future.
+            network.tenant.internal_network_id = network.backend_id
+            network.tenant.save()
 
     @log_backend_action()
     def update_network(self, network):
