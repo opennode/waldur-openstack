@@ -150,7 +150,6 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     extend_serializer_class = serializers.VolumeExtendSerializer
     snapshot_serializer_class = serializers.SnapshotSerializer
     attach_serializer_class = serializers.VolumeAttachSerializer
-    create_validators = partial_create_validators = [core_validators.StateValidator(models.Instance.States.OK)]
 
     def _extend_permission(request, view, obj=None):
         user = request.user
@@ -177,12 +176,6 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if volume.runtime_state != 'in-use':
             raise core_exceptions.IncorrectStateException('Volume runtime state should be "in-use".')
 
-    def _is_volume_instance_ok(volume):
-        if not volume.instance:
-            raise core_exceptions.IncorrectStateException('Volume is not attached to any instance.')
-        if volume.instance.state != models.Instance.States.OK:
-            raise core_exceptions.IncorrectStateException('Volume can be detached only if instance is in state OK.')
-
     def _is_volume_instance_shutoff(volume):
         if volume.instance and volume.instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF:
             raise core_exceptions.IncorrectStateException('Volume instance should be in shutoff state.')
@@ -195,10 +188,12 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if volume.snapshots.exists():
             raise core_exceptions.IncorrectStateException('Volume has dependent snapshots.')
 
-    extend_validators = [_volume_has_backend_id, _is_volume_bootable, _is_volume_instance_shutoff]
-    destroy_validators = [_volume_snapshots_exist]
-    detach_validators = [_is_volume_bootable, _is_volume_in_use, _is_volume_instance_ok]
-    attach_validators = [_is_volume_available]
+    extend_validators = [_volume_has_backend_id, _is_volume_bootable, _is_volume_instance_shutoff,
+                         core_validators.StateValidator(models.Instance.States.OK)]
+    destroy_validators = [_volume_snapshots_exist, core_validators.StateValidator(models.Instance.States.OK)]
+    detach_validators = [_is_volume_bootable, _is_volume_in_use,
+                         core_validators.StateValidator(models.Instance.States.OK)]
+    attach_validators = [_is_volume_available, core_validators.StateValidator(models.Instance.States.OK)]
 
     def get_serializer_context(self):
         context = super(VolumeViewSet, self).get_serializer_context()
@@ -207,9 +202,9 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return context
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def extend(self, request, volume, uuid=None):
+    def extend(self, request, uuid=None):
         """ Increase volume size """
+        volume = self.get_object()
         old_size = volume.size
         serializer = self.get_serializer(volume, data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -218,9 +213,10 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         volume.refresh_from_db()
         executors.VolumeExtendExecutor().execute(volume, old_size=old_size, new_size=volume.size)
 
+        return response.Response({'status': 'extend was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def snapshot(self, request, volume, uuid=None):
+    def snapshot(self, request, uuid=None):
         """ Create snapshot from volume """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -230,19 +226,20 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def attach(self, request, volume, uuid=None):
+    def attach(self, request, uuid=None):
         """ Attach volume to instance """
+        volume = self.get_object()
         serializer = self.get_serializer(volume, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
         executors.VolumeAttachExecutor().execute(volume)
+        return response.Response({'status': 'attach was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def detach(self, request, volume, uuid=None):
+    def detach(self, request, uuid=None):
         """ Detach instance from volume """
+        volume = self.get_object()
         executors.VolumeDetachExecutor().execute(volume)
 
 
@@ -394,8 +391,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     async_executor = True
 
-    @structure_views.safe_operation()
-    def destroy(self, request, resource, uuid=None):
+    def destroy(self, request, uuid=None):
         """
         Deletion of an instance is done through sending a **DELETE** request to the instance URI.
         Valid request example (token is user specific):
@@ -426,6 +422,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         serializer.is_valid(raise_exception=True)
         delete_volumes = serializer.validated_data['delete_volumes']
 
+        resource = self.get_object()
         force = resource.state == models.Instance.States.ERRED
         executors.InstanceDeleteExecutor.execute(
             resource,
@@ -434,14 +431,15 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             async=self.async_executor
         )
 
+        return response.Response({'status': 'destroy was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def pull(self, request, instance, uuid=None):
+    def pull(self, request, uuid=None):
+        instance = self.get_object()
         self.pull_executor.execute(instance)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def assign_floating_ip(self, request, instance, uuid=None):
+    def assign_floating_ip(self, request, uuid=None):
         """
         To assign floating IP to the instance, make **POST** request to
         */api/openstacktenant-instances/<uuid>/assign_floating_ip/* with link to the floating IP.
@@ -463,6 +461,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                 "floating_ip": "http://example.com/api/floating-ips/5e7d93955f114d88981dea4f32ab673d/"
             }
         """
+        instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
         floating_ip = serializer.save()
@@ -471,11 +470,13 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         else:
             executors.InstanceAssignFloatingIpExecutor.execute(instance)
 
+        return response.Response({'status': 'assign_floating_ip was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
     assign_floating_ip.title = 'Assign floating IP'
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def change_flavor(self, request, instance, uuid=None):
+    def change_flavor(self, request, uuid=None):
+        instance = self.get_object()
         old_flavor_name = instance.flavor_name
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -483,34 +484,38 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         flavor = serializer.validated_data.get('flavor')
         executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor, old_flavor_name=old_flavor_name)
+        return response.Response({'status': 'change_flavor was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def start(self, request, instance, uuid=None):
+    def start(self, request, uuid=None):
+        instance = self.get_object()
         executors.InstanceStartExecutor().execute(instance)
+        return response.Response({'status': 'start was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def stop(self, request, instance, uuid=None):
+    def stop(self, request, uuid=None):
+        instance = self.get_object()
         executors.InstanceStopExecutor().execute(instance)
+        return response.Response({'status': 'stop was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def restart(self, request, instance, uuid=None):
+    def restart(self, request, uuid=None):
+        instance = self.get_object()
         executors.InstanceRestartExecutor().execute(instance)
+        return response.Response({'status': 'restart was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def update_security_groups(self, request, instance, uuid=None):
+    def update_security_groups(self, request, uuid=None):
+        instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
         executors.InstanceUpdateSecurityGroupsExecutor().execute(instance)
+        return response.Response({'status': 'security groups update was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def backup(self, request, instance, uuid=None):
+    def backup(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         backup = serializer.save()
@@ -519,8 +524,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @decorators.detail_route(methods=['post'])
-    @structure_views.safe_operation()
-    def create_backup_schedule(self, request, instance, uuid=None):
+    def create_backup_schedule(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
