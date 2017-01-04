@@ -516,10 +516,8 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     lookup_field = 'uuid'
     filter_class = filters.BackupFilter
     delete_executor = executors.BackupDeleteExecutor
-    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
-    serializers = {
-        'restore': serializers.BackupRestorationSerializer,
-    }
+
+    disabled_actions = ['create']
 
     def list(self, request, *args, **kwargs):
         """
@@ -554,10 +552,6 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         """
         return super(BackupViewSet, self).retrieve(request, *args, **kwargs)
 
-    def get_serializer_class(self):
-        serializer = self.serializers.get(self.action)
-        return serializer or super(BackupViewSet, self).get_serializer_class()
-
     def get_serializer_context(self):
         context = super(BackupViewSet, self).get_serializer_context()
         if self.action == 'restore':
@@ -575,6 +569,8 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         instance_serialiser = serializers.InstanceSerializer(
             backup_restoration.instance, context={'request': self.request})
         return response.Response(instance_serialiser.data, status=status.HTTP_201_CREATED)
+
+    restore_serializer_class = serializers.BackupRestorationSerializer
 
 
 class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
