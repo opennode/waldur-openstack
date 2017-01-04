@@ -55,9 +55,8 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
         response = self.client.post(url, {'disk_size': new_size})
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT, response.data)
 
-    def test_user_can_not_extend_volume_if_volume_does_not_have_backend_id(self):
+    def test_user_can_not_extend_volume_if_volume_is_in_erred_state(self):
         self.client.force_authenticate(user=self.admin)
-        self.admined_volume.backend_id = ''
         self.admined_volume.state = models.Instance.States.ERRED
         self.admined_volume.save()
 
