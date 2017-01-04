@@ -183,7 +183,6 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         return response.Response({'status': 'extend was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
-    extend_permissions = [structure_permissions.is_administrator]
     extend_validators = [_is_volume_bootable,
                          _is_volume_instance_shutoff,
                          core_validators.StateValidator(models.Instance.States.OK)]
@@ -259,7 +258,6 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             raise core_exceptions.IncorrectStateException('Instance already has floating IP.')
 
     update_validators = partial_update_validators = [core_validators.StateValidator(models.Instance.States.OK)]
-    create_permissions = [structure_permissions.is_administrator]
 
     def get_serializer_context(self):
         context = super(InstanceViewSet, self).get_serializer_context()
@@ -520,8 +518,6 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     filter_class = filters.BackupFilter
     delete_executor = executors.BackupDeleteExecutor
     filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
-    #   TODO [TM:1/4/17] remove
-    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
     serializers = {
         'restore': serializers.BackupRestorationSerializer,
     }
