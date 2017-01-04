@@ -283,13 +283,13 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     create_backup_schedule_serializer_class = serializers.BackupScheduleSerializer
 
     def _is_instance_ok_or_shutoff(instance):
-        if instance and (instance.state != models.Instance.States.OK or
-                         instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF):
+        if instance.state != models.Instance.States.OK or \
+           instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF:
             raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
 
     def _is_instance_ok_or_active(instance):
-        if instance and (instance.state != models.Instance.States.OK or
-                         instance.runtime_state != models.Instance.RuntimeStates.ACTIVE):
+        if instance.state != models.Instance.States.OK or \
+           instance.runtime_state != models.Instance.RuntimeStates.ACTIVE:
             raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
 
     def _instance_has_external_ips(instance):
