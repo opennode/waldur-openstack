@@ -164,17 +164,9 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     extend_permissions = [_extend_permission]
 
-    def _is_volume_available(volume):
-        if volume.runtime_state != 'available':
-            raise core_exceptions.IncorrectStateException('Volume runtime state should be "available".')
-
     def _is_volume_bootable(volume):
         if volume.bootable:
             raise core_exceptions.IncorrectStateException('It is impossible to detach bootable volume.')
-
-    def _is_volume_in_use(volume):
-        if volume.runtime_state != 'in-use':
-            raise core_exceptions.IncorrectStateException('Volume runtime state should be "in-use".')
 
     def _is_volume_instance_shutoff(volume):
         if volume.instance and volume.instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF:
@@ -188,12 +180,15 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if volume.snapshots.exists():
             raise core_exceptions.IncorrectStateException('Volume has dependent snapshots.')
 
-    extend_validators = [_volume_has_backend_id, _is_volume_bootable, _is_volume_instance_shutoff,
+    extend_validators = [_volume_has_backend_id, _is_volume_bootable,
+                         _is_volume_instance_shutoff,
                          core_validators.StateValidator(models.Instance.States.OK)]
     destroy_validators = [_volume_snapshots_exist, core_validators.StateValidator(models.Instance.States.OK)]
-    detach_validators = [_is_volume_bootable, _is_volume_in_use,
+    detach_validators = [_is_volume_bootable,
+                         core_validators.RuntimeStateValidator('in-use'),
                          core_validators.StateValidator(models.Instance.States.OK)]
-    attach_validators = [_is_volume_available, core_validators.StateValidator(models.Instance.States.OK)]
+    attach_validators = [core_validators.RuntimeStateValidator('available'),
+                         core_validators.StateValidator(models.Instance.States.OK)]
 
     def get_serializer_context(self):
         context = super(VolumeViewSet, self).get_serializer_context()
@@ -279,34 +274,41 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     backup_serializer_class = serializers.BackupSerializer
     create_backup_schedule_serializer_class = serializers.BackupScheduleSerializer
 
-    def _is_instance_ok_or_shutoff(instance):
-        if instance.state != models.Instance.States.OK or \
-           instance.runtime_state != models.Instance.RuntimeStates.SHUTOFF:
-            raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
-
-    def _is_instance_ok_or_active(instance):
-        if instance.state != models.Instance.States.OK or \
-           instance.runtime_state != models.Instance.RuntimeStates.ACTIVE:
-            raise core_exceptions.IncorrectStateException('Instance state has to be shutoff and in state OK.')
-
     def _instance_has_external_ips(instance):
         if instance.external_ips:
             raise core_exceptions.IncorrectStateException('Instance already has floating IP.')
 
-    start_validators = [core_validators.StateValidator(models.Instance.States.OK), _is_instance_ok_or_shutoff]
-    change_flavor_validators = [core_validators.StateValidator(models.Instance.States.OK), _is_instance_ok_or_shutoff]
-    resize_validators = [_is_instance_ok_or_shutoff]
+    start_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                        core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
+
+    change_flavor_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                                core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
+
+    resize_validators = [core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF),
+                         core_validators.StateValidator(models.Instance.States.OK)]
+
     destroy_validators = [core_validators.StateValidator(models.Instance.States.OK, models.Instance.States.ERRED),
-                          _is_instance_ok_or_shutoff]
+                          core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
+
     pull_validators = [core_validators.StateValidator(models.Instance.States.OK, models.Instance.States.ERRED)]
-    stop_validators = [core_validators.StateValidator(models.Instance.States.OK), _is_instance_ok_or_active]
-    restart_validators = [core_validators.StateValidator(models.Instance.States.OK), _is_instance_ok_or_active]
+
+    stop_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                       core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
+
+    restart_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                          core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
+
     partial_update_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+
     update_validators = partial_update_validators
+
     assign_floating_ip_validators = [core_validators.StateValidator(models.Instance.States.OK),
                                      _instance_has_external_ips]
+
     create_backup_schedule_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+
     backup_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+
     update_security_groups_validators = [core_validators.StateValidator(models.Instance.States.OK)]
 
     create_permissions = [structure_permissions.is_staff]
