@@ -1030,19 +1030,19 @@ class OpenStackBackend(BaseOpenStackBackend):
                              tenant.internal_network_id)
             six.reraise(OpenStackBackendError, e)
 
-    def _get_or_create_floating_ip(self, tenant):
-        # TODO: check availability and quota
-        if not tenant.floating_ips.filter(
-            runtime_state='DOWN',
-            backend_network_id=tenant.external_network_id
-        ).exists():
-            floating_ip = models.FloatingIP.objects.create(
-                tenant=tenant,
-                service_project_link=tenant.service_project_link,
-            )
-
-            self.create_floating_ip(floating_ip)
-        return floating_ip
+    @log_backend_action('pull floating ip')
+    def pull_floating_ip(self, floating_ip):
+        neutron = self.neutron_client
+        try:
+            backend_floating_ip = neutron.show_floatingip(floating_ip.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            floating_ip.runtime_state = backend_floating_ip['status']
+            floating_ip.address = backend_floating_ip['floating_ip_address']
+            floating_ip.name = backend_floating_ip['floating_ip_address']
+            floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
+            floating_ip.save()
 
     @log_backend_action('delete floating ip')
     def delete_floating_ip(self, floating_ip):

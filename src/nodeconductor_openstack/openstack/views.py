@@ -296,6 +296,7 @@ class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass
     filter_class = filters.FloatingIPFilter
     disabled_actions = ['update', 'partial_update', 'create']
     delete_executor = executors.FloatingIPDeleteExecutor
+    pull_executor = executors.FloatingIPPullExecutor
 
     def list(self, request, *args, **kwargs):
         """
