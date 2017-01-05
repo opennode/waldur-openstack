@@ -297,6 +297,7 @@ class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass
     filter_class = filters.FloatingIPFilter
     filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
     disabled_actions = ['update']
+    delete_executor = executors.FloatingIPDeleteExecutor
 
     def list(self, request, *args, **kwargs):
         """
@@ -424,7 +425,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         serializer.is_valid(raise_exception=True)
         floating_ip = serializer.save()
 
-        executors.TenantCreateFloatingIPExecutor.execute(floating_ip)
+        executors.FloatingIPCreateExecutor.execute(floating_ip)
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
     allocate_floating_ip_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
