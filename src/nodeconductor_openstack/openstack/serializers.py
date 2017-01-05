@@ -40,6 +40,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
+        'access_url': 'Access URL to tenant dashboard',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
@@ -67,6 +68,9 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
             },
             'availability_zone': {
                 'placeholder': 'default',
+            },
+            'access_url': {
+                'label': 'Access URL',
             }
         }
 
@@ -437,7 +441,8 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         )
 
     def get_access_url(self, tenant):
-        backend_url = tenant.service_project_link.service.settings.backend_url
+        settings = tenant.service_project_link.service.settings
+        backend_url = settings.get_option('access_url') or settings.backend_url
         if backend_url:
             parsed = urlparse.urlparse(backend_url)
             return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
