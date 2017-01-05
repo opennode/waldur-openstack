@@ -280,9 +280,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         )
 
     def create(self, validated_data):
-        # source volume should be added to context on creation
-        source_volume = self.context['source_volume']
-        validated_data['source_volume'] = source_volume
+        validated_data['source_volume'] = source_volume = self.context['view'].get_object()
         validated_data['service_project_link'] = source_volume.service_project_link
         validated_data['size'] = source_volume.size
         return super(SnapshotSerializer, self).create(validated_data)
@@ -691,7 +689,7 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
     def validate(self, attrs):
         flavor = attrs['flavor']
-        backup = self.context['backup']
+        backup = self.context['view'].get_object()
         if flavor.settings != backup.instance.service_project_link.service.settings:
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
         return attrs
@@ -767,7 +765,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        validated_data['instance'] = instance = self.context['instance']
+        validated_data['instance'] = instance = self.context['view'].get_object()
         validated_data['service_project_link'] = instance.service_project_link
         validated_data['metadata'] = self.get_backup_metadata(instance)
         backup = super(BackupSerializer, self).create(validated_data)
@@ -825,7 +823,7 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
         }
 
     def create(self, validated_data):
-        validated_data['instance'] = self.context['instance']
+        validated_data['instance'] = self.context['view'].get_object()
         return super(BackupScheduleSerializer, self).create(validated_data)
 
 
