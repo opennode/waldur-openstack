@@ -85,24 +85,10 @@ class Image(structure_models.ServiceProperty):
     min_ram = models.PositiveIntegerField(default=0, help_text='Minimum memory size in MiB')
 
 
-@python_2_unicode_compatible
-class SecurityGroup(core_models.UuidMixin,
-                    core_models.NameMixin,
-                    core_models.DescribableMixin,
-                    core_models.StateMixin):
-
-    class Permissions(object):
-        customer_path = 'service_project_link__project__customer'
-        project_path = 'service_project_link__project'
-
+class SecurityGroup(structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='security_groups')
     tenant = models.ForeignKey('Tenant', related_name='security_groups')
-
-    backend_id = models.CharField(max_length=128, blank=True)
-
-    def __str__(self):
-        return '%s (%s)' % (self.name, self.service_project_link)
 
     def get_backend(self):
         return self.tenant.get_backend()
