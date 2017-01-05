@@ -153,8 +153,6 @@ class FloatingIP(core_models.RuntimeStateMixin, structure_models.NewResource):
         self.tenant.add_quota_usage(self.tenant.Quotas.floating_ip_count, 1, validate=validate)
 
     def decrease_backend_quotas_usage(self):
-        settings = self.service_project_link.service.settings
-        settings.add_quota_usage(settings.Quotas.volumes, -1)
         self.tenant.add_quota_usage(self.tenant.Quotas.floating_ip_count, -1)
 
 
