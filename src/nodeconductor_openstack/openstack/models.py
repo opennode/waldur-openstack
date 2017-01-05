@@ -97,6 +97,18 @@ class SecurityGroup(structure_models.NewResource):
     def get_url_name(cls):
         return 'openstack-sgp'
 
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_count, 1, validate=validate)
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_rule_count, self.rules.count(), validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_count, -1)
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_rule_count, -self.rules.count())
+
+    def change_backend_quotas_usage_on_rules_update(self, old_rules_count, validate=True):
+        count = self.rules.count() - old_rules_count
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_rule_count, count, validate=validate)
+
 
 class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):
     security_group = models.ForeignKey(SecurityGroup, related_name='rules')

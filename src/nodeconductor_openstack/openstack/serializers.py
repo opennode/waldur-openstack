@@ -11,8 +11,8 @@ from django.template.defaultfilters import slugify
 from netaddr import IPNetwork
 from rest_framework import serializers
 
-from nodeconductor.core import utils as core_utils, models as core_models, serializers as core_serializers
-from nodeconductor.core.fields import JsonField, MappedChoiceField
+from nodeconductor.core import utils as core_utils, serializers as core_serializers
+from nodeconductor.core.fields import JsonField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
 from nodeconductor.structure.managers import filter_queryset_for_user
@@ -168,24 +168,6 @@ class NestedServiceProjectLinkSerializer(structure_serializers.PermissionFieldFi
         return 'project', 'service'
 
 
-class NestedSecurityGroupRuleSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = models.SecurityGroupRule
-        fields = ('id', 'protocol', 'from_port', 'to_port', 'cidr')
-
-    def to_internal_value(self, data):
-        # Return exist security group as internal value if id is provided
-        if 'id' in data:
-            try:
-                return models.SecurityGroupRule.objects.get(id=data['id'])
-            except models.SecurityGroup:
-                raise serializers.ValidationError('Security group with id %s does not exist' % data['id'])
-        else:
-            internal_data = super(NestedSecurityGroupRuleSerializer, self).to_internal_value(data)
-            return models.SecurityGroupRule(**internal_data)
-
-
 class ExternalNetworkSerializer(serializers.Serializer):
     vlan_id = serializers.CharField(required=False)
     vxlan_id = serializers.CharField(required=False)
@@ -245,89 +227,93 @@ class FloatingIPSerializer(serializers.HyperlinkedModelSerializer):
         view_name = 'openstack-fip-detail'
 
 
-class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
-                              structure_serializers.BasePropertySerializer):
+class SecurityGroupRuleSerializer(serializers.ModelSerializer):
 
-    state = MappedChoiceField(
-        choices=[(v, k) for k, v in core_models.StateMixin.States.CHOICES],
-        choice_mappings={v: k for k, v in core_models.StateMixin.States.CHOICES},
+    class Meta:
+        model = models.SecurityGroupRule
+        fields = ('id', 'protocol', 'from_port', 'to_port', 'cidr')
+
+
+class SecurityGroupRuleCreateSerializer(SecurityGroupRuleSerializer):
+    """ Create rules on security group creation """
+
+    def to_internal_value(self, data):
+        if 'id' in data:
+            raise serializers.ValidationError('Cannot add existed rule with id %s to new security group' % data['id'])
+        internal_data = super(SecurityGroupRuleSerializer, self).to_internal_value(data)
+        return models.SecurityGroupRule(**internal_data)
+
+
+class SecurityGroupRuleUpdateSerializer(SecurityGroupRuleSerializer):
+
+    def to_internal_value(self, data):
+        """ Create new rule if id is not specified, update exist rule if id is specified """
+        security_group = self.context['view'].get_object()
+        internal_data = super(SecurityGroupRuleSerializer, self).to_internal_value(data)
+        if 'id' not in data:
+            return models.SecurityGroupRule(security_group=security_group, **internal_data)
+        rule_id = data.pop('id')
+        try:
+            rule = security_group.rules.get(id=rule_id)
+        except models.SecurityGroupRule.DoesNotExist:
+            raise serializers.ValidationError({'id': 'Security group does not have rule with id %s.' % rule_id})
+        for key, value in internal_data.items():
+            setattr(rule, key, value)
+        return rule
+
+
+class SecurityGroupRuleListUpdateSerializer(serializers.ListSerializer):
+    child = SecurityGroupRuleUpdateSerializer()
+
+    @transaction.atomic()
+    def save(self, **kwargs):
+        security_group = self.context['view'].get_object()
+        old_rules_count = security_group.rules.count()
+        rules = self.validated_data
+        security_group.rules.exclude(id__in=[r.id for r in rules if r.id]).delete()
+        for rule in rules:
+            rule.save()
+        security_group.change_backend_quotas_usage_on_rules_update(old_rules_count)
+        return rules
+
+
+class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstack-detail',
         read_only=True,
-    )
-    rules = NestedSecurityGroupRuleSerializer(many=True)
-    service_project_link = NestedServiceProjectLinkSerializer(read_only=True)
+        lookup_field='uuid')
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        read_only=True)
+    rules = SecurityGroupRuleCreateSerializer(many=True)
 
-    class Meta(object):
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SecurityGroup
-        fields = ('url', 'uuid', 'state', 'name', 'description', 'rules',
-                  'service_project_link', 'tenant')
-        read_only_fields = ('url', 'uuid',)
+        view_name = 'openstack-sgp-detail'  # deprecated
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + ('rules',)
+        protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('rules',)
         extra_kwargs = {
-            'url': {'lookup_field': 'uuid'},
-            'service_project_link': {'view_name': 'openstack-spl-detail'},
-            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            'url': {'lookup_field': 'uuid', 'view_name': 'openstack-sgp-detail'},
+            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail', 'read_only': True},
         }
-        view_name = 'openstack-sgp-detail'
-        protected_fields = ('tenant',)
-
-    def validate(self, attrs):
-        if self.instance is None:
-            # Check security groups quotas on creation
-            tenant = attrs.get('tenant')
-
-            security_group_count_quota = tenant.quotas.get(name='security_group_count')
-            if security_group_count_quota.is_exceeded(delta=1):
-                raise serializers.ValidationError('Can not create new security group - amount quota exceeded')
-            security_group_rule_count_quota = tenant.quotas.get(name='security_group_rule_count')
-            if security_group_rule_count_quota.is_exceeded(delta=len(attrs.get('rules', []))):
-                raise serializers.ValidationError('Can not create new security group - rules amount quota exceeded')
-        else:
-            # Check security_groups quotas on update
-            tenant = self.instance.tenant
-            new_rules_count = len(attrs.get('rules', [])) - self.instance.rules.count()
-            if new_rules_count > 0:
-                security_group_rule_count_quota = tenant.quotas.get(name='security_group_rule_count')
-                if security_group_rule_count_quota.is_exceeded(delta=new_rules_count):
-                    raise serializers.ValidationError(
-                        'Can not update new security group rules - rules amount quota exceeded')
-        return attrs
 
     def validate_rules(self, value):
         for rule in value:
-            rule.full_clean(exclude=['security_group'])
-            if rule.id is not None and self.instance is None:
+            if rule.id is not None:
                 raise serializers.ValidationError('Cannot add existed rule with id %s to new security group' % rule.id)
-            elif rule.id is not None and self.instance is not None and rule.security_group != self.instance:
-                raise serializers.ValidationError('Cannot add rule with id {} to group {} - it already belongs to '
-                                                  'other group' % (rule.id, self.isntance.name))
+            rule.full_clean(exclude=['security_group'])
         return value
 
     def create(self, validated_data):
         rules = validated_data.pop('rules', [])
-        tenant = validated_data['tenant']
+        validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
         with transaction.atomic():
             security_group = super(SecurityGroupSerializer, self).create(validated_data)
             for rule in rules:
                 security_group.rules.add(rule)
-
-        return security_group
-
-    def update(self, instance, validated_data):
-        rules = validated_data.pop('rules', [])
-        new_rules = [rule for rule in rules if rule.id is None]
-        existed_rules = set([rule for rule in rules if rule.id is not None])
-
-        security_group = super(SecurityGroupSerializer, self).update(instance, validated_data)
-        old_rules = set(security_group.rules.all())
-
-        with transaction.atomic():
-            removed_rules = old_rules - existed_rules
-            for rule in removed_rules:
-                rule.delete()
-
-            for rule in new_rules:
-                security_group.rules.add(rule)
-
+            security_group.increase_backend_quotas_usage()
         return security_group
 
 
