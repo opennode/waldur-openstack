@@ -29,8 +29,6 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
 
         response = self.get_response(instance, floating_ip)
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(response.data['detail'],
-                         'Performing assign_floating_ip operation is not allowed for resource in its current state')
 
     def test_user_cannot_assign_not_existing_ip_to_the_instance(self):
         class InvalidFloatingIP(object):
