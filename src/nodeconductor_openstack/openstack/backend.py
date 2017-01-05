@@ -963,7 +963,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             # Automatically create router for subnet
             # TODO: Ideally: Create separate model for router and create it separately.
             #       Good enough: refactor `get_or_create_router` method: split it into several method.
-            self.get_or_create_router(subnet.network.name, response['subnets'][0]['id'])
+            self.get_or_create_router(subnet.network.name, response['subnets'][0]['id'],
+                                      tenant_id=subnet.network.tenant.backend_id)
         except neutron_exceptions.NeutronException as e:
             six.reraise(OpenStackBackendError, e)
         else:
@@ -1088,9 +1089,9 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         return external_network_id
 
-    def get_or_create_router(self, network_name, subnet_id, external=False, network_id=None):
+    def get_or_create_router(self, network_name, subnet_id, external=False, network_id=None, tenant_id=None):
         neutron = self.neutron_admin_client
-        tenant_id = self.tenant_id
+        tenant_id = tenant_id or self.tenant_id
         router_name = '{0}-router'.format(network_name)
 
         try:
