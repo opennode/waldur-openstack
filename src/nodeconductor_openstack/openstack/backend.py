@@ -1034,7 +1034,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def pull_floating_ip(self, floating_ip):
         neutron = self.neutron_client
         try:
-            backend_floating_ip = neutron.show_floatingip(floating_ip.backend_id)
+            backend_floating_ip = neutron.show_floatingip(floating_ip.backend_id)['floatingip']
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
