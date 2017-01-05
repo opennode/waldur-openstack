@@ -130,14 +130,9 @@ class IpMapping(core_models.UuidMixin):
 @python_2_unicode_compatible
 class FloatingIP(core_models.RuntimeStateMixin, structure_models.NewResource):
 
-    class Permissions(object):
-        customer_path = 'service_project_link__project__customer'
-        project_path = 'service_project_link__project'
-
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='floating_ips')
     tenant = models.ForeignKey('Tenant', related_name='floating_ips')
-
     address = models.GenericIPAddressField(null=True, blank=True, protocol='IPv4')
     status = models.CharField(max_length=30)
     backend_network_id = models.CharField(max_length=255, editable=False)
