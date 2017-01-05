@@ -27,8 +27,7 @@ class GenericImportMixin(object):
 
     def get_serializer_class(self):
         if self.request.method == 'POST' and self.action == 'link':
-            resource_type = self.request.data.get('resource_type') or \
-                            self.request.query_params.get('resource_type')
+            resource_type = self.request.data.get('resource_type') or self.request.query_params.get('resource_type')
 
             items = self.import_serializers.items()
             if len(items) == 1:
