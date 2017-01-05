@@ -195,7 +195,7 @@ class FloatingIPPullExecutor(core_executors.ActionExecutor):
     @classmethod
     def get_task_signature(cls, floating_ip, serialized_floating_ip, **kwargs):
         return core_tasks.BackendMethodTask().si(
-            serialized_floating_ip, 'pull_floating_ip', state_transition='begin_updaing')
+            serialized_floating_ip, 'pull_floating_ip', state_transition='begin_updating')
 
 
 class TenantDeleteExternalNetworkExecutor(core_executors.ActionExecutor):
