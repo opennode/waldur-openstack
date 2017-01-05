@@ -79,13 +79,5 @@ class AutomaticFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTe
         self.assertEqual(response.data['allocate_floating_ip'],
                          ['Can not allocate floating IP - quota has been filled.'])
 
-    def test_user_can_not_provision_instance_if_service_is_not_in_stable_state(self):
-        self.openstack_settings.state = ServiceSettings.States.ERRED
-        self.openstack_settings.save()
-
-        response = self.get_response()
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT, response.data)
-        self.assertEqual(response.data['detail'], 'Cannot create resource if its service is in erred state.')
-
     def get_response(self):
         return self.client.post(self.url, self.get_valid_data())
