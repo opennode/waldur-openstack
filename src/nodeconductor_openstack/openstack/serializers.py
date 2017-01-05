@@ -231,18 +231,33 @@ class IpMappingSerializer(serializers.HyperlinkedModelSerializer):
         view_name = 'openstack-ip-mapping-detail'
 
 
-class FloatingIPSerializer(serializers.HyperlinkedModelSerializer):
-    service_project_link = NestedServiceProjectLinkSerializer(read_only=True)
+class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
+    name = serializers.CharField(allow_blank=True)
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstack-detail',
+        read_only=True,
+        lookup_field='uuid')
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        read_only=True)
 
-    class Meta:
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.FloatingIP
-        fields = ('url', 'uuid', 'status', 'address', 'tenant',
-                  'service_project_link', 'backend_id', 'backend_network_id')
-        extra_kwargs = {
-            'url': {'lookup_field': 'uuid'},
-            'tenant': {'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
-        }
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+                    'status', 'address', 'tenant', 'backend_id', 'backend_network_id')
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+                    'status', 'address', 'tenant', 'backend_id', 'backend_network_id')
+        extra_kwargs = dict(
+            tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
+            **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
+        )
         view_name = 'openstack-fip-detail'
+
+    def create(self, validated_data):
+        validated_data['tenant'] = tenant = self.context['view'].get_object()
+        validated_data['service_project_link'] = tenant.service_project_link
+        return super(FloatingIPSerializer, self).create(validated_data)
 
 
 class SecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,

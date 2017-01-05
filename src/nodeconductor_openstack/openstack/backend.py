@@ -1041,6 +1041,25 @@ class OpenStackBackend(BaseOpenStackBackend):
             backend_network_id=tenant.external_network_id
         ).first()
 
+    @log_backend_action('create floating ip')
+    def create_floating_ip(self, floating_ip):
+        neutron = self.neutron_client
+        try:
+            ip_address = neutron.create_floatingip({
+                'floatingip': {
+                    'floating_network_id': floating_ip.tenant.external_network_id,
+                    'tenant_id': floating_ip.tenant.backend_id,
+                }
+            })['floatingip']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            floating_ip.status='DOWN'
+            floating_ip.address=ip_address['floating_ip_address']
+            floating_ip.backend_id=ip_address['id']
+            floating_ip.backend_network_id=ip_address['floating_network_id']
+            floating_ip.save()
+
     @log_backend_action('allocate floating IP for tenant')
     def allocate_floating_ip_address(self, tenant):
         neutron = self.neutron_client

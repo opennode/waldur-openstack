@@ -128,7 +128,7 @@ class IpMapping(core_models.UuidMixin):
 
 
 @python_2_unicode_compatible
-class FloatingIP(core_models.UuidMixin):
+class FloatingIP(core_models.RuntimeStateMixin, structure_models.NewResource):
 
     class Permissions(object):
         customer_path = 'service_project_link__project__customer'
@@ -138,9 +138,8 @@ class FloatingIP(core_models.UuidMixin):
         OpenStackServiceProjectLink, related_name='floating_ips')
     tenant = models.ForeignKey('Tenant', related_name='floating_ips')
 
-    address = models.GenericIPAddressField(protocol='IPv4')
+    address = models.GenericIPAddressField(null=True, blank=True, protocol='IPv4')
     status = models.CharField(max_length=30)
-    backend_id = models.CharField(max_length=255)
     backend_network_id = models.CharField(max_length=255, editable=False)
 
     tracker = FieldTracker()
@@ -148,8 +147,20 @@ class FloatingIP(core_models.UuidMixin):
     def get_backend(self):
         return self.tenant.get_backend()
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-fip'
+
     def __str__(self):
         return '%s:%s (%s)' % (self.address, self.status, self.service_project_link)
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(self.tenant.Quotas.floating_ip_count, 1, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        settings = self.service_project_link.service.settings
+        settings.add_quota_usage(settings.Quotas.volumes, -1)
+        self.tenant.add_quota_usage(self.tenant.Quotas.floating_ip_count, -1)
 
 
 class Tenant(structure_models.PrivateCloud):

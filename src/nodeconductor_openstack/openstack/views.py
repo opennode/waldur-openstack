@@ -289,13 +289,14 @@ class IpMappingViewSet(viewsets.ModelViewSet):
     filter_class = filters.IpMappingFilter
 
 
-class FloatingIPViewSet(viewsets.ReadOnlyModelViewSet):
+class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                           structure_views.ResourceViewSet)):
     queryset = models.FloatingIP.objects.all()
     serializer_class = serializers.FloatingIPSerializer
     lookup_field = 'uuid'
     filter_class = filters.FloatingIPFilter
     filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
-    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
+    disabled_actions = ['update']
 
     def list(self, request, *args, **kwargs):
         """
@@ -416,6 +417,18 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     create_network_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
     create_network_serializer_class = serializers.NetworkSerializer
+
+    @decorators.detail_route(methods=['post'])
+    def allocate_floating_ip(self, request, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        floating_ip = serializer.save()
+
+        executors.TenantCreateFloatingIPExecutor.execute(floating_ip)
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    allocate_floating_ip_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    allocate_floating_ip_serializer_class = serializers.FloatingIPSerializer
 
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
