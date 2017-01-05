@@ -214,9 +214,10 @@ class OpenStackBackend(BaseOpenStackBackend):
             for ip_id in backend_ids - nc_ids:
                 ip = backend_floating_ips[ip_id]
                 created_ip = tenant.floating_ips.create(
-                    status=ip['status'],
+                    runtime_state=ip['status'],
                     backend_id=ip['id'],
                     address=ip['floating_ip_address'],
+                    name=ip['floating_ip_address'],
                     backend_network_id=ip['floating_network_id'],
                     service_project_link=tenant.service_project_link
                 )
@@ -1032,14 +1033,16 @@ class OpenStackBackend(BaseOpenStackBackend):
     def _get_or_create_floating_ip(self, tenant):
         # TODO: check availability and quota
         if not tenant.floating_ips.filter(
-            status='DOWN',
+            runtime_state='DOWN',
             backend_network_id=tenant.external_network_id
         ).exists():
-            self.allocate_floating_ip_address(tenant)
-        return tenant.floating_ips.filter(
-            status='DOWN',
-            backend_network_id=tenant.external_network_id
-        ).first()
+            floating_ip = models.FloatingIP.objects.create(
+                tenant=tenant,
+                service_project_link=tenant.service_project_link,
+            )
+
+            self.create_floating_ip(floating_ip)
+        return floating_ip
 
     @log_backend_action('delete floating ip')
     def delete_floating_ip(self, floating_ip):
@@ -1056,7 +1059,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def create_floating_ip(self, floating_ip):
         neutron = self.neutron_client
         try:
-            ip_address = neutron.create_floatingip({
+            backend_floating_ip = neutron.create_floatingip({
                 'floatingip': {
                     'floating_network_id': floating_ip.tenant.external_network_id,
                     'tenant_id': floating_ip.tenant.backend_id,
@@ -1065,32 +1068,12 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            floating_ip.status = 'DOWN'
-            floating_ip.address = ip_address['floating_ip_address']
-            floating_ip.backend_id = ip_address['id']
-            floating_ip.backend_network_id = ip_address['floating_network_id']
+            floating_ip.runtime_state = backend_floating_ip['status']
+            floating_ip.address = backend_floating_ip['floating_ip_address']
+            floating_ip.name = backend_floating_ip['floating_ip_address']
+            floating_ip.backend_id = backend_floating_ip['id']
+            floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
             floating_ip.save()
-
-    @log_backend_action('allocate floating IP for tenant')
-    def allocate_floating_ip_address(self, tenant):
-        neutron = self.neutron_client
-        try:
-            ip_address = neutron.create_floatingip({
-                'floatingip': {
-                    'floating_network_id': tenant.external_network_id,
-                    'tenant_id': tenant.backend_id,
-                }
-            })['floatingip']
-        except neutron_exceptions.NeutronClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        else:
-            tenant.floating_ips.create(
-                status='DOWN',
-                address=ip_address['floating_ip_address'],
-                backend_id=ip_address['id'],
-                backend_network_id=ip_address['floating_network_id'],
-                service_project_link=tenant.service_project_link
-            )
 
     @log_backend_action()
     def connect_tenant_to_external_network(self, tenant, external_network_id):

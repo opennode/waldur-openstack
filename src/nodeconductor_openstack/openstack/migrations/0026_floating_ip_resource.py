@@ -65,6 +65,11 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterField(
             model_name='floatingip',
+            name='address',
+            field=models.GenericIPAddressField(null=True, protocol='IPv4', blank=True),
+        ),
+        migrations.AlterField(
+            model_name='floatingip',
             name='backend_id',
             field=models.CharField(max_length=255, blank=True),
         ),

@@ -129,7 +129,6 @@ class IpMapping(core_models.UuidMixin):
 
 @python_2_unicode_compatible
 class FloatingIP(core_models.RuntimeStateMixin, structure_models.NewResource):
-
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='floating_ips')
     tenant = models.ForeignKey('Tenant', related_name='floating_ips')
@@ -147,7 +146,7 @@ class FloatingIP(core_models.RuntimeStateMixin, structure_models.NewResource):
         return 'openstack-fip'
 
     def __str__(self):
-        return '%s:%s (%s)' % (self.address, self.status, self.service_project_link)
+        return '%s:%s (%s)' % (self.address, self.runtime_state, self.service_project_link)
 
     def increase_backend_quotas_usage(self, validate=True):
         self.tenant.add_quota_usage(self.tenant.Quotas.floating_ip_count, 1, validate=validate)

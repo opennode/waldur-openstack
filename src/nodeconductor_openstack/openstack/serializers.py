@@ -232,7 +232,6 @@ class IpMappingSerializer(serializers.HyperlinkedModelSerializer):
 
 
 class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
-    name = serializers.CharField(allow_blank=True)
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
         view_name='openstack-detail',
@@ -245,9 +244,9 @@ class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.FloatingIP
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-                    'status', 'address', 'tenant', 'backend_id', 'backend_network_id')
+                    'runtime_state', 'address', 'tenant', 'backend_network_id')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-                    'status', 'address', 'tenant', 'backend_id', 'backend_network_id')
+                    'runtime_state', 'address', 'description', 'name', 'tenant', 'backend_network_id')
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
