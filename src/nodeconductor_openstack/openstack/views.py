@@ -1,7 +1,7 @@
 import uuid
 
 from django.utils import six
-from rest_framework import viewsets, decorators, response, permissions, status
+from rest_framework import viewsets, decorators, response, permissions, status, serializers as rest_serializers
 from rest_framework import filters as rf_filters
 from rest_framework.exceptions import ValidationError
 
@@ -429,6 +429,16 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     allocate_floating_ip_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
     allocate_floating_ip_serializer_class = serializers.FloatingIPSerializer
+
+    @decorators.detail_route(methods=['post'])
+    def pull_floating_ips(self, request, uuid=None):
+        tenant = self.get_object()
+
+        executors.TenantPullFloatingIPsExecutor.execute(tenant)
+        return response.Response(status=status.HTTP_202_ACCEPTED)
+
+    pull_floating_ips_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    pull_floating_ips_serializer_class = rest_serializers.Serializer
 
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):

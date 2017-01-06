@@ -226,11 +226,11 @@ class OpenStackBackend(BaseOpenStackBackend):
             for ip_id in nc_ids & backend_ids:
                 nc_ip = nc_floating_ips[ip_id]
                 backend_ip = backend_floating_ips[ip_id]
-                if nc_ip.status != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
+                if nc_ip.runtime_state != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
                         or nc_ip.backend_network_id != backend_ip['floating_network_id']:
                     # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
-                    if not (nc_ip.status == 'BOOKED' and backend_ip['status'] == 'DOWN'):
-                        nc_ip.status = backend_ip['status']
+                    if not (nc_ip.runtime_state == 'BOOKED' and backend_ip['status'] == 'DOWN'):
+                        nc_ip.runtime_state = backend_ip['status']
                     nc_ip.address = backend_ip['floating_ip_address']
                     nc_ip.backend_network_id = backend_ip['floating_network_id']
                     nc_ip.save()
@@ -1044,6 +1044,11 @@ class OpenStackBackend(BaseOpenStackBackend):
             floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
             floating_ip.save()
 
+    @log_backend_action('pull floating ip')
+    def pull_floating_ips(self, tenant):
+        for floating_ip in tenant.floating_ips.iterator():
+            self.pull_floating_ip(floating_ip)
+
     @log_backend_action('delete floating ip')
     def delete_floating_ip(self, floating_ip):
         neutron = self.neutron_client
@@ -1051,8 +1056,6 @@ class OpenStackBackend(BaseOpenStackBackend):
             neutron.delete_floatingip(floating_ip.backend_id)
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
-        else:
-            floating_ip.delete()
 
 
     @log_backend_action('create floating ip')
