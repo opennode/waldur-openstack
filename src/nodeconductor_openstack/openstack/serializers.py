@@ -295,7 +295,7 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SecurityGroup
         view_name = 'openstack-sgp-detail'  # deprecated
-        fields = structure_serializers.BaseResourceSerializer.Meta.fields + ('rules',)
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + ('tenant', 'rules',)
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('rules',)
         extra_kwargs = {
             'url': {'lookup_field': 'uuid', 'view_name': 'openstack-sgp-detail'},
