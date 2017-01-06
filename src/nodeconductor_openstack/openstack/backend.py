@@ -237,6 +237,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
+        # security groups pull should be rewritten in WAL-323
         nova = self.nova_client
 
         try:
@@ -658,8 +659,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    def _push_security_group_rules(self, security_group):
-        """ Helper method  """
+    @log_backend_action()
+    def push_security_group_rules(self, security_group):
         nova = self.nova_client
         backend_security_group = nova.security_groups.get(group_id=security_group.backend_id)
         backend_rules = {
@@ -734,10 +735,11 @@ class OpenStackBackend(BaseOpenStackBackend):
     def create_security_group(self, security_group):
         nova = self.nova_client
         try:
-            backend_security_group = nova.security_groups.create(name=security_group.name, description='')
+            backend_security_group = nova.security_groups.create(
+                name=security_group.name, description=security_group.description)
             security_group.backend_id = backend_security_group.id
             security_group.save()
-            self._push_security_group_rules(security_group)
+            self.push_security_group_rules(security_group)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -754,10 +756,9 @@ class OpenStackBackend(BaseOpenStackBackend):
         nova = self.nova_client
         try:
             backend_security_group = nova.security_groups.find(id=security_group.backend_id)
-            if backend_security_group.name != security_group.name:
-                nova.security_groups.update(
-                    backend_security_group, name=security_group.name, description='')
-            self._push_security_group_rules(security_group)
+            nova.security_groups.update(
+                backend_security_group, name=security_group.name, description=security_group.description)
+            self.push_security_group_rules(security_group)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 

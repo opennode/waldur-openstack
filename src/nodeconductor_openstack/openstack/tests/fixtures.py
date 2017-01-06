@@ -21,5 +21,5 @@ class OpenStackFixture(ProjectFixture):
             project=self.project, service=self.openstack_service)
 
     @cached_property
-    def openstack_tenant(self):
+    def tenant(self):
         return factories.TenantFactory(service_project_link=self.openstack_spl)

@@ -85,24 +85,10 @@ class Image(structure_models.ServiceProperty):
     min_ram = models.PositiveIntegerField(default=0, help_text='Minimum memory size in MiB')
 
 
-@python_2_unicode_compatible
-class SecurityGroup(core_models.UuidMixin,
-                    core_models.NameMixin,
-                    core_models.DescribableMixin,
-                    core_models.StateMixin):
-
-    class Permissions(object):
-        customer_path = 'service_project_link__project__customer'
-        project_path = 'service_project_link__project'
-
+class SecurityGroup(structure_models.NewResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='security_groups')
     tenant = models.ForeignKey('Tenant', related_name='security_groups')
-
-    backend_id = models.CharField(max_length=128, blank=True)
-
-    def __str__(self):
-        return '%s (%s)' % (self.name, self.service_project_link)
 
     def get_backend(self):
         return self.tenant.get_backend()
@@ -110,6 +96,18 @@ class SecurityGroup(core_models.UuidMixin,
     @classmethod
     def get_url_name(cls):
         return 'openstack-sgp'
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_count, 1, validate=validate)
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_rule_count, self.rules.count(), validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_count, -1)
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_rule_count, -self.rules.count())
+
+    def change_backend_quotas_usage_on_rules_update(self, old_rules_count, validate=True):
+        count = self.rules.count() - old_rules_count
+        self.tenant.add_quota_usage(self.tenant.Quotas.security_group_rule_count, count, validate=validate)
 
 
 class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):

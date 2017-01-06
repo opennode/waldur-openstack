@@ -6,7 +6,6 @@ from rest_framework import filters as rf_filters
 from rest_framework.exceptions import ValidationError
 
 from nodeconductor.core import validators as core_validators
-from nodeconductor.core.views import StateExecutorViewSet
 from nodeconductor.structure import (
     views as structure_views, SupportedServices, executors as structure_executors,
     filters as structure_filters, permissions as structure_permissions)
@@ -179,104 +178,42 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class SecurityGroupViewSet(StateExecutorViewSet):
+class SecurityGroupViewSet(structure_views.ResourceViewSet):
     queryset = models.SecurityGroup.objects.all()
     serializer_class = serializers.SecurityGroupSerializer
-    lookup_field = 'uuid'
     filter_class = filters.SecurityGroupFilter
-    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
-    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
-    create_executor = executors.SecurityGroupCreateExecutor
+    disabled_actions = ['create', 'pull']  # pull operation should be implemented in WAL-323
+
     update_executor = executors.SecurityGroupUpdateExecutor
     delete_executor = executors.SecurityGroupDeleteExecutor
 
-    def list(self, request, *args, **kwargs):
+    @decorators.detail_route(methods=['POST'])
+    def set_rules(self, request, uuid=None):
+        """ WARNING! Auto-generated HTML form is wrong for this endpoint. List should be defined as input.
+
+            Example:
+            [
+                {
+                    "protocol": "tcp",
+                    "from_port": 1,
+                    "to_port": 10,
+                    "cidr": "10.1.1.0/24"
+                }
+            ]
         """
-        To get a list of security groups and security group rules,
-        run **GET** against */api/openstack-security-groups/* as authenticated user.
-        """
-        return super(SecurityGroupViewSet, self).list(request, *args, **kwargs)
+        # XXX: DRF does not support forms generation for list serializers.
+        #      Thats why we use different serializer in view.
+        serializer = serializers.SecurityGroupRuleListUpdateSerializer(
+            data=request.data, context=self.get_serializer_context())
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
 
-    def create(self, request, *args, **kwargs):
-        """
-        To create a new security group, issue a **POST** with security group details to */api/openstack-security-groups/*.
-        This will create new security group and start its synchronization with OpenStack.
+        executors.PushSecurityGroupRulesExecutor().execute(self.get_object())
+        return response.Response(
+            {'status': 'Rules update was successfully scheduled.'}, status=status.HTTP_202_ACCEPTED)
 
-        Example of a request:
-
-        .. code-block:: http
-
-            POST /api/openstack-security-groups/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-            {
-                "name": "Security group name",
-                "description": "description",
-                "rules": [
-                    {
-                        "protocol": "tcp",
-                        "from_port": 1,
-                        "to_port": 10,
-                        "cidr": "10.1.1.0/24"
-                    },
-                    {
-                        "protocol": "udp",
-                        "from_port": 10,
-                        "to_port": 8000,
-                        "cidr": "10.1.1.0/24"
-                    }
-                ],
-                "service_project_link": {
-                    "url": "http://example.com/api/openstack-service-project-link/6c9b01c251c24174a6691a1f894fae31/",
-                },
-                "tenant": "http://example.com/api/openstack-tenants/33bf0f83d4b948119038d6e16f05c129/"
-            }
-        """
-        return super(SecurityGroupViewSet, self).create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        """
-        Security group name, description and rules can be updated. To execute update request make **PATCH**
-        request with details to */api/openstack-security-groups/<security-group-uuid>/*.
-        This will update security group in database and start its synchronization with OpenStack.
-        To leave old security groups add old rule id to list of new rules (note that existing rule cannot be updated,
-        if endpoint receives id and some other attributes, it uses only id for rule identification).
-
-        .. code-block:: http
-
-            PATCH /api/openstack-security-groups/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-            {
-                "name": "Security group new name",
-                "rules": [
-                    {
-                        "id": 13,
-                    },
-                    {
-                        "protocol": "udp",
-                        "from_port": 10,
-                        "to_port": 8000,
-                        "cidr": "10.1.1.0/24"
-                    }
-                ],
-            }
-        """
-        return super(SecurityGroupViewSet, self).update(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        """
-        To schedule security group deletion - issue **DELETE** request against
-        */api/openstack-security-groups/<security-group-uuid>/*.
-        Endpoint will return 202 if deletion was scheduled successfully.
-        """
-        return super(SecurityGroupViewSet, self).destroy(request, *args, **kwargs)
+    set_rules_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    set_rules_serializer_class = serializers.SecurityGroupRuleUpdateSerializer
 
 
 class IpMappingViewSet(viewsets.ModelViewSet):
@@ -415,6 +352,50 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     create_network_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
     create_network_serializer_class = serializers.NetworkSerializer
+
+    @decorators.detail_route(methods=['post'])
+    def create_security_group(self, request, uuid=None):
+        """
+        Example of a request:
+
+        .. code-block:: http
+
+            {
+                "name": "Security group name",
+                "description": "description",
+                "rules": [
+                    {
+                        "protocol": "tcp",
+                        "from_port": 1,
+                        "to_port": 10,
+                        "cidr": "10.1.1.0/24"
+                    },
+                    {
+                        "protocol": "udp",
+                        "from_port": 10,
+                        "to_port": 8000,
+                        "cidr": "10.1.1.0/24"
+                    }
+                ]
+            }
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        security_group = serializer.save()
+
+        executors.SecurityGroupCreateExecutor().execute(security_group)
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    create_security_group_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    create_security_group_serializer_class = serializers.SecurityGroupSerializer
+
+    @decorators.detail_route(methods=['post'])
+    def pull_security_groups(self, request, uuid=None):
+        executors.TenantPullSecurityGroupsExecutor.execute(self.get_object())
+        return response.Response(
+            {'status': 'Security groups pull has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
+
+    pull_security_groups_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
