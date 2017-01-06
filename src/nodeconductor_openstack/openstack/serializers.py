@@ -242,7 +242,9 @@ class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
-        return super(FloatingIPSerializer, self).create(validated_data)
+        instance = super(FloatingIPSerializer, self).create(validated_data)
+        instance.increase_backend_quotas_usage()
+        return instance
 
 
 class SecurityGroupRuleSerializer(serializers.ModelSerializer):

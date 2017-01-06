@@ -17,7 +17,6 @@ class OpenStackConfig(AppConfig):
         from nodeconductor.structure import SupportedServices, signals as structure_signals, models as structure_models
         from . import handlers
 
-        FloatingIP = self.get_model('FloatingIP')
         Tenant = self.get_model('Tenant')
 
         # structure
@@ -40,12 +39,6 @@ class OpenStackConfig(AppConfig):
             handlers.create_initial_security_groups,
             sender=Tenant,
             dispatch_uid='openstack.handlers.create_initial_security_groups',
-        )
-
-        signals.post_save.connect(
-            handlers.change_floating_ip_quota_on_status_change,
-            sender=FloatingIP,
-            dispatch_uid='openstack.handlers.change_floating_ip_quota_on_status_change',
         )
 
         for model in (structure_models.Project, structure_models.Customer):

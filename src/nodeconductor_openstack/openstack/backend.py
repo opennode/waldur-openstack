@@ -466,14 +466,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        for floatingip in floatingips.get('floatingips', []):
-            logger.info("Deleting floating IP %s from tenant %s", floatingip['id'], tenant.backend_id)
-            try:
-                neutron.delete_floatingip(floatingip['id'])
-            except neutron_exceptions.NotFound:
-                logger.debug("Floating IP %s is already gone from tenant %s", floatingip['id'], tenant.backend_id)
-            except neutron_exceptions.NeutronClientException as e:
-                six.reraise(OpenStackBackendError, e)
+        for floating_ip in floatingips.get('floatingips', []):
+            self._delete_backend_floating_ip(floating_ip['id'], tenant.backend_id)
 
     @log_backend_action()
     def delete_tenant_ports(self, tenant):
@@ -1053,9 +1047,16 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action('delete floating ip')
     def delete_floating_ip(self, floating_ip):
+        self._delete_backend_floating_ip(floating_ip.backend_id, floating_ip.tenant.backend_id)
+        floating_ip.decrease_backend_quotas_usage()
+
+    def _delete_backend_floating_ip(self, backend_id, tenant_backend_id):
         neutron = self.neutron_client
         try:
-            neutron.delete_floatingip(floating_ip.backend_id)
+            logger.info("Deleting floating IP %s from tenant %s", backend_id, tenant_backend_id)
+            neutron.delete_floatingip(backend_id)
+        except neutron_exceptions.NotFound:
+            logger.debug("Floating IP %s is already gone from tenant %s", backend_id, tenant_backend_id)
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 

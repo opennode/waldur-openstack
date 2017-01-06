@@ -67,14 +67,6 @@ def create_security_group(tenant, group):
     return sg
 
 
-def change_floating_ip_quota_on_status_change(sender, instance, created=False, **kwargs):
-    floating_ip = instance
-    if floating_ip.runtime_state != 'DOWN' and (created or floating_ip.tracker.previous('runtime_state') == 'DOWN'):
-        floating_ip.increase_backend_quotas_usage()
-    if floating_ip.runtime_state == 'DOWN' and not created and floating_ip.tracker.previous('runtime_state') != 'DOWN':
-        floating_ip.decrease_backend_quotas_usage()
-
-
 def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
     """ Delete user ssh keys from tenants that he does not have access now. """
     tenants = Tenant.objects.filter(**{sender.__name__.lower(): structure})
