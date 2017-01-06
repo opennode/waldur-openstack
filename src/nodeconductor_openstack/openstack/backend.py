@@ -237,6 +237,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
+        # security groups pull should be rewritten in WAL-323
         nova = self.nova_client
 
         try:

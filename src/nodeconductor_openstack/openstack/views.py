@@ -182,7 +182,7 @@ class SecurityGroupViewSet(structure_views.ResourceViewSet):
     queryset = models.SecurityGroup.objects.all()
     serializer_class = serializers.SecurityGroupSerializer
     filter_class = filters.SecurityGroupFilter
-    disabled_actions = ['create']
+    disabled_actions = ['create', 'pull']  # pull operation should be implemented in WAL-323
 
     update_executor = executors.SecurityGroupUpdateExecutor
     delete_executor = executors.SecurityGroupDeleteExecutor
@@ -388,6 +388,14 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     create_security_group_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
     create_security_group_serializer_class = serializers.SecurityGroupSerializer
+
+    @decorators.detail_route(methods=['post'])
+    def pull_security_groups(self, request, uuid=None):
+        executors.TenantPullSecurityGroupsExecutor.execute(self.get_object())
+        return response.Response(
+            {'status': 'Security groups pull has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
+
+    pull_security_groups_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
