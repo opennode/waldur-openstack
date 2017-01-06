@@ -148,7 +148,7 @@ class FloatingIPFactory(TenantMixin, factory.DjangoModelFactory):
         model = models.FloatingIP
 
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
-    status = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
+    runtime_state = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
     address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
 
     @classmethod

@@ -69,11 +69,10 @@ def create_security_group(tenant, group):
 
 def change_floating_ip_quota_on_status_change(sender, instance, created=False, **kwargs):
     floating_ip = instance
-    add_quota = floating_ip.tenant.add_quota_usage
-    if floating_ip.status != 'DOWN' and (created or floating_ip.tracker.previous('status') == 'DOWN'):
-        add_quota('floating_ip_count', 1)
-    if floating_ip.status == 'DOWN' and not created and floating_ip.tracker.previous('status') != 'DOWN':
-        add_quota('floating_ip_count', -1)
+    if floating_ip.runtime_state != 'DOWN' and (created or floating_ip.tracker.previous('runtime_state') == 'DOWN'):
+        floating_ip.increase_backend_quotas_usage()
+    if floating_ip.runtime_state == 'DOWN' and not created and floating_ip.tracker.previous('runtime_state') != 'DOWN':
+        floating_ip.decrease_backend_quotas_usage()
 
 
 def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):

@@ -7,9 +7,9 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def setUp(self):
         self.fixture = fixtures.OpenStackFixture()
-        self.active_ip = factories.FloatingIPFactory(status='ACTIVE', service_project_link=self.fixture.openstack_spl)
-        self.down_ip = factories.FloatingIPFactory(status='DOWN', service_project_link=self.fixture.openstack_spl)
-        self.other_ip = factories.FloatingIPFactory(status='UNDEFINED')
+        self.active_ip = factories.FloatingIPFactory(runtime_state='ACTIVE', service_project_link=self.fixture.openstack_spl)
+        self.down_ip = factories.FloatingIPFactory(runtime_state='DOWN', service_project_link=self.fixture.openstack_spl)
+        self.other_ip = factories.FloatingIPFactory(runtime_state='UNDEFINED')
 
     def test_floating_ip_list_can_be_filtered_by_project(self):
         data = {
@@ -26,7 +26,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def test_floating_ip_list_can_be_filtered_by_service(self):
         data = {
-            'service': self.fixture.openstack_service.uuid.hex,
+            'service_uuid': self.fixture.openstack_service.uuid.hex,
         }
         # when
         self.client.force_authenticate(self.fixture.staff)
@@ -39,7 +39,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
 
     def test_floating_ip_list_can_be_filtered_by_status(self):
         data = {
-            'status': 'ACTIVE',
+            'runtime_state': 'ACTIVE',
         }
         # when
         self.client.force_authenticate(self.fixture.staff)
