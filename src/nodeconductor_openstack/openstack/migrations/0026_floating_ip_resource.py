@@ -9,6 +9,22 @@ import django_fsm
 import nodeconductor.core.validators
 
 
+def migrate_floatingip_status(apps, schema_editor):
+    FloatingIP = apps.get_model('openstack', 'FloatingIP')
+
+    for floating_ip in FloatingIP.objects.all():
+        floating_ip.runtime_state = floating_ip.status or 'DOWN'
+        floating_ip.save()
+
+
+def migrate_floatingip_name(apps, schema_editor):
+    FloatingIP = apps.get_model('openstack', 'FloatingIP')
+
+    for floating_ip in FloatingIP.objects.all():
+        floating_ip.name = '' if floating_ip.address is None else str(floating_ip.address)
+        floating_ip.save()
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -40,7 +56,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='floatingip',
             name='name',
-            field=models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name]),
+            field=models.CharField(default='', max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name]),
             preserve_default=False,
         ),
         migrations.AddField(
@@ -73,4 +89,6 @@ class Migration(migrations.Migration):
             name='backend_id',
             field=models.CharField(max_length=255, blank=True),
         ),
+        migrations.RunPython(migrate_floatingip_status),
+        migrations.RunPython(migrate_floatingip_name),
     ]

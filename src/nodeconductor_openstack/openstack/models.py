@@ -133,7 +133,6 @@ class FloatingIP(core_models.RuntimeStateMixin, structure_models.NewResource):
         OpenStackServiceProjectLink, related_name='floating_ips')
     tenant = models.ForeignKey('Tenant', related_name='floating_ips')
     address = models.GenericIPAddressField(null=True, blank=True, protocol='IPv4')
-    status = models.CharField(max_length=30)
     backend_network_id = models.CharField(max_length=255, editable=False)
 
     tracker = FieldTracker()
