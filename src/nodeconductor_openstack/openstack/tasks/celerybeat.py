@@ -10,6 +10,8 @@ from nodeconductor_openstack.openstack import models
 logger = logging.getLogger(__name__)
 
 
+# XXX: This task should be rewritten in WAL-323.
+#      We should pull all security groups, floating IPs and tenants at once.
 class TenantBackgroundPullTask(structure_tasks.BackgroundPullTask):
 
     def pull(self, tenant):

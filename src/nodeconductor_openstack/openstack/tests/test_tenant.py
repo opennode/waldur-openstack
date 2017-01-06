@@ -14,7 +14,7 @@ class BaseTenantActionsTest(test.APISimpleTestCase):
     def setUp(self):
         super(BaseTenantActionsTest, self).setUp()
         self.fixture = fixtures.OpenStackFixture()
-        self.tenant = self.fixture.openstack_tenant
+        self.tenant = self.fixture.tenant
 
 
 @patch('nodeconductor_openstack.openstack.executors.TenantPushQuotasExecutor.execute')

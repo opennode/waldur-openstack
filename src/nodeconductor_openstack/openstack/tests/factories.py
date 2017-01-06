@@ -122,10 +122,11 @@ class SecurityGroupFactory(TenantMixin, factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
 
     @classmethod
-    def get_url(cls, sgp=None):
+    def get_url(cls, sgp=None, action=None):
         if sgp is None:
             sgp = SecurityGroupFactory()
-        return 'http://testserver' + reverse('openstack-sgp-detail', kwargs={'uuid': sgp.uuid})
+        url = 'http://testserver' + reverse('openstack-sgp-detail', kwargs={'uuid': sgp.uuid})
+        return url if action is None else url + action + '/'
 
     @classmethod
     def get_list_url(cls):

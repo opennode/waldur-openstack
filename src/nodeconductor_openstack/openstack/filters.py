@@ -14,46 +14,12 @@ class OpenStackServiceProjectLinkFilter(structure_filters.BaseServiceProjectLink
         model = models.OpenStackServiceProjectLink
 
 
-class SecurityGroupFilter(django_filters.FilterSet):
-    name = django_filters.CharFilter(
-        name='name',
-        lookup_type='icontains',
-    )
-    description = django_filters.CharFilter(
-        name='description',
-        lookup_type='icontains',
-    )
-    service = UUIDFilter(
-        name='service_project_link__service__uuid',
-    )
-    project = UUIDFilter(
-        name='service_project_link__project__uuid',
-    )
-    settings_uuid = UUIDFilter(
-        name='service_project_link__service__settings__uuid'
-    )
-    service_project_link = core_filters.URLFilter(
-        view_name='openstack-spl-detail',
-        name='service_project_link__pk',
-        lookup_field='pk',
-    )
-    tenant_uuid = UUIDFilter(
-        name='tenant__uuid'
-    )
-    state = core_filters.StateFilter()
+class SecurityGroupFilter(structure_filters.BaseResourceStateFilter):
+    tenant_uuid = UUIDFilter(name='tenant__uuid')
+    tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
 
     class Meta(object):
         model = models.SecurityGroup
-        fields = [
-            'name',
-            'description',
-            'service',
-            'project',
-            'service_project_link',
-            'state',
-            'settings_uuid',
-            'tenant_uuid',
-        ]
 
 
 class IpMappingFilter(django_filters.FilterSet):

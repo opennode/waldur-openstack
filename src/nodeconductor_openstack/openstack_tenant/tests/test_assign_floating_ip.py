@@ -14,7 +14,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         self.openstack_tenant_fixture = fixtures.OpenStackTenantFixture()
         self.openstack_tenant_settings = self.openstack_tenant_fixture.openstack_tenant_service_settings
         self.spl = self.openstack_tenant_fixture.openstack_tenant_spl
-        self.tenant = self.openstack_tenant_fixture.openstack_tenant
+        self.tenant = self.openstack_tenant_fixture.tenant
 
     def test_user_cannot_assign_floating_ip_to_instance_in_unstable_state(self):
         floating_ip = factories.FloatingIPFactory(
@@ -29,8 +29,6 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
 
         response = self.get_response(instance, floating_ip)
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-        self.assertEqual(response.data['detail'],
-                         'Performing assign_floating_ip operation is not allowed for resource in its current state')
 
     def test_user_cannot_assign_not_existing_ip_to_the_instance(self):
         class InvalidFloatingIP(object):
