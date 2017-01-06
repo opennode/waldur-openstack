@@ -1,7 +1,7 @@
 import uuid
 
 from django.utils import six
-from rest_framework import viewsets, decorators, response, permissions, status, serializers as rest_serializers
+from rest_framework import viewsets, decorators, response, permissions, status, serializers as rf_serializers
 from rest_framework import filters as rf_filters
 from rest_framework.exceptions import ValidationError
 
@@ -419,7 +419,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     create_network_serializer_class = serializers.NetworkSerializer
 
     @decorators.detail_route(methods=['post'])
-    def allocate_floating_ip(self, request, uuid=None):
+    def create_floating_ip(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         floating_ip = serializer.save()
@@ -427,8 +427,8 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         executors.FloatingIPCreateExecutor.execute(floating_ip)
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    allocate_floating_ip_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
-    allocate_floating_ip_serializer_class = serializers.FloatingIPSerializer
+    create_floating_ip_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    create_floating_ip_serializer_class = serializers.FloatingIPSerializer
 
     @decorators.detail_route(methods=['post'])
     def pull_floating_ips(self, request, uuid=None):
@@ -438,7 +438,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         return response.Response(status=status.HTTP_202_ACCEPTED)
 
     pull_floating_ips_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
-    pull_floating_ips_serializer_class = rest_serializers.Serializer
+    pull_floating_ips_serializer_class = rf_serializers.Serializer
 
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
