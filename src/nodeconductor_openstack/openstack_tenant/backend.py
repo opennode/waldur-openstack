@@ -217,7 +217,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         instance = models.Instance.objects.get(uuid=instance_uuid)
         nova = self.nova_client
         try:
-            nova.volumes.create_server_volume(instance.backend_id, volume.backend_id, device=device)
+            nova.volumes.create_server_volume(instance.backend_id, volume.backend_id,
+                                              device=None if device == '' else device)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
