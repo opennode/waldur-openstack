@@ -14,7 +14,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
         self.openstack_tenant_fixture = fixtures.OpenStackTenantFixture()
         self.openstack_tenant_settings = self.openstack_tenant_fixture.openstack_tenant_service_settings
         self.spl = self.openstack_tenant_fixture.openstack_tenant_spl
-        self.tenant = self.openstack_tenant_fixture.openstack_tenant
+        self.tenant = self.openstack_tenant_fixture.tenant
 
     def test_user_cannot_assign_floating_ip_to_instance_in_unstable_state(self):
         floating_ip = factories.FloatingIPFactory(
