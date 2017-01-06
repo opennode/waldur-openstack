@@ -1,7 +1,7 @@
 import uuid
 
 from django.utils import six
-from rest_framework import viewsets, decorators, response, permissions, status
+from rest_framework import viewsets, decorators, response, permissions, status, serializers as rf_serializers
 from rest_framework import filters as rf_filters
 from rest_framework.exceptions import ValidationError
 
@@ -225,13 +225,14 @@ class IpMappingViewSet(viewsets.ModelViewSet):
     filter_class = filters.IpMappingFilter
 
 
-class FloatingIPViewSet(viewsets.ReadOnlyModelViewSet):
+class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                           structure_views.ResourceViewSet)):
     queryset = models.FloatingIP.objects.all()
     serializer_class = serializers.FloatingIPSerializer
-    lookup_field = 'uuid'
     filter_class = filters.FloatingIPFilter
-    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
-    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
+    disabled_actions = ['update', 'partial_update', 'create']
+    delete_executor = executors.FloatingIPDeleteExecutor
+    pull_executor = executors.FloatingIPPullExecutor
 
     def list(self, request, *args, **kwargs):
         """
@@ -352,6 +353,28 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     create_network_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
     create_network_serializer_class = serializers.NetworkSerializer
+
+    @decorators.detail_route(methods=['post'])
+    def create_floating_ip(self, request, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        floating_ip = serializer.save()
+
+        executors.FloatingIPCreateExecutor.execute(floating_ip)
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    create_floating_ip_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    create_floating_ip_serializer_class = serializers.FloatingIPSerializer
+
+    @decorators.detail_route(methods=['post'])
+    def pull_floating_ips(self, request, uuid=None):
+        tenant = self.get_object()
+
+        executors.TenantPullFloatingIPsExecutor.execute(tenant)
+        return response.Response(status=status.HTTP_202_ACCEPTED)
+
+    pull_floating_ips_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    pull_floating_ips_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def create_security_group(self, request, uuid=None):

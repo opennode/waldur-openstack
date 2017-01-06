@@ -214,9 +214,10 @@ class OpenStackBackend(BaseOpenStackBackend):
             for ip_id in backend_ids - nc_ids:
                 ip = backend_floating_ips[ip_id]
                 created_ip = tenant.floating_ips.create(
-                    status=ip['status'],
+                    runtime_state=ip['status'],
                     backend_id=ip['id'],
                     address=ip['floating_ip_address'],
+                    name=ip['floating_ip_address'],
                     backend_network_id=ip['floating_network_id'],
                     service_project_link=tenant.service_project_link
                 )
@@ -225,11 +226,11 @@ class OpenStackBackend(BaseOpenStackBackend):
             for ip_id in nc_ids & backend_ids:
                 nc_ip = nc_floating_ips[ip_id]
                 backend_ip = backend_floating_ips[ip_id]
-                if nc_ip.status != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
+                if nc_ip.runtime_state != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
                         or nc_ip.backend_network_id != backend_ip['floating_network_id']:
                     # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
-                    if not (nc_ip.status == 'BOOKED' and backend_ip['status'] == 'DOWN'):
-                        nc_ip.status = backend_ip['status']
+                    if not (nc_ip.runtime_state == 'BOOKED' and backend_ip['status'] == 'DOWN'):
+                        nc_ip.runtime_state = backend_ip['status']
                     nc_ip.address = backend_ip['floating_ip_address']
                     nc_ip.backend_network_id = backend_ip['floating_network_id']
                     nc_ip.save()
@@ -465,14 +466,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        for floatingip in floatingips.get('floatingips', []):
-            logger.info("Deleting floating IP %s from tenant %s", floatingip['id'], tenant.backend_id)
-            try:
-                neutron.delete_floatingip(floatingip['id'])
-            except neutron_exceptions.NotFound:
-                logger.debug("Floating IP %s is already gone from tenant %s", floatingip['id'], tenant.backend_id)
-            except neutron_exceptions.NeutronClientException as e:
-                six.reraise(OpenStackBackendError, e)
+        for floating_ip in floatingips.get('floatingips', []):
+            self._delete_backend_floating_ip(floating_ip['id'], tenant.backend_id)
 
     @log_backend_action()
     def delete_tenant_ports(self, tenant):
@@ -1031,38 +1026,60 @@ class OpenStackBackend(BaseOpenStackBackend):
                              tenant.internal_network_id)
             six.reraise(OpenStackBackendError, e)
 
-    def _get_or_create_floating_ip(self, tenant):
-        # TODO: check availability and quota
-        if not tenant.floating_ips.filter(
-            status='DOWN',
-            backend_network_id=tenant.external_network_id
-        ).exists():
-            self.allocate_floating_ip_address(tenant)
-        return tenant.floating_ips.filter(
-            status='DOWN',
-            backend_network_id=tenant.external_network_id
-        ).first()
-
-    @log_backend_action('allocate floating IP for tenant')
-    def allocate_floating_ip_address(self, tenant):
+    @log_backend_action('pull floating ip')
+    def pull_floating_ip(self, floating_ip):
         neutron = self.neutron_client
         try:
-            ip_address = neutron.create_floatingip({
+            backend_floating_ip = neutron.show_floatingip(floating_ip.backend_id)['floatingip']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            floating_ip.runtime_state = backend_floating_ip['status']
+            floating_ip.address = backend_floating_ip['floating_ip_address']
+            floating_ip.name = backend_floating_ip['floating_ip_address']
+            floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
+            floating_ip.save()
+
+    @log_backend_action('pull floating ip')
+    def pull_floating_ips(self, tenant):
+        for floating_ip in tenant.floating_ips.iterator():
+            self.pull_floating_ip(floating_ip)
+
+    @log_backend_action('delete floating ip')
+    def delete_floating_ip(self, floating_ip):
+        self._delete_backend_floating_ip(floating_ip.backend_id, floating_ip.tenant.backend_id)
+        floating_ip.decrease_backend_quotas_usage()
+
+    def _delete_backend_floating_ip(self, backend_id, tenant_backend_id):
+        neutron = self.neutron_client
+        try:
+            logger.info("Deleting floating IP %s from tenant %s", backend_id, tenant_backend_id)
+            neutron.delete_floatingip(backend_id)
+        except neutron_exceptions.NotFound:
+            logger.debug("Floating IP %s is already gone from tenant %s", backend_id, tenant_backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+
+    @log_backend_action('create floating ip')
+    def create_floating_ip(self, floating_ip):
+        neutron = self.neutron_client
+        try:
+            backend_floating_ip = neutron.create_floatingip({
                 'floatingip': {
-                    'floating_network_id': tenant.external_network_id,
-                    'tenant_id': tenant.backend_id,
+                    'floating_network_id': floating_ip.tenant.external_network_id,
+                    'tenant_id': floating_ip.tenant.backend_id,
                 }
             })['floatingip']
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            tenant.floating_ips.create(
-                status='DOWN',
-                address=ip_address['floating_ip_address'],
-                backend_id=ip_address['id'],
-                backend_network_id=ip_address['floating_network_id'],
-                service_project_link=tenant.service_project_link
-            )
+            floating_ip.runtime_state = backend_floating_ip['status']
+            floating_ip.address = backend_floating_ip['floating_ip_address']
+            floating_ip.name = backend_floating_ip['floating_ip_address']
+            floating_ip.backend_id = backend_floating_ip['id']
+            floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
+            floating_ip.save()
 
     @log_backend_action()
     def connect_tenant_to_external_network(self, tenant, external_network_id):

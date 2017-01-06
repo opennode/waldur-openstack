@@ -10,8 +10,7 @@ import taggit.managers
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('taggit', '0002_auto_20150616_2121'),
-        ('openstack', '0025_delete_tenant_models'),
+        ('openstack', '0027_delete_floating_ip_status'),
     ]
 
     operations = [

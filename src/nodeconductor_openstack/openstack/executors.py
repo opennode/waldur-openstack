@@ -182,6 +182,38 @@ class TenantAllocateFloatingIPExecutor(core_executors.ActionExecutor):
             serialized_tenant, 'allocate_floating_ip_address', state_transition='begin_updating')
 
 
+class FloatingIPCreateExecutor(core_executors.CreateExecutor):
+
+    @classmethod
+    def get_task_signature(cls, floating_ip, serialized_floating_ip, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_floating_ip, 'create_floating_ip', state_transition='begin_creating')
+
+
+class FloatingIPDeleteExecutor(core_executors.DeleteExecutor):
+
+    @classmethod
+    def get_task_signature(cls, floating_ip, serialized_floating_ip, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_floating_ip, 'delete_floating_ip', state_transition='begin_deleting')
+
+
+class FloatingIPPullExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, floating_ip, serialized_floating_ip, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_floating_ip, 'pull_floating_ip', state_transition='begin_updating')
+
+
+class TenantPullFloatingIPsExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_tenant, 'pull_floating_ips', state_transition='begin_updating')
+
+
 class TenantDeleteExternalNetworkExecutor(core_executors.ActionExecutor):
 
     @classmethod
