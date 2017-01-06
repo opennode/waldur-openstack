@@ -15,11 +15,11 @@ class OpenStackTenantFixture(openstack_fixtures.OpenStackFixture):
             scope=self.tenant,
             customer=self.customer,
             backend_url=self.openstack_service_settings.backend_url,
-            username=self.openstack_tenant.user_username,
-            password=self.openstack_tenant.user_password,
+            username=self.tenant.user_username,
+            password=self.tenant.user_password,
             options={
-                'availability_zone': self.openstack_tenant.availability_zone,
-                'tenant_id': self.openstack_tenant.backend_id,
+                'availability_zone': self.tenant.availability_zone,
+                'tenant_id': self.tenant.backend_id,
             },
         )
 
