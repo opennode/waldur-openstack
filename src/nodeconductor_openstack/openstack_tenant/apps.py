@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 from django.db.models import signals
+from django_fsm import signals as fsm_signals
 
 
 class OpenStackTenantConfig(AppConfig):
@@ -57,4 +58,42 @@ class OpenStackTenantConfig(AppConfig):
             handlers.log_backup_schedule_deletion,
             sender=models.BackupSchedule,
             dispatch_uid='openstack_tenant.handlers.log_backup_schedule_deletion',
+        )
+
+        from nodeconductor_openstack.openstack.models import SecurityGroup, FloatingIP
+
+        fsm_signals.post_transition.connect(
+            handlers.create_floating_ip,
+            sender=FloatingIP,
+            dispatch_uid='openstack_tenant.handlers.create_floating_ip',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.update_floating_ip,
+            sender=FloatingIP,
+            dispatch_uid='openstack_tenant.handlers.update_floating_ip',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.create_security_group,
+            sender=SecurityGroup,
+            dispatch_uid='openstack_tenant.handlers.create_security_group',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.update_security_group,
+            sender=SecurityGroup,
+            dispatch_uid='openstack_tenant.handlers.update_security_group',
+        )
+
+        signals.post_delete.connect(
+            handlers.delete_security_group,
+            sender=SecurityGroup,
+            dispatch_uid='openstack_tenant.handlers.delete_security_group',
+        )
+
+        signals.post_delete.connect(
+            handlers.delete_floating_ip,
+            sender=FloatingIP,
+            dispatch_uid='openstack_tenant.handlers.delete_floating_ip',
         )

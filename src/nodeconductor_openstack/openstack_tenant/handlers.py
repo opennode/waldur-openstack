@@ -1,8 +1,9 @@
 from __future__ import unicode_literals
 
 from nodeconductor.core.models import StateMixin
+from nodeconductor.structure import models as structure_models
 
-from . import log
+from . import log, models
 
 
 def _log_scheduled_action(resource, action, action_details):
@@ -108,4 +109,153 @@ def log_backup_schedule_deletion(sender, instance, **kwargs):
         'Backup schedule "%s" has been deleted' % backup_schedule.name,
         event_type='resource_backup_schedule_deleted',
         event_context={'resource': backup_schedule.instance, 'backup_schedule': backup_schedule},
+    )
+
+
+def delete_security_group(sender, instance, **kwargs):
+    """
+    Deletes security group on openstack security group deletion
+    :param instance: openstack.models.SecurityGroup instance
+    """
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
+    if security_group:
+        security_group.delete()
+
+
+def delete_floating_ip(sender, instance, **kwargs):
+    """
+    Deletes floating ip on openstack floating ip deletion
+    :param instance: openstack.models.FloatingIP instance
+    """
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
+    if floating_ip:
+        floating_ip.delete()
+
+
+def update_security_group(sender, instance, name, source, target, **kwargs):
+    """
+    Updates security group and their rules on openstack security group transition from 'UPDATING' state to 'OK'.
+    :param instance: openstack.models.SecurityGroup instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
+    if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
+    if security_group:
+        security_group.name = instance.name,
+        security_group.description = instance.description
+        security_group.save()
+
+        security_group.rules.all().delete()
+
+        group_rules = [models.SecurityGroupRule(
+            protocol=rule.protocol,
+            from_port=rule.from_port,
+            to_port=rule.to_port,
+            cidr=rule.cidr,
+            backend_id=rule.backend_id,
+            security_group=security_group,
+        ) for rule in instance.rules.iterator()]
+
+        security_group.rules.bulk_create(group_rules)
+
+
+def create_security_group(sender, instance, name, source, target, **kwargs):
+    """
+    Creates security group on openstack security group transition from 'CREATING' state to 'OK'.
+    :param instance: openstack.models.SecurityGroup instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
+    if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    security_group = models.SecurityGroup.objects.create(
+        description=instance.description,
+        name=instance.name,
+        backend_id=instance.backend_id,
+        settings=settings,
+    )
+
+    if instance.rules.count() > 0:
+        group_rules = [models.SecurityGroupRule(
+            protocol=rule.protocol,
+            from_port=rule.from_port,
+            to_port=rule.to_port,
+            cidr=rule.cidr,
+            backend_id=rule.backend_id,
+            security_group=security_group,
+        ) for rule in instance.rules.iterator()]
+
+        security_group.rules.bulk_create(group_rules)
+
+
+def update_floating_ip(sender, instance, name, source, target, **kwargs):
+    """
+    Updates floating ip on openstack floating ip transition from 'UPDATING' state to 'OK'.
+    :param instance: openstack.models.FloatingIP instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
+    if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
+
+    if floating_ip:
+        floating_ip.name = instance.name
+        floating_ip.address = instance.address
+        floating_ip.status = instance.runtime_state
+        floating_ip.backend_network_id = instance.backend_network_id
+
+        floating_ip.save()
+
+
+def create_floating_ip(sender, instance, name, source, target, **kwargs):
+    """
+    Creates floating ip on openstack floating ip transition from 'CREATING' state to 'OK'.
+    :param instance: openstack.models.FloatingIP instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
+    if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    models.FloatingIP.objects.create(
+        name=instance.name,
+        backend_id=instance.backend_id,
+        settings=settings,
+        address=instance.address,
+        status=instance.runtime_state,
+        backend_network_id=instance.backend_network_id,
     )
