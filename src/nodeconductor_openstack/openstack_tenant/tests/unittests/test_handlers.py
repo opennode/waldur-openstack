@@ -21,7 +21,7 @@ class TestSecurityGroupHandler(TestCase):
 
         openstack_security_group.state = StateMixin.States.OK
         openstack_security_group.save()
-        handlers.on_openstack_security_group_state_changed(
+        handlers.create_security_group(
             sender=None,
             name='',
             instance=openstack_security_group,
@@ -41,7 +41,7 @@ class TestSecurityGroupHandler(TestCase):
         security_group = factories.SecurityGroupFactory(settings=self.service_settings,
                                                         backend_id=openstack_security_group.backend_id)
 
-        handlers.on_openstack_security_group_state_changed(
+        handlers.update_security_group(
             sender=None,
             name='',
             instance=openstack_security_group,
@@ -52,6 +52,25 @@ class TestSecurityGroupHandler(TestCase):
         security_group.refresh_from_db()
         self.assertTrue(openstack_security_group.name in security_group.name)
         self.assertTrue(openstack_security_group.description in security_group.description)
+
+    def test_security_group_rules_are_updated_when_one_more_rule_is_added(self):
+        openstack_security_group = openstack_factories.SecurityGroupFactory(tenant=self.tenant)
+        openstack_factories.SecurityGroupRuleFactory(security_group=openstack_security_group)
+        security_group = factories.SecurityGroupFactory(settings=self.service_settings,
+                                                        backend_id=openstack_security_group.backend_id)
+
+        handlers.update_security_group(
+            sender=None,
+            name='',
+            instance=openstack_security_group,
+            source=StateMixin.States.UPDATING,
+            target=StateMixin.States.OK,
+        )
+
+        self.assertEqual(security_group.rules.count(), 1, "Security group rule has not been added")
+        self.assertEqual(security_group.rules.first().protocol, openstack_security_group.rules.first().protocol)
+        self.assertEqual(security_group.rules.first().from_port, openstack_security_group.rules.first().from_port)
+        self.assertEqual(security_group.rules.first().to_port, openstack_security_group.rules.first().to_port)
 
     def test_security_group_is_deleted_when_openstack_security_group_is_deleted(self):
         openstack_security_group = openstack_factories.SecurityGroupFactory(tenant=self.tenant)
@@ -72,7 +91,7 @@ class TestFloatingIPHandler(TestCase):
 
         openstack_floating_ip.state = StateMixin.States.OK
         openstack_floating_ip.save()
-        handlers.on_openstack_floating_ip_state_changed(
+        handlers.create_floating_ip(
             sender=None,
             name='',
             instance=openstack_floating_ip,
@@ -94,7 +113,7 @@ class TestFloatingIPHandler(TestCase):
             backend_id=openstack_floating_ip.backend_id,
         )
 
-        handlers.on_openstack_floating_ip_state_changed(
+        handlers.update_floating_ip(
             sender=None,
             name='',
             instance=openstack_floating_ip,

@@ -112,98 +112,112 @@ def log_backup_schedule_deletion(sender, instance, **kwargs):
     )
 
 
-def _get_settings(tenant):
-    try:
-        result = structure_models.ServiceSettings.objects.get(scope=tenant)
-    except structure_models.ServiceSettings.DoesNotExist:
-        pass
-    else:
-        return result
-
-
-def _get_floating_ip(service_settings, backend_id):
-    try:
-        result = models.FloatingIP.objects.get(settings=service_settings, backend_id=backend_id)
-    except models.FloatingIP.DoesNotExist:
-        pass
-    else:
-        return result
-
-
-def _get_security_group(service_settings, backend_id):
-    try:
-        result = models.SecurityGroup.objects.get(settings=service_settings, backend_id=backend_id)
-    except models.SecurityGroup.DoesNotExist:
-        pass
-    else:
-        return result
-
-
-def on_openstack_security_group_deleted(sender, instance, **kwargs):
-    settings = _get_settings(instance.tenant)
+def delete_security_group(sender, instance, **kwargs):
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
     if not settings:
         return
 
-    security_group = _get_security_group(settings, instance.backend_id)
+    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
     if security_group:
         security_group.delete()
 
 
-def on_openstack_floating_ip_deleted(sender, instance, **kwargs):
-    settings = _get_settings(instance.tenant)
+def delete_floating_ip(sender, instance, **kwargs):
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
     if not settings:
         return
 
-    floating_ip = _get_floating_ip(settings, instance.backend_id)
+    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
     if floating_ip:
         floating_ip.delete()
 
 
+def update_security_group(sender, instance, name, source, target, **kwargs):
+    if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
+        return
 
-def on_openstack_security_group_state_changed(sender, instance, name, source, target, **kwargs):
-    settings = _get_settings(instance.tenant)
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
+    if security_group:
+        security_group.name = instance.name,
+        security_group.description = instance.description
+        security_group.save()
+
+        if instance.rules.count() > 0:
+            security_group.rules.all().delete()
+
+            group_rules = [models.SecurityGroupRule(
+                protocol=rule.protocol,
+                from_port=rule.from_port,
+                to_port=rule.to_port,
+                cidr=rule.cidr,
+                backend_id=rule.backend_id,
+                security_group=security_group,
+            ) for rule in instance.rules.iterator()]
+
+            security_group.rules.bulk_create(group_rules)
+
+
+def create_security_group(sender, instance, name, source, target, **kwargs):
+    if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
     if not settings:
         return
 
-    if source == StateMixin.States.CREATING and target == StateMixin.States.OK:
-        models.SecurityGroup.objects.create(
-            description=instance.description,
-            name=instance.name,
-            backend_id=instance.backend_id,
-            settings=settings,
-        )
+    security_group = models.SecurityGroup.objects.create(
+        description=instance.description,
+        name=instance.name,
+        backend_id=instance.backend_id,
+        settings=settings,
+    )
 
-    elif source == StateMixin.States.UPDATING and target == StateMixin.States.OK:
-        security_group = _get_security_group(settings, instance.backend_id)
+    if instance.rules.count() > 0:
+        group_rules = [models.SecurityGroupRule(
+            protocol=rule.protocol,
+            from_port=rule.from_port,
+            to_port=rule.to_port,
+            cidr=rule.cidr,
+            backend_id=rule.backend_id,
+            security_group=security_group,
+        ) for rule in instance.rules.iterator()]
 
-        if security_group:
-            security_group.name = instance.name,
-            security_group.description = instance.description
-            security_group.save()
+        security_group.bulk_create(group_rules)
 
 
-def on_openstack_floating_ip_state_changed(sender, instance, name, source, target, **kwargs):
-    settings = _get_settings(instance.tenant)
+def update_floating_ip(sender, instance, name, source, target, **kwargs):
+    if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
     if not settings:
         return
 
-    if source == StateMixin.States.CREATING and target == StateMixin.States.OK:
-        models.FloatingIP.objects.create(
-            name=instance.name,
-            backend_id=instance.backend_id,
-            settings=settings,
-            address=instance.address,
-            status=instance.runtime_state,
-            backend_network_id=instance.backend_network_id,
-        )
+    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
 
-    elif source == StateMixin.States.UPDATING and target == StateMixin.States.OK:
-        floating_ip = _get_floating_ip(settings, instance.backend_id)
+    if floating_ip:
+        floating_ip.name = instance.name
+        floating_ip.address = instance.address
+        floating_ip.status = instance.runtime_state
+        floating_ip.backend_network_id = instance.backend_network_id
 
-        if floating_ip:
-            floating_ip.name = instance.name
-            floating_ip.address = instance.address
-            floating_ip.status = instance.runtime_state
-            floating_ip.backend_network_id = instance.backend_network_id
+        floating_ip.save()
 
-            floating_ip.save()
+
+def create_floating_ip(sender, instance, name, source, target, **kwargs):
+    if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    models.FloatingIP.objects.create(
+        name=instance.name,
+        backend_id=instance.backend_id,
+        settings=settings,
+        address=instance.address,
+        status=instance.runtime_state,
+        backend_network_id=instance.backend_network_id,
+    )
