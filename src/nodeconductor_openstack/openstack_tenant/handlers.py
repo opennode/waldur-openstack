@@ -183,7 +183,7 @@ def create_security_group(sender, instance, name, source, target, **kwargs):
             security_group=security_group,
         ) for rule in instance.rules.iterator()]
 
-        security_group.bulk_create(group_rules)
+        security_group.rules.bulk_create(group_rules)
 
 
 def update_floating_ip(sender, instance, name, source, target, **kwargs):
