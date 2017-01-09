@@ -113,6 +113,10 @@ def log_backup_schedule_deletion(sender, instance, **kwargs):
 
 
 def delete_security_group(sender, instance, **kwargs):
+    """
+    Deletes security group on openstack security group deletion
+    :param instance: openstack.models.SecurityGroup instance
+    """
     settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
     if not settings:
         return
@@ -123,6 +127,10 @@ def delete_security_group(sender, instance, **kwargs):
 
 
 def delete_floating_ip(sender, instance, **kwargs):
+    """
+    Deletes floating ip on openstack floating ip deletion
+    :param instance: openstack.models.FloatingIP instance
+    """
     settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
     if not settings:
         return
@@ -133,32 +141,48 @@ def delete_floating_ip(sender, instance, **kwargs):
 
 
 def update_security_group(sender, instance, name, source, target, **kwargs):
+    """
+    Updates security group and their rules on openstack security group transition from 'UPDATING' state to 'OK'.
+    :param instance: openstack.models.SecurityGroup instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
     if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
         return
 
     settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
     security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
     if security_group:
         security_group.name = instance.name,
         security_group.description = instance.description
         security_group.save()
 
-        if instance.rules.count() > 0:
-            security_group.rules.all().delete()
+        security_group.rules.all().delete()
 
-            group_rules = [models.SecurityGroupRule(
-                protocol=rule.protocol,
-                from_port=rule.from_port,
-                to_port=rule.to_port,
-                cidr=rule.cidr,
-                backend_id=rule.backend_id,
-                security_group=security_group,
-            ) for rule in instance.rules.iterator()]
+        group_rules = [models.SecurityGroupRule(
+            protocol=rule.protocol,
+            from_port=rule.from_port,
+            to_port=rule.to_port,
+            cidr=rule.cidr,
+            backend_id=rule.backend_id,
+            security_group=security_group,
+        ) for rule in instance.rules.iterator()]
 
-            security_group.rules.bulk_create(group_rules)
+        security_group.rules.bulk_create(group_rules)
 
 
 def create_security_group(sender, instance, name, source, target, **kwargs):
+    """
+    Creates security group on openstack security group transition from 'CREATING' state to 'OK'.
+    :param instance: openstack.models.SecurityGroup instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
     if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
         return
 
@@ -187,6 +211,13 @@ def create_security_group(sender, instance, name, source, target, **kwargs):
 
 
 def update_floating_ip(sender, instance, name, source, target, **kwargs):
+    """
+    Updates floating ip on openstack floating ip transition from 'UPDATING' state to 'OK'.
+    :param instance: openstack.models.FloatingIP instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
     if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
         return
 
@@ -206,6 +237,13 @@ def update_floating_ip(sender, instance, name, source, target, **kwargs):
 
 
 def create_floating_ip(sender, instance, name, source, target, **kwargs):
+    """
+    Creates floating ip on openstack floating ip transition from 'CREATING' state to 'OK'.
+    :param instance: openstack.models.FloatingIP instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
     if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
         return
 

@@ -65,35 +65,35 @@ class OpenStackTenantConfig(AppConfig):
         fsm_signals.post_transition.connect(
             handlers.create_floating_ip,
             sender=FloatingIP,
-            dispatch_uid='openstack_tenant.handlers.on_openstack_floating_ip_state_changed',
+            dispatch_uid='openstack_tenant.handlers.create_floating_ip',
         )
 
         fsm_signals.post_transition.connect(
             handlers.update_floating_ip,
             sender=FloatingIP,
-            dispatch_uid='openstack_tenant.handlers.on_openstack_floating_ip_state_changed',
+            dispatch_uid='openstack_tenant.handlers.update_floating_ip',
         )
 
         fsm_signals.post_transition.connect(
             handlers.create_security_group,
             sender=SecurityGroup,
-            dispatch_uid='openstack_tenant.handlers.on_openstack_security_group_state_changed',
+            dispatch_uid='openstack_tenant.handlers.create_security_group',
         )
 
         fsm_signals.post_transition.connect(
             handlers.update_security_group,
             sender=SecurityGroup,
-            dispatch_uid='openstack_tenant.handlers.on_openstack_security_group_state_changed',
+            dispatch_uid='openstack_tenant.handlers.update_security_group',
         )
 
         signals.post_delete.connect(
             handlers.delete_security_group,
             sender=SecurityGroup,
-            dispatch_uid='openstack_tenant.handlers.on_openstack_security_group_deleted',
+            dispatch_uid='openstack_tenant.handlers.delete_security_group',
         )
 
         signals.post_delete.connect(
             handlers.delete_floating_ip,
             sender=FloatingIP,
-            dispatch_uid='openstack_tenant.handlers.on_openstack_floating_ip_deleted',
+            dispatch_uid='openstack_tenant.handlers.delete_floating_ip',
         )
