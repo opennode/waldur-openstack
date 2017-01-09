@@ -16,7 +16,7 @@ class TestSecurityGroupHandler(TestCase):
         self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
 
     def test_security_group_been_created_when_openstack_security_group_is_created(self):
-        openstack_security_group = openstack_factories.SecurityGroupFactory(tenant=self.tenant, )
+        openstack_security_group = openstack_factories.SecurityGroupFactory(tenant=self.tenant)
         self.assertEqual(models.SecurityGroup.objects.count(), 0)
 
         openstack_security_group.state = StateMixin.States.OK
@@ -50,8 +50,8 @@ class TestSecurityGroupHandler(TestCase):
         )
 
         security_group.refresh_from_db()
-        self.assertTrue(openstack_security_group.name in security_group.name)
-        self.assertTrue(openstack_security_group.description in security_group.description)
+        self.assertIn(openstack_security_group.name, security_group.name)
+        self.assertIn(openstack_security_group.description, security_group.description)
 
     def test_security_group_rules_are_updated_when_one_more_rule_is_added(self):
         openstack_security_group = openstack_factories.SecurityGroupFactory(tenant=self.tenant)
@@ -86,7 +86,7 @@ class TestFloatingIPHandler(TestCase):
         self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
 
     def test_floating_ip_been_created_when_openstack_floating_ip_is_created(self):
-        openstack_floating_ip = openstack_factories.FloatingIPFactory(tenant=self.tenant, )
+        openstack_floating_ip = openstack_factories.FloatingIPFactory(tenant=self.tenant)
         self.assertEqual(models.FloatingIP.objects.count(), 0)
 
         openstack_floating_ip.state = StateMixin.States.OK
