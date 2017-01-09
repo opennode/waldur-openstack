@@ -21,7 +21,7 @@ class OpenStackTenantConfig(AppConfig):
         # Initialize service settings quotas based on tenant.
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
-        from nodeconductor_openstack.openstack.models import Tenant
+        from nodeconductor_openstack.openstack.models import Tenant, SecurityGroup, FloatingIP
         for quota in Tenant.get_quotas_fields():
             ServiceSettings.add_quota_field(
                 name=quota.name,
@@ -59,8 +59,6 @@ class OpenStackTenantConfig(AppConfig):
             sender=models.BackupSchedule,
             dispatch_uid='openstack_tenant.handlers.log_backup_schedule_deletion',
         )
-
-        from nodeconductor_openstack.openstack.models import SecurityGroup, FloatingIP
 
         fsm_signals.post_transition.connect(
             handlers.create_floating_ip,

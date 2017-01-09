@@ -10,7 +10,7 @@ from . import factories, fixtures
 def _instance_data(user, instance=None):
     if instance is None:
         instance = factories.InstanceFactory()
-    factories.FloatingIPFactory(settings=instance.service_project_link.service.settings, status='DOWN')
+    factories.FloatingIPFactory(settings=instance.service_project_link.service.settings, runtime_state='DOWN')
     image = factories.ImageFactory(settings=instance.service_project_link.service.settings)
     flavor = factories.FlavorFactory(settings=instance.service_project_link.service.settings)
     ssh_public_key = structure_factories.SshPublicKeyFactory(user=user)

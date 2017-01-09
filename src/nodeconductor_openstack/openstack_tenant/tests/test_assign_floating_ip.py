@@ -19,7 +19,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
     def test_user_cannot_assign_floating_ip_to_instance_in_unstable_state(self):
         floating_ip = factories.FloatingIPFactory(
             settings=self.openstack_tenant_settings,
-            status='DOWN',
+            runtime_state='DOWN',
             backend_network_id=self.tenant.external_network_id
         )
         instance = factories.InstanceFactory(
@@ -47,7 +47,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
     def test_user_cannot_assign_used_ip_to_the_instance(self):
         floating_ip = factories.FloatingIPFactory(
             settings=self.openstack_tenant_settings,
-            status='ACTIVE',
+            runtime_state='ACTIVE',
             backend_network_id=self.tenant.external_network_id
         )
         instance = factories.InstanceFactory(
@@ -58,10 +58,10 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
 
         response = self.get_response(instance, floating_ip)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['floating_ip'], ['Floating IP status must be DOWN.'])
+        self.assertEqual(response.data['floating_ip'], ['Floating IP runtime_state must be DOWN.'])
 
     def test_user_cannot_assign_ip_from_different_settings_to_the_instance(self):
-        floating_ip = factories.FloatingIPFactory(status='DOWN')
+        floating_ip = factories.FloatingIPFactory(runtime_state='DOWN')
         instance = factories.InstanceFactory(
             service_project_link=self.spl,
             state=Instance.States.OK,
@@ -76,7 +76,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
     def test_user_can_assign_floating_ip_to_instance_with_satisfied_requirements(self):
         floating_ip = factories.FloatingIPFactory(
             settings=self.openstack_tenant_settings,
-            status='DOWN',
+            runtime_state='DOWN',
             backend_network_id=self.tenant.external_network_id
         )
         instance = factories.InstanceFactory(
@@ -95,7 +95,7 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
 
         floating_ip = factories.FloatingIPFactory(
             settings=self.openstack_tenant_settings,
-            status='DOWN',
+            runtime_state='DOWN',
             backend_network_id=self.tenant.external_network_id
         )
         instance = factories.InstanceFactory(

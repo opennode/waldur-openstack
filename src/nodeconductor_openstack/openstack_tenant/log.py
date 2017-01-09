@@ -54,6 +54,10 @@ class ResourceActionEventLogger(EventLogger):
             'resource_extend_volume_scheduled',
             'resource_extend_volume_succeeded',
             'resource_extend_volume_failed',
+
+            'resource_unassign_floating_ip_scheduled',
+            'resource_unassign_floating_ip_succeeded',
+            'resource_unassign_floating_ip_failed',
         )
         event_groups = {'resources': event_types}
 
