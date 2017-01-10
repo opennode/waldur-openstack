@@ -178,7 +178,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = structure_filters.ServicePropertySettingsFilter
 
 
-class SecurityGroupViewSet(structure_views.ResourceViewSet):
+class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.SecurityGroup.objects.all()
     serializer_class = serializers.SecurityGroupSerializer
     filter_class = filters.SecurityGroupFilter
