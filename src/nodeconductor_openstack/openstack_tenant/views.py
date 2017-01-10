@@ -4,7 +4,8 @@ from rest_framework import decorators, response, status, permissions, filters as
 
 from nodeconductor.core import (views as core_views, exceptions as core_exceptions, permissions as core_permissions,
                                 validators as core_validators)
-from nodeconductor.structure import views as structure_views, filters as structure_filters
+from nodeconductor.structure import views as structure_views, filters as structure_filters, \
+    permissions as structure_permissions
 
 from . import models, serializers, filters, executors
 
@@ -506,22 +507,13 @@ class BackupScheduleViewSet(core_views.ActionsViewSet):
     disabled_actions = ['create']
     permission_classes = (core_permissions.ActionsPermission,)
 
-    def _has_permissions_for_instance(request, view, backup_schedule=None):
-        if not backup_schedule:
-            return
-
-        if not core_permissions.has_user_permission_for_instance(request.user, backup_schedule.instance):
-            raise exceptions.PermissionDenied()
+    unsafe_methods_permissions = [structure_permissions.is_administrator]
 
     def perform_update(self, serializer):
         super(BackupScheduleViewSet, self).perform_update(serializer)
 
-    perform_update_permissions = [_has_permissions_for_instance]
-
     def perform_destroy(self, schedule):
         super(BackupScheduleViewSet, self).perform_destroy(schedule)
-
-    perform_destroy_permissions = [_has_permissions_for_instance]
 
     def list(self, request, *args, **kwargs):
         """
@@ -554,7 +546,6 @@ class BackupScheduleViewSet(core_views.ActionsViewSet):
         schedule.save()
         return response.Response({'status': 'Backup schedule was activated'})
 
-    activate_permissions = [_has_permissions_for_instance]
     activate_validators = [_is_backup_schedule_active]
 
     def _is_backup_schedule_deactived(backup_schedule):
@@ -568,12 +559,8 @@ class BackupScheduleViewSet(core_views.ActionsViewSet):
         if a schedule was already deactivated, this will result in **409 CONFLICT** code.
         """
         schedule = self.get_object()
-        if not schedule.is_active:
-            return response.Response(
-                {'status': 'Backup schedule is already deactivated'}, status=status.HTTP_409_CONFLICT)
         schedule.is_active = False
         schedule.save()
         return response.Response({'status': 'Backup schedule was deactivated'})
 
-    deactivate_permissions = [_has_permissions_for_instance]
     deactivate_validators = [_is_backup_schedule_deactived]
