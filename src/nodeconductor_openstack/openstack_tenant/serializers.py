@@ -86,7 +86,7 @@ class FloatingIPSerializer(structure_serializers.BasePropertySerializer):
 
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.FloatingIP
-        fields = ('url', 'uuid', 'settings', 'address', 'status', 'is_booked',)
+        fields = ('url', 'uuid', 'settings', 'address', 'runtime_state', 'is_booked',)
         extra_kwargs = {
             'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-fip-detail'},
             'settings': {'lookup_field': 'uuid'},
@@ -392,7 +392,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = super(InstanceSerializer, self).get_fields()
         field = fields.get('floating_ip')
         if field:
-            field.query_params = {'status': 'DOWN'}
+            field.query_params = {'runtime_state': 'DOWN'}
             field.value_field = 'url'
             field.display_name_field = 'address'
 
@@ -452,8 +452,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         # Case 1. If floating_ip!=None then requested floating IP is assigned to the instance.
         if floating_ip:
 
-            if floating_ip.status != 'DOWN':
-                raise serializers.ValidationError({'floating_ip': 'Floating IP status must be DOWN.'})
+            if floating_ip.runtime_state != 'DOWN':
+                raise serializers.ValidationError({'floating_ip': 'Floating IP runtime_state must be DOWN.'})
 
             if floating_ip.settings != spl.service.settings:
                 raise serializers.ValidationError({
@@ -549,7 +549,7 @@ class AssignFloatingIpSerializer(serializers.Serializer):
         fields = super(AssignFloatingIpSerializer, self).get_fields()
         if self.instance:
             query_params = {
-                'status': 'DOWN',
+                'runtime_state': 'DOWN',
                 'settings_uuid': self.instance.service_project_link.service.settings.uuid.hex,
             }
 
@@ -561,8 +561,8 @@ class AssignFloatingIpSerializer(serializers.Serializer):
 
     def validate_floating_ip(self, floating_ip):
         if floating_ip is not None:
-            if floating_ip.status != 'DOWN':
-                raise serializers.ValidationError("Floating IP status must be DOWN.")
+            if floating_ip.runtime_state != 'DOWN':
+                raise serializers.ValidationError("Floating IP runtime_state must be DOWN.")
             elif floating_ip.settings != self.instance.service_project_link.service.settings:
                 raise serializers.ValidationError("Floating IP must belong to same settings as instance.")
         return floating_ip

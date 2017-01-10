@@ -107,7 +107,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     settings=self.settings,
                     backend_id=backend_ip['id'],
                     defaults={
-                        'status': backend_ip['status'],
+                        'runtime_state': backend_ip['status'],
                         'address': backend_ip['floating_ip_address'],
                         'backend_network_id': backend_ip['floating_network_id'],
                     })
@@ -447,8 +447,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             floating_ip = self._get_or_create_floating_ip()
 
         if floating_ip:
-            floating_ip.status = 'BOOKED'
-            floating_ip.save(update_fields=['status'])
+            floating_ip.runtime_state = 'BOOKED'
+            floating_ip.save(update_fields=['runtime_state'])
 
         try:
             backend_flavor = nova.flavors.get(backend_flavor_id)
@@ -556,7 +556,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
     def _get_or_create_floating_ip(self):
         # TODO: check availability and quota
-        filters = {'status': 'DOWN', 'backend_network_id': self.external_network_id, 'settings': self.settings}
+        filters = {'runtime_state': 'DOWN', 'backend_network_id': self.external_network_id, 'settings': self.settings}
         if not models.FloatingIP.objects.filter(**filters).exists():
             self._allocate_floating_ip()
         return models.FloatingIP.objects.filter(**filters).first()
@@ -574,7 +574,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
         else:
             return models.FloatingIP.objects.create(
-                status='DOWN',
+                runtime_state='DOWN',
                 settings=self.settings,
                 address=ip_address['floating_ip_address'],
                 backend_id=ip_address['id'],
@@ -597,14 +597,37 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 fixed_address=instance.internal_ips
             )
         except nova_exceptions.ClientException as e:
-            floating_ip.status = 'DOWN'
-            floating_ip.save(update_fields=['status'])
+            floating_ip.runtime_state = 'DOWN'
+            floating_ip.save(update_fields=['runtime_state'])
             six.reraise(OpenStackBackendError, e)
         else:
-            floating_ip.status = 'ACTIVE'
-            floating_ip.save(update_fields=['status'])
+            floating_ip.runtime_state = 'ACTIVE'
+            floating_ip.save(update_fields=['runtime_state'])
             instance.external_ips = floating_ip.address
             instance.save(update_fields=['external_ips'])
+
+    @log_backend_action()
+    def unassign_floating_ip(self, instance):
+        nova = self.nova_client
+
+        try:
+            nova.servers.remove_floating_ip(server=instance.backend_id, address=instance.external_ips)
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            instance.external_ips = ''
+            instance.save()
+
+    @log_backend_action()
+    def pull_floating_ip_runtime_state(self, floating_ip):
+        neutron = self.neutron_client
+        try:
+            backend_floating_ip = neutron.show_floatingip(floating_ip.backend_id)['floatingip']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            floating_ip.runtime_state = backend_floating_ip['status']
+            floating_ip.save()
 
     def _get_or_create_ssh_key(self, key_name, fingerprint, public_key):
         nova = self.nova_client
@@ -844,7 +867,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
         floating_ips = models.FloatingIP.objects.filter(
             settings=instance.service_project_link.service.settings, address=instance.external_ips)
-        if floating_ips.update(status='DOWN'):
+        if floating_ips.update(runtime_state='DOWN'):
             logger.info('Successfully released floating ip %s from instance %s',
                         instance.external_ips, instance.uuid)
         instance.decrease_backend_quotas_usage()

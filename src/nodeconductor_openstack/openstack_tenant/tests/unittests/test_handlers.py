@@ -124,7 +124,7 @@ class TestFloatingIPHandler(TestCase):
         floating_ip.refresh_from_db()
         self.assertTrue(openstack_floating_ip.name in floating_ip.name)
         self.assertEqual(openstack_floating_ip.address, floating_ip.address)
-        self.assertEqual(openstack_floating_ip.runtime_state, floating_ip.status)
+        self.assertEqual(openstack_floating_ip.runtime_state, floating_ip.runtime_state)
         self.assertEqual(openstack_floating_ip.backend_network_id, floating_ip.backend_network_id)
 
     def test_floating_ip_is_deleted_when_openstack_floating_ip_is_deleted(self):

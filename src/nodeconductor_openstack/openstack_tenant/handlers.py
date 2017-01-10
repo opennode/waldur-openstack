@@ -230,7 +230,7 @@ def update_floating_ip(sender, instance, name, source, target, **kwargs):
     if floating_ip:
         floating_ip.name = instance.name
         floating_ip.address = instance.address
-        floating_ip.status = instance.runtime_state
+        floating_ip.runtime_state = instance.runtime_state
         floating_ip.backend_network_id = instance.backend_network_id
 
         floating_ip.save()
@@ -256,6 +256,6 @@ def create_floating_ip(sender, instance, name, source, target, **kwargs):
         backend_id=instance.backend_id,
         settings=settings,
         address=instance.address,
-        status=instance.runtime_state,
+        runtime_state=instance.runtime_state,
         backend_network_id=instance.backend_network_id,
     )

@@ -1,5 +1,6 @@
 from django.utils import six
-from rest_framework import decorators, response, status, permissions, filters as rf_filters, exceptions
+from rest_framework import decorators, response, status, permissions, filters as rf_filters, exceptions, \
+    serializers as rf_serializers
 
 from nodeconductor.core import (views as core_views, exceptions as core_exceptions, permissions as core_permissions,
                                 validators as core_validators)
@@ -341,6 +342,24 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     assign_floating_ip_validators = [core_validators.StateValidator(models.Instance.States.OK),
                                      _instance_has_external_ips]
     assign_floating_ip_serializer_class = serializers.AssignFloatingIpSerializer
+
+    def _instance_has_no_floating_ip(instance):
+        if not models.FloatingIP.objects.filter(settings=instance.service_project_link.service.settings,
+                                                address=instance.external_ips).exists():
+            raise core_exceptions.IncorrectStateException('External ips is not assosiated with floating ip.')
+
+    @decorators.detail_route(methods=['post'])
+    def unassign_floating_ip(self, request, uuid=None):
+        instance = self.get_object()
+        floating_ip = models.FloatingIP.objects.get(settings=instance.service_project_link.service.settings,
+                                                    address=instance.external_ips)
+        executors.InstanceUnassignFloatingIpExecutor.execute(instance, floating_ip=floating_ip)
+        return response.Response({'status': 'unassign_floating_ip was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
+    unassign_floating_ip.title = 'Unassign floating IP'
+    unassign_floating_ip_validators = [core_validators.StateValidator(models.Instance.States.OK),
+                                       _instance_has_no_floating_ip]
+    unassign_floating_ip_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def change_flavor(self, request, uuid=None):
