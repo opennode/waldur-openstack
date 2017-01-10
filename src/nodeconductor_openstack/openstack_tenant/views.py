@@ -120,7 +120,7 @@ class FloatingIPViewSet(structure_views.BaseServicePropertyViewSet):
     queryset = models.FloatingIP.objects.all().order_by('settings', 'address')
     serializer_class = serializers.FloatingIPSerializer
     lookup_field = 'uuid'
-    filter_class = structure_filters.ServicePropertySettingsFilter
+    filter_class = filters.FloatingIPFilter
 
 
 class SecurityGroupViewSet(structure_views.BaseServicePropertyViewSet):
