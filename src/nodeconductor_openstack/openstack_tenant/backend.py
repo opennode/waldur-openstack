@@ -598,7 +598,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             )
         except nova_exceptions.ClientException as e:
             floating_ip.runtime_state = 'DOWN'
-            floating_ip.save(update_fields=['status'])
+            floating_ip.save(update_fields=['runtime_state'])
             six.reraise(OpenStackBackendError, e)
         else:
             floating_ip.runtime_state = 'ACTIVE'
