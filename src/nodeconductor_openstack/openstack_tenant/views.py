@@ -497,30 +497,31 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     restore_serializer_class = serializers.BackupRestorationSerializer
 
 
-class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
+class BackupScheduleViewSet(core_views.ActionsViewSet):
     queryset = models.BackupSchedule.objects.all()
     serializer_class = serializers.BackupScheduleSerializer
     lookup_field = 'uuid'
     filter_class = filters.BackupScheduleFilter
     filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
-    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
+    disabled_actions = ['create']
+    permission_classes = (core_permissions.ActionsPermission,)
+
+    def _has_permissions_for_instance(request, view, backup_schedule=None):
+        if not backup_schedule:
+            return
+
+        if not core_permissions.has_user_permission_for_instance(request.user, backup_schedule.instance):
+            raise exceptions.PermissionDenied()
 
     def perform_update(self, serializer):
-        instance = self.get_object().instance
-        if not core_permissions.has_user_permission_for_instance(self.request.user, instance):
-            raise exceptions.PermissionDenied()
         super(BackupScheduleViewSet, self).perform_update(serializer)
 
+    perform_update_permissions = [_has_permissions_for_instance]
+
     def perform_destroy(self, schedule):
-        if not core_permissions.has_user_permission_for_instance(self.request.user, schedule.instance):
-            raise exceptions.PermissionDenied()
         super(BackupScheduleViewSet, self).perform_destroy(schedule)
 
-    def get_backup_schedule(self):
-        schedule = self.get_object()
-        if not core_permissions.has_user_permission_for_instance(self.request.user, schedule.instance):
-            raise exceptions.PermissionDenied()
-        return schedule
+    perform_destroy_permissions = [_has_permissions_for_instance]
 
     def list(self, request, *args, **kwargs):
         """
@@ -537,20 +538,28 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
         """
         return super(BackupScheduleViewSet, self).list(self, request, *args, **kwargs)
 
+    def _is_backup_schedule_active(backup_schedule):
+        if backup_schedule.is_active:
+            raise core_exceptions.IncorrectStateException('Backup schedule is already activated.')
+
     @decorators.detail_route(methods=['post'])
     def activate(self, request, uuid):
         """
         Activate a backup schedule. Note that
         if a schedule is already active, this will result in **409 CONFLICT** code.
         """
-        schedule = self.get_backup_schedule()
-        if schedule.is_active:
-            return response.Response(
-                {'status': 'Backup schedule is already activated'}, status=status.HTTP_409_CONFLICT)
+        schedule = self.get_object()
         schedule.is_active = True
         schedule.error_message = ''
         schedule.save()
         return response.Response({'status': 'Backup schedule was activated'})
+
+    activate_permissions = [_has_permissions_for_instance]
+    activate_validators = [_is_backup_schedule_active]
+
+    def _is_backup_schedule_deactived(backup_schedule):
+        if not backup_schedule.is_active:
+            raise core_exceptions.IncorrectStateException('Backup schedule is already deactivated.')
 
     @decorators.detail_route(methods=['post'])
     def deactivate(self, request, uuid):
@@ -558,10 +567,13 @@ class BackupScheduleViewSet(core_views.UpdateOnlyViewSet):
         Deactivate a backup schedule. Note that
         if a schedule was already deactivated, this will result in **409 CONFLICT** code.
         """
-        schedule = self.get_backup_schedule()
+        schedule = self.get_object()
         if not schedule.is_active:
             return response.Response(
                 {'status': 'Backup schedule is already deactivated'}, status=status.HTTP_409_CONFLICT)
         schedule.is_active = False
         schedule.save()
         return response.Response({'status': 'Backup schedule was deactivated'})
+
+    deactivate_permissions = [_has_permissions_for_instance]
+    deactivate_validators = [_is_backup_schedule_deactived]
