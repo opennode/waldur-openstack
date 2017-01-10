@@ -346,8 +346,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     def _instance_has_no_floating_ip(instance):
         if not models.FloatingIP.objects.filter(settings=instance.service_project_link.service.settings,
                                                 address=instance.external_ips).exists():
-            error_message = 'External ips is not assosiated with floating ip. Error: {0}'.format(e)
-            raise core_exceptions.IncorrectStateException(error_message)
+            raise core_exceptions.IncorrectStateException('External ips is not assosiated with floating ip.')
 
     @decorators.detail_route(methods=['post'])
     def unassign_floating_ip(self, request, uuid=None):
