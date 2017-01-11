@@ -488,9 +488,13 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
 
 class _NestedSubNetSerializer(serializers.ModelSerializer):
+
     class Meta(object):
         model = models.SubNet
-        fields = ('name', 'description', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+        fields = ('name', 'url', 'description', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+        extra_kwargs = dict(
+            url={'lookup_field': 'uuid', 'view_name': 'openstack-subnet-detail'}
+        )
 
 
 class NetworkSerializer(structure_serializers.BaseResourceSerializer):
@@ -503,14 +507,15 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstack-spl-detail',
         read_only=True)
     subnets = _NestedSubNetSerializer(many=True, read_only=True)
+    tenant_name = serializers.CharField(source='tenant.name')
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Network
         view_name = 'openstack-network-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'tenant', 'is_external', 'type', 'segmentation_id', 'subnets')
+            'tenant', 'tenant_name', 'is_external', 'type', 'segmentation_id', 'subnets')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'tenant', 'is_external', 'type', 'segmentation_id')
+            'tenant', 'tenant_name', 'is_external', 'type', 'segmentation_id')
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
@@ -534,15 +539,23 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
     cidr = serializers.CharField(
         validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24')
     allocation_pools = JsonField(read_only=True)
+    network_name = serializers.CharField(source='network.name')
+    tenant = serializers.HyperlinkedRelatedField(
+        source='network.tenant',
+        view_name='openstack-tenant-detail',
+        read_only=True,
+        lookup_field='uuid')
+    tenant_name = serializers.CharField(source='network.tenant.name')
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SubNet
         view_name = 'openstack-subnet-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'network', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+            'tenant', 'tenant_name', 'network', 'network_name', 'cidr',
+            'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('cidr',)
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'network', 'gateway_ip', 'ip_version', 'enable_dhcp')
+            'tenant', 'tenant_name', 'network', 'network_name', 'gateway_ip', 'ip_version', 'enable_dhcp')
         extra_kwargs = dict(
             network={'lookup_field': 'uuid', 'view_name': 'openstack-network-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
