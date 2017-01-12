@@ -214,3 +214,7 @@ class SubNetFactory(factory.DjangoModelFactory):
     name = factory.Sequence(lambda n: 'subnet%s' % n)
     network = factory.SubFactory(NetworkFactory)
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstack-subnet-list')
