@@ -1,3 +1,4 @@
+import mock
 from rest_framework import status, test
 
 from nodeconductor.structure.tests import factories as structure_factories
@@ -49,3 +50,16 @@ class TestNetworkCreateSubnetAction(test.APISimpleTestCase):
 
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @mock.patch('nodeconductor_openstack.openstack.executors.SubNetCreateExecutor.execute')
+    def test_create_subnet_triggers_create_executor(self, executor_action_mock):
+        network = factories.NetworkFactory(service_project_link__project__customer=self.customer)
+        url = factories.NetworkFactory.get_url(network=network, action=self.action_name)
+        data = {
+            'name': 'test_subnet_name'
+        }
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        executor_action_mock.assert_called_once()
+
