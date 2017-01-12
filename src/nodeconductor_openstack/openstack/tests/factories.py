@@ -216,5 +216,13 @@ class SubNetFactory(factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
 
     @classmethod
+    def get_url(cls, subnet=None, action=None):
+        if subnet is None:
+            subnet = SubNetFactory()
+
+        url = 'http://testserver' + reverse('openstack-subnet-detail', kwargs={'uuid': subnet.uuid.hex})
+        return url if action is None else url + action + '/'
+
+    @classmethod
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstack-subnet-list')

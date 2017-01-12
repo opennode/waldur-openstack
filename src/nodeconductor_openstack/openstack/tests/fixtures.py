@@ -33,4 +33,5 @@ class OpenStackFixture(ProjectFixture):
 
     @cached_property
     def subnet(self):
-        return factories.SubNetFactory(service_project_link=self.openstack_spl)
+        return factories.SubNetFactory(service_project_link=self.openstack_spl,
+                                       state=models.SubNet.States.OK)
