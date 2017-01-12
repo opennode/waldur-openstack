@@ -491,10 +491,7 @@ class _NestedSubNetSerializer(serializers.ModelSerializer):
 
     class Meta(object):
         model = models.SubNet
-        fields = ('name', 'url', 'description', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
-        extra_kwargs = dict(
-            url={'lookup_field': 'uuid', 'view_name': 'openstack-subnet-detail'}
-        )
+        fields = ('name', 'description', 'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
 
 
 class NetworkSerializer(structure_serializers.BaseResourceSerializer):
