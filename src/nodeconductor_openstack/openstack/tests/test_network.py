@@ -60,6 +60,7 @@ class TestNetworkCreateSubnetAction(test.APISimpleTestCase):
         }
 
         response = self.client.post(url, data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        failure_message = "executor has not been triggered. Response: %s" % response.data
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, failure_message)
         executor_action_mock.assert_called_once()
 
