@@ -18,7 +18,7 @@ install_requires = [
     'python-glanceclient>=2.0.0',
     'python-keystoneclient>=2.3.1',
     'python-neutronclient>=4.1.1',
-    'python-novaclient==3.3.0',
+    'python-novaclient>=3.3.0',
 ]
 
 
