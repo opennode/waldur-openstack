@@ -86,15 +86,7 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
 
     @classmethod
     def get_success_signature(cls, tenant, serialized_tenant, **kwargs):
-        network = tenant.networks.first()
-        subnet = network.subnets.first()
-        serialized_network = core_utils.serialize_instance(network)
-        serialized_subnet = core_utils.serialize_instance(subnet)
-        return chain(
-            core_tasks.StateTransitionTask().si(serialized_subnet, state_transition='set_ok'),
-            core_tasks.StateTransitionTask().si(serialized_network, state_transition='set_ok'),
-            core_tasks.StateTransitionTask().si(serialized_tenant, state_transition='set_ok'),
-        )
+        return tasks.TenantCreateSuccessTask().si(serialized_tenant)
 
     @classmethod
     def get_failure_signature(cls, tenant, serialized_tenant, **kwargs):

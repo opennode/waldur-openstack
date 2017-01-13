@@ -122,6 +122,7 @@ class TenantActionsMetadataTest(BaseTenantActionsTest):
         response = self.client.options(url)
         return response.data['actions']
 
+
 @patch('nodeconductor_openstack.openstack.executors.FloatingIPCreateExecutor.execute')
 class TenantCreateFloatingIPTest(BaseTenantActionsTest):
 

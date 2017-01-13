@@ -19,3 +19,13 @@ class TenantCreateErrorTask(core_tasks.ErrorStateTransitionTask):
             network.delete()
         else:
             super(TenantCreateErrorTask, self).execute(network)
+
+
+class TenantCreateSuccessTask(core_tasks.StateTransitionTask):
+
+    def execute(self, tenant):
+        network = tenant.networks.first()
+        subnet = network.subnet.first()
+        self.state_transition(network, 'set_ok')
+        self.state_transition(subnet, 'set_ok')
+        return super(TenantCreateSuccessTask, self).execute(tenant)
