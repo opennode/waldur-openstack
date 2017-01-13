@@ -15,6 +15,7 @@ Requires: python-iptools >= 0.6.1
 Requires: python-keystoneclient >= 1:2.3.1
 Requires: python-neutronclient >= 4.1.1
 Requires: python-novaclient >= 1:3.3.0
+Requires: python-novaclient < 1:3.4.0
 
 BuildArch: noarch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
