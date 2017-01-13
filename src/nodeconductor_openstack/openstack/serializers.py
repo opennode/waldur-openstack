@@ -521,9 +521,7 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
-        instance = super(NetworkSerializer, self).create(validated_data)
-        instance.increase_backend_quotas_usage()
-        return instance
+        return super(NetworkSerializer, self).create(validated_data)
 
 
 class SubNetSerializer(structure_serializers.BaseResourceSerializer):
@@ -571,9 +569,7 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         network = validated_data['network']
         validated_data['service_project_link'] = network.service_project_link
         validated_data['allocation_pools'] = _generate_subnet_allocation_pool(validated_data['cidr'])
-        instance = super(SubNetSerializer, self).create(validated_data)
-        instance.increase_backend_quotas_usage()
-        return instance
+        return super(SubNetSerializer, self).create(validated_data)
 
 
 def _generate_subnet_allocation_pool(cidr):
