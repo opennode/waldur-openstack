@@ -165,6 +165,8 @@ class Tenant(structure_models.PrivateCloud):
         floating_ip_count = QuotaField(default_limit=50, is_backend=True)
         volumes = QuotaField(default_limit=50, is_backend=True)
         snapshots = QuotaField(default_limit=50, is_backend=True)
+        network_count = QuotaField(default_limit=10, is_backend=True)
+        subnet_count = QuotaField(default_limit=10, is_backend=True)
 
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='tenants', on_delete=models.PROTECT)
@@ -226,6 +228,12 @@ class Network(core_models.RuntimeStateMixin, structure_models.NewResource):
     def get_url_name(cls):
         return 'openstack-network'
 
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(self.tenant.Quotas.network_count, 1, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(self.tenant.Quotas.network_count, -1)
+
 
 class SubNet(structure_models.NewResource):
     service_project_link = models.ForeignKey(
@@ -243,3 +251,9 @@ class SubNet(structure_models.NewResource):
     @classmethod
     def get_url_name(cls):
         return 'openstack-subnet'
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.tenant.add_quota_usage(self.tenant.Quotas.subnet_count, 1, validate=validate)
+
+    def decrease_backend_quotas_usage(self):
+        self.tenant.add_quota_usage(self.tenant.Quotas.subnet_count, -1)
