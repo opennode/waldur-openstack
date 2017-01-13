@@ -122,6 +122,7 @@ class TenantActionsMetadataTest(BaseTenantActionsTest):
         response = self.client.options(url)
         return response.data['actions']
 
+
 @patch('nodeconductor_openstack.openstack.executors.FloatingIPCreateExecutor.execute')
 class TenantCreateFloatingIPTest(BaseTenantActionsTest):
 
@@ -145,4 +146,3 @@ class TenantCreateFloatingIPTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(self.tenant.floating_ips.count(), 0)
         self.assertFalse(mocked_task.called)
-
