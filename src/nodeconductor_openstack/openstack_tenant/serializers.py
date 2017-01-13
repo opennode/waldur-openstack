@@ -33,7 +33,6 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackTenantService
-        view_name = 'openstacktenant-detail'
         required_fields = ('backend_url', 'username', 'password', 'tenant_id')
         extra_field_options = {
             'backend_url': {
@@ -53,9 +52,7 @@ class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkS
 
     class Meta(structure_serializers.BaseServiceProjectLinkSerializer.Meta):
         model = models.OpenStackTenantServiceProjectLink
-        view_name = 'openstacktenant-spl-detail'
         extra_kwargs = {
-            'url': {'view_name': 'openstacktenant-spl-detail'},
             'service': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-detail'},
         }
 
@@ -66,7 +63,7 @@ class ImageSerializer(structure_serializers.BasePropertySerializer):
         model = models.Image
         fields = ('url', 'uuid', 'name', 'settings', 'min_disk', 'min_ram',)
         extra_kwargs = {
-            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-image-detail'},
+            'url': {'lookup_field': 'uuid'},
             'settings': {'lookup_field': 'uuid'},
         }
 
@@ -77,7 +74,7 @@ class FlavorSerializer(structure_serializers.BasePropertySerializer):
         model = models.Flavor
         fields = ('url', 'uuid', 'name', 'settings', 'cores', 'ram', 'disk',)
         extra_kwargs = {
-            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-flavor-detail'},
+            'url': {'lookup_field': 'uuid'},
             'settings': {'lookup_field': 'uuid'},
         }
 
@@ -88,7 +85,7 @@ class FloatingIPSerializer(structure_serializers.BasePropertySerializer):
         model = models.FloatingIP
         fields = ('url', 'uuid', 'settings', 'address', 'runtime_state', 'is_booked',)
         extra_kwargs = {
-            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-fip-detail'},
+            'url': {'lookup_field': 'uuid'},
             'settings': {'lookup_field': 'uuid'},
         }
 
@@ -100,7 +97,7 @@ class SecurityGroupSerializer(structure_serializers.BasePropertySerializer):
         model = models.SecurityGroup
         fields = ('url', 'uuid', 'name', 'settings', 'description', 'rules')
         extra_kwargs = {
-            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-sgp-detail'},
+            'url': {'lookup_field': 'uuid'},
             'settings': {'lookup_field': 'uuid'},
         }
 
@@ -132,7 +129,6 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Volume
-        view_name = 'openstacktenant-volume-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_snapshot', 'size', 'bootable', 'metadata',
             'image', 'image_metadata', 'type', 'runtime_state',
@@ -267,7 +263,6 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Snapshot
-        view_name = 'openstacktenant-snapshot-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_volume', 'size', 'metadata', 'runtime_state', 'source_volume_name', 'action', 'action_details',
         )
@@ -286,14 +281,17 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         return super(SnapshotSerializer, self).create(validated_data)
 
 
-class NestedVolumeSerializer(serializers.HyperlinkedModelSerializer, structure_serializers.BasicResourceSerializer):
+class NestedVolumeSerializer(serializers.HyperlinkedModelSerializer,
+                             core_serializers.AugmentedSerializerMixin,
+                             structure_serializers.BasicResourceSerializer):
     state = serializers.ReadOnlyField(source='get_state_display')
 
     class Meta:
         model = models.Volume
         fields = 'url', 'uuid', 'name', 'state', 'bootable', 'size', 'resource_type'
-        view_name = 'openstacktenant-volume-detail'
-        lookup_field = 'uuid'
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'}
+        }
 
 
 class NestedSecurityGroupRuleSerializer(serializers.ModelSerializer):
@@ -314,7 +312,8 @@ class NestedSecurityGroupRuleSerializer(serializers.ModelSerializer):
             return models.SecurityGroupRule(**internal_data)
 
 
-class NestedSecurityGroupSerializer(core_serializers.HyperlinkedRelatedModelSerializer):
+class NestedSecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
+                                    core_serializers.HyperlinkedRelatedModelSerializer):
     rules = NestedSecurityGroupRuleSerializer(
         many=True,
         read_only=True,
@@ -325,8 +324,9 @@ class NestedSecurityGroupSerializer(core_serializers.HyperlinkedRelatedModelSeri
         model = models.SecurityGroup
         fields = ('url', 'name', 'rules', 'description', 'state')
         read_only_fields = ('name', 'rules', 'description', 'state')
-        view_name = 'openstacktenant-sgp-detail'
-        lookup_field = 'uuid'
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'}
+        }
 
 
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
@@ -374,7 +374,6 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
-        view_name = 'openstacktenant-instance-detail'
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
             'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
@@ -762,7 +761,6 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Backup
-        view_name = 'openstacktenant-backup-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'kept_until', 'metadata', 'instance', 'instance_name', 'restorations')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
@@ -815,7 +813,8 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             backup.snapshots.add(snapshot)
 
 
-class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
+class BackupScheduleSerializer(core_serializers.AugmentedSerializerMixin,
+                               serializers.HyperlinkedModelSerializer):
     instance_name = serializers.ReadOnlyField(source='instance.name')
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
                                        initial=timezone.get_current_timezone_name(),
@@ -823,7 +822,6 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta(object):
         model = models.BackupSchedule
-        view_name = 'openstacktenant-backup-schedule-detail'
         fields = ('url', 'uuid', 'name', 'description', 'retention_time', 'timezone', 'instance', 'instance_name',
                   'maximal_number_of_backups', 'schedule', 'is_active', 'error_message', 'next_trigger_at')
         read_only_fields = ('url', 'uuid', 'is_active', 'backups', 'next_trigger_at', 'instance')
