@@ -170,7 +170,7 @@ class NestedServiceProjectLinkSerializer(structure_serializers.PermissionFieldFi
 class ExternalNetworkSerializer(serializers.Serializer):
     vlan_id = serializers.CharField(required=False)
     vxlan_id = serializers.CharField(required=False)
-    network_ip = core_serializers.IPAddressField()
+    network_ip = serializers.IPAddressField(protocol='ipv4')
     network_prefix = serializers.IntegerField(min_value=0, max_value=32)
     ips_count = serializers.IntegerField(min_value=1, required=False)
 
