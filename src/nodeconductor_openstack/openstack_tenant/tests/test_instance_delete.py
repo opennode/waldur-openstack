@@ -161,4 +161,4 @@ class InstanceDeletedWithBackupsTest(test.APITransactionTestCase):
 
         response = self.client.delete(url)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT, response.data)

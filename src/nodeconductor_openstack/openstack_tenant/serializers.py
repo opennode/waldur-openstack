@@ -630,7 +630,7 @@ class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
 
     def validate(self, attrs):
-        if attrs['delete_volumes'] and models.Snapshot.filter(source_volume__instance=self.instance).exists():
+        if attrs['delete_volumes'] and models.Snapshot.objects.filter(source_volume__instance=self.instance).exists():
             raise serializers.ValidationError('Cannot delete instance. One of its volumes has attached snapshot.')
         return attrs
 
