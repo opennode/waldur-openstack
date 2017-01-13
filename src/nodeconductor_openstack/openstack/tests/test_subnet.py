@@ -18,9 +18,7 @@ class SubNetCreateActionTest(BaseSubNetTest):
 
     def test_subnet_create_action_is_not_allowed(self):
         url = factories.SubNetFactory.get_list_url()
-
         response = self.client.post(url)
-
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
@@ -33,7 +31,6 @@ class SubNetDeleteActionTest(BaseSubNetTest):
 
     @mock.patch('nodeconductor_openstack.openstack.executors.SubNetDeleteExecutor.execute')
     def test_subnet_create_action_triggers_create_executor(self, executor_action_mock):
-
         response = self.client.delete(self.url)
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         executor_action_mock.assert_called_once()
@@ -51,7 +48,6 @@ class SubNetUpdateActionTest(BaseSubNetTest):
 
     @mock.patch('nodeconductor_openstack.openstack.executors.SubNetUpdateExecutor.execute')
     def test_subnet_update_action_triggers_update_executor(self, executor_action_mock):
-
         response = self.client.put(self.url, self.request_data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         executor_action_mock.assert_called_once()
