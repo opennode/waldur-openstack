@@ -291,8 +291,8 @@ class BaseOpenStackBackend(ServiceBackend):
             instances = nova.servers.list()
             security_groups = nova.security_groups.list()
             floating_ips = neutron.list_floatingips(tenant_id=tenant_backend_id)['floatingips']
-            networks = neutron.list_networks()['networks']
-            subnets = neutron.list_subnets()['subnets']
+            networks = neutron.list_networks(tenant_id=tenant_backend_id)['networks']
+            subnets = neutron.list_subnets(tenant_id=tenant_backend_id)['subnets']
 
             flavors = {flavor.id: flavor for flavor in nova.flavors.list()}
 
