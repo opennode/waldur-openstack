@@ -573,7 +573,7 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         validated_data['allocation_pools'] = _generate_subnet_allocation_pool(validated_data['cidr'])
         instance = super(SubNetSerializer, self).create(validated_data)
         instance.increase_backend_quotas_usage()
-        return super(SubNetSerializer, self).create(validated_data)
+        return instance
 
 
 def _generate_subnet_allocation_pool(cidr):

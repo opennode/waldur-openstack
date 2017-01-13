@@ -253,7 +253,7 @@ class SubNet(structure_models.NewResource):
         return 'openstack-subnet'
 
     def increase_backend_quotas_usage(self, validate=True):
-        self.tenant.add_quota_usage(self.tenant.Quotas.subnet_count, 1, validate=validate)
+        self.network.tenant.add_quota_usage(self.network.tenant.Quotas.subnet_count, 1, validate=validate)
 
     def decrease_backend_quotas_usage(self):
-        self.tenant.add_quota_usage(self.tenant.Quotas.subnet_count, -1)
+        self.network.tenant.add_quota_usage(self.network.tenant.Quotas.subnet_count, -1)
