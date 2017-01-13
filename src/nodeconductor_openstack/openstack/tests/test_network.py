@@ -32,8 +32,6 @@ class NetworkCreateSubnetActionTest(BaseNetworkTest):
         self.url = factories.NetworkFactory.get_url(network=self.fixture.network, action=self.action_name)
         self.request_data = {
             'name': 'test_subnet_name',
-            'tenant_name': 'test_tenant_name',
-            'network_name': 'test_network_name',
         }
 
     def test_create_subnet_is_not_allowed_when_state_is_not_OK(self):
@@ -52,10 +50,45 @@ class NetworkCreateSubnetActionTest(BaseNetworkTest):
 
     @mock.patch('nodeconductor_openstack.openstack.executors.SubNetCreateExecutor.execute')
     def test_create_subnet_triggers_create_executor(self, executor_action_mock):
-        url = factories.NetworkFactory.get_url(network=self.fixture.network, action=self.action_name)
-
         response = self.client.post(self.url, self.request_data)
-        failure_message = "executor has not been triggered. Response: %s" % response.data
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, failure_message)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        executor_action_mock.assert_called_once()
+
+
+class NetworkUpdateActionTest(BaseNetworkTest):
+
+    def setUp(self):
+        super(NetworkUpdateActionTest, self).setUp()
+        self.user = self.fixture.owner
+        self.client.force_authenticate(self.user)
+        self.request_data = {
+            'name': 'test_name',
+        }
+
+    @mock.patch('nodeconductor_openstack.openstack.executors.NetworkUpdateExecutor.execute')
+    def test_update_action_triggers_update_executor(self, executor_action_mock):
+        url = factories.NetworkFactory.get_url(network=self.fixture.network)
+        response = self.client.put(url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        executor_action_mock.assert_called_once()
+
+
+class NetworkDeleteActionTest(BaseNetworkTest):
+
+    def setUp(self):
+        super(NetworkDeleteActionTest, self).setUp()
+        self.user = self.fixture.owner
+        self.client.force_authenticate(self.user)
+        self.request_data = {
+            'name': 'test_name',
+        }
+
+    @mock.patch('nodeconductor_openstack.openstack.executors.NetworkDeleteExecutor.execute')
+    def test_delete_action_triggers_delete_executor(self, executor_action_mock):
+        url = factories.NetworkFactory.get_url(network=self.fixture.network)
+        response = self.client.delete(url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         executor_action_mock.assert_called_once()
 
