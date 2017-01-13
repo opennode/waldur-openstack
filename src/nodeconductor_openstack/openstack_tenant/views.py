@@ -146,7 +146,11 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             raise core_exceptions.IncorrectStateException('Volume has dependent snapshots.')
 
     delete_executor = executors.VolumeDeleteExecutor
-    destroy_validators = [_volume_snapshots_exist, core_validators.StateValidator(models.Instance.States.OK)]
+    destroy_validators = [
+        _volume_snapshots_exist,
+        core_validators.StateValidator(models.Volume.States.OK, models.Volume.States.ERRED),
+        core_validators.RuntimeStateValidator('available', 'error', 'error_restoring', 'error_extending'),
+    ]
 
     def _is_volume_bootable(volume):
         if volume.bootable:
