@@ -281,8 +281,8 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         return super(SnapshotSerializer, self).create(validated_data)
 
 
-class NestedVolumeSerializer(serializers.HyperlinkedModelSerializer,
-                             core_serializers.AugmentedSerializerMixin,
+class NestedVolumeSerializer(core_serializers.AugmentedSerializerMixin,
+                             serializers.HyperlinkedModelSerializer,
                              structure_serializers.BasicResourceSerializer):
     state = serializers.ReadOnlyField(source='get_state_display')
 
