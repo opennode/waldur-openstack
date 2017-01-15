@@ -14,7 +14,7 @@ class BaseTenantActionsTest(test.APISimpleTestCase):
     def setUp(self):
         super(BaseTenantActionsTest, self).setUp()
         self.fixture = fixtures.OpenStackFixture()
-        self.tenant = self.fixture.openstack_tenant
+        self.tenant = self.fixture.tenant
 
 
 @patch('nodeconductor_openstack.openstack.executors.TenantPushQuotasExecutor.execute')
@@ -121,3 +121,28 @@ class TenantActionsMetadataTest(BaseTenantActionsTest):
         url = factories.TenantFactory.get_url(self.tenant)
         response = self.client.options(url)
         return response.data['actions']
+
+
+@patch('nodeconductor_openstack.openstack.executors.FloatingIPCreateExecutor.execute')
+class TenantCreateFloatingIPTest(BaseTenantActionsTest):
+
+    def setUp(self):
+        super(TenantCreateFloatingIPTest, self).setUp()
+        self.client.force_authenticate(self.fixture.owner)
+        self.url = factories.TenantFactory.get_url(self.tenant, 'create_floating_ip')
+
+    def test_that_floating_ip_count_quota_increases_when_floating_ip_is_created(self, mocked_task):
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.tenant.floating_ips.count(), 1)
+        self.assertTrue(mocked_task.called)
+
+    def test_that_floating_ip_count_quota_exceeds_limit_if_too_many_ips_are_created(self, mocked_task):
+        self.tenant.set_quota_limit('floating_ip_count', 0)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.tenant.floating_ips.count(), 0)
+        self.assertFalse(mocked_task.called)

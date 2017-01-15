@@ -22,7 +22,7 @@ class ImageAdmin(admin.ModelAdmin):
 
 class FloatingIPAdmin(admin.ModelAdmin):
     list_filter = ('settings',)
-    list_display = ('address', 'settings', 'status', 'backend_network_id', 'is_booked')
+    list_display = ('address', 'settings', 'runtime_state', 'backend_network_id', 'is_booked')
 
 
 class SecurityGroupRule(admin.TabularInline):

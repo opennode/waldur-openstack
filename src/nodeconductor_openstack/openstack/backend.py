@@ -214,9 +214,10 @@ class OpenStackBackend(BaseOpenStackBackend):
             for ip_id in backend_ids - nc_ids:
                 ip = backend_floating_ips[ip_id]
                 created_ip = tenant.floating_ips.create(
-                    status=ip['status'],
+                    runtime_state=ip['status'],
                     backend_id=ip['id'],
                     address=ip['floating_ip_address'],
+                    name=ip['floating_ip_address'],
                     backend_network_id=ip['floating_network_id'],
                     service_project_link=tenant.service_project_link
                 )
@@ -225,11 +226,11 @@ class OpenStackBackend(BaseOpenStackBackend):
             for ip_id in nc_ids & backend_ids:
                 nc_ip = nc_floating_ips[ip_id]
                 backend_ip = backend_floating_ips[ip_id]
-                if nc_ip.status != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
+                if nc_ip.runtime_state != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
                         or nc_ip.backend_network_id != backend_ip['floating_network_id']:
                     # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
-                    if not (nc_ip.status == 'BOOKED' and backend_ip['status'] == 'DOWN'):
-                        nc_ip.status = backend_ip['status']
+                    if not (nc_ip.runtime_state == 'BOOKED' and backend_ip['status'] == 'DOWN'):
+                        nc_ip.runtime_state = backend_ip['status']
                     nc_ip.address = backend_ip['floating_ip_address']
                     nc_ip.backend_network_id = backend_ip['floating_network_id']
                     nc_ip.save()
@@ -237,6 +238,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
+        # security groups pull should be rewritten in WAL-323
         nova = self.nova_client
 
         try:
@@ -464,14 +466,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        for floatingip in floatingips.get('floatingips', []):
-            logger.info("Deleting floating IP %s from tenant %s", floatingip['id'], tenant.backend_id)
-            try:
-                neutron.delete_floatingip(floatingip['id'])
-            except neutron_exceptions.NotFound:
-                logger.debug("Floating IP %s is already gone from tenant %s", floatingip['id'], tenant.backend_id)
-            except neutron_exceptions.NeutronClientException as e:
-                six.reraise(OpenStackBackendError, e)
+        for floating_ip in floatingips.get('floatingips', []):
+            self._delete_backend_floating_ip(floating_ip['id'], tenant.backend_id)
 
     @log_backend_action()
     def delete_tenant_ports(self, tenant):
@@ -658,8 +654,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    def _push_security_group_rules(self, security_group):
-        """ Helper method  """
+    @log_backend_action()
+    def push_security_group_rules(self, security_group):
         nova = self.nova_client
         backend_security_group = nova.security_groups.get(group_id=security_group.backend_id)
         backend_rules = {
@@ -734,10 +730,11 @@ class OpenStackBackend(BaseOpenStackBackend):
     def create_security_group(self, security_group):
         nova = self.nova_client
         try:
-            backend_security_group = nova.security_groups.create(name=security_group.name, description='')
+            backend_security_group = nova.security_groups.create(
+                name=security_group.name, description=security_group.description)
             security_group.backend_id = backend_security_group.id
             security_group.save()
-            self._push_security_group_rules(security_group)
+            self.push_security_group_rules(security_group)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -754,10 +751,9 @@ class OpenStackBackend(BaseOpenStackBackend):
         nova = self.nova_client
         try:
             backend_security_group = nova.security_groups.find(id=security_group.backend_id)
-            if backend_security_group.name != security_group.name:
-                nova.security_groups.update(
-                    backend_security_group, name=security_group.name, description='')
-            self._push_security_group_rules(security_group)
+            nova.security_groups.update(
+                backend_security_group, name=security_group.name, description=security_group.description)
+            self.push_security_group_rules(security_group)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -879,7 +875,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def create_network(self, network):
         neutron = self.neutron_admin_client
 
-        data = {'name': network.name, 'description': network.description, 'tenant_id': network.tenant.backend_id}
+        data = {'name': network.name, 'tenant_id': network.tenant.backend_id}
         try:
             response = neutron.create_network({'networks': [data]})
         except neutron_exceptions.NeutronException as e:
@@ -893,12 +889,16 @@ class OpenStackBackend(BaseOpenStackBackend):
             if backend_network.get('provider:segmentation_id'):
                 network.segmentation_id = backend_network['provider:segmentation_id']
             network.save()
+            # XXX: temporary fix - right now backend logic is based on statement "one tenant has one network"
+            # We need to fix this in the future.
+            network.tenant.internal_network_id = network.backend_id
+            network.tenant.save()
 
     @log_backend_action()
     def update_network(self, network):
         neutron = self.neutron_admin_client
 
-        data = {'name': network.name, 'description': network.description}
+        data = {'name': network.name}
         try:
             neutron.update_network(network.backend_id, {'network': data})
         except neutron_exceptions.NeutronException as e:
@@ -924,7 +924,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         network = models.Network(
             name=backend_network['name'],
-            description=backend_network['description'] or '',
             type=backend_network.get('provider:network_type'),
             segmentation_id=backend_network.get('provider:segmentation_id'),
             runtime_state=backend_network['status'],
@@ -939,7 +938,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         network.refresh_from_db()
         if network.modified < import_time:
-            update_fields = ('name', 'description', 'type', 'segmentation_id', 'runtime_state')
+            update_fields = ('name', 'type', 'segmentation_id', 'runtime_state')
             update_pulled_fields(network, imported_network, update_fields)
 
     @log_backend_action()
@@ -948,7 +947,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         data = {
             'name': subnet.name,
-            'description': subnet.description,
             'network_id': subnet.network.backend_id,
             'tenant_id': subnet.network.tenant.backend_id,
             'cidr': subnet.cidr,
@@ -961,7 +959,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             # Automatically create router for subnet
             # TODO: Ideally: Create separate model for router and create it separately.
             #       Good enough: refactor `get_or_create_router` method: split it into several method.
-            self.get_or_create_router(subnet.network.name, response['subnets'][0]['id'])
+            self.get_or_create_router(subnet.network.name, response['subnets'][0]['id'],
+                                      tenant_id=subnet.network.tenant.backend_id)
         except neutron_exceptions.NeutronException as e:
             six.reraise(OpenStackBackendError, e)
         else:
@@ -975,7 +974,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def update_subnet(self, subnet):
         neutron = self.neutron_admin_client
 
-        data = {'name': subnet.name, 'description': subnet.description}
+        data = {'name': subnet.name}
         try:
             neutron.update_subnet(subnet.backend_id, {'subnet': data})
         except neutron_exceptions.NeutronException as e:
@@ -998,7 +997,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         subnet = models.SubNet(
             name=backend_subnet['name'],
-            description=backend_subnet['description'] or '',
             allocation_pools=backend_subnet['allocation_pools'],
             cidr=backend_subnet['cidr'],
             ip_version=backend_subnet.get('ip_version'),
@@ -1015,8 +1013,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         subnet.refresh_from_db()
         if subnet.modified < import_time:
-            update_fields = ('name', 'description', 'cidr', 'allocation_pools', 'ip_version', 'gateway_ip',
-                             'enable_dhcp')
+            update_fields = ('name', 'cidr', 'allocation_pools', 'ip_version', 'gateway_ip', 'enable_dhcp')
             update_pulled_fields(subnet, imported_subnet, update_fields)
 
     def _check_tenant_network(self, tenant):
@@ -1029,38 +1026,60 @@ class OpenStackBackend(BaseOpenStackBackend):
                              tenant.internal_network_id)
             six.reraise(OpenStackBackendError, e)
 
-    def _get_or_create_floating_ip(self, tenant):
-        # TODO: check availability and quota
-        if not tenant.floating_ips.filter(
-            status='DOWN',
-            backend_network_id=tenant.external_network_id
-        ).exists():
-            self.allocate_floating_ip_address(tenant)
-        return tenant.floating_ips.filter(
-            status='DOWN',
-            backend_network_id=tenant.external_network_id
-        ).first()
-
-    @log_backend_action('allocate floating IP for tenant')
-    def allocate_floating_ip_address(self, tenant):
+    @log_backend_action('pull floating ip')
+    def pull_floating_ip(self, floating_ip):
         neutron = self.neutron_client
         try:
-            ip_address = neutron.create_floatingip({
+            backend_floating_ip = neutron.show_floatingip(floating_ip.backend_id)['floatingip']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            floating_ip.runtime_state = backend_floating_ip['status']
+            floating_ip.address = backend_floating_ip['floating_ip_address']
+            floating_ip.name = backend_floating_ip['floating_ip_address']
+            floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
+            floating_ip.save()
+
+    @log_backend_action('pull floating ip')
+    def pull_floating_ips(self, tenant):
+        for floating_ip in tenant.floating_ips.iterator():
+            self.pull_floating_ip(floating_ip)
+
+    @log_backend_action('delete floating ip')
+    def delete_floating_ip(self, floating_ip):
+        self._delete_backend_floating_ip(floating_ip.backend_id, floating_ip.tenant.backend_id)
+        floating_ip.decrease_backend_quotas_usage()
+
+    def _delete_backend_floating_ip(self, backend_id, tenant_backend_id):
+        neutron = self.neutron_client
+        try:
+            logger.info("Deleting floating IP %s from tenant %s", backend_id, tenant_backend_id)
+            neutron.delete_floatingip(backend_id)
+        except neutron_exceptions.NotFound:
+            logger.debug("Floating IP %s is already gone from tenant %s", backend_id, tenant_backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+
+    @log_backend_action('create floating ip')
+    def create_floating_ip(self, floating_ip):
+        neutron = self.neutron_client
+        try:
+            backend_floating_ip = neutron.create_floatingip({
                 'floatingip': {
-                    'floating_network_id': tenant.external_network_id,
-                    'tenant_id': tenant.backend_id,
+                    'floating_network_id': floating_ip.tenant.external_network_id,
+                    'tenant_id': floating_ip.tenant.backend_id,
                 }
             })['floatingip']
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            tenant.floating_ips.create(
-                status='DOWN',
-                address=ip_address['floating_ip_address'],
-                backend_id=ip_address['id'],
-                backend_network_id=ip_address['floating_network_id'],
-                service_project_link=tenant.service_project_link
-            )
+            floating_ip.runtime_state = backend_floating_ip['status']
+            floating_ip.address = backend_floating_ip['floating_ip_address']
+            floating_ip.name = backend_floating_ip['floating_ip_address']
+            floating_ip.backend_id = backend_floating_ip['id']
+            floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
+            floating_ip.save()
 
     @log_backend_action()
     def connect_tenant_to_external_network(self, tenant, external_network_id):
@@ -1088,9 +1107,9 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         return external_network_id
 
-    def get_or_create_router(self, network_name, subnet_id, external=False, network_id=None):
+    def get_or_create_router(self, network_name, subnet_id, external=False, network_id=None, tenant_id=None):
         neutron = self.neutron_admin_client
-        tenant_id = self.tenant_id
+        tenant_id = tenant_id or self.tenant_id
         router_name = '{0}-router'.format(network_name)
 
         try:

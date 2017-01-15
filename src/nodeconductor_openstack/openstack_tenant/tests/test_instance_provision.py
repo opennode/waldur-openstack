@@ -36,20 +36,20 @@ class FixedIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTest):
 
 class ManualFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTest):
     def test_user_can_provision_instance_with_manual_external_ip(self):
-        self.floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, status='DOWN')
+        self.floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='DOWN')
         response = self.get_response()
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
     def test_user_can_not_provision_instance_if_external_ip_is_not_available(self):
-        self.floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, status='ACTIVE')
+        self.floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='ACTIVE')
 
         response = self.get_response()
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-        self.assertEqual(response.data['floating_ip'], ['Floating IP status must be DOWN.'])
+        self.assertEqual(response.data['floating_ip'], ['Floating IP runtime_state must be DOWN.'])
 
     def test_user_can_not_provision_instance_if_external_ip_belongs_to_another_service_project_link(self):
         another_settings = factories.OpenStackTenantServiceSettingsFactory()
-        self.floating_ip = factories.FloatingIPFactory(settings=another_settings, status='DOWN')
+        self.floating_ip = factories.FloatingIPFactory(settings=another_settings, runtime_state='DOWN')
 
         response = self.get_response()
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
@@ -78,14 +78,6 @@ class AutomaticFloatingIpInstanceProvisionTest(BaseFloatingIpInstanceProvisionTe
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
         self.assertEqual(response.data['allocate_floating_ip'],
                          ['Can not allocate floating IP - quota has been filled.'])
-
-    def test_user_can_not_provision_instance_if_service_is_not_in_stable_state(self):
-        self.openstack_settings.state = ServiceSettings.States.ERRED
-        self.openstack_settings.save()
-
-        response = self.get_response()
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT, response.data)
-        self.assertEqual(response.data['detail'], 'Cannot create resource if its service is in erred state.')
 
     def get_response(self):
         return self.client.post(self.url, self.get_valid_data())

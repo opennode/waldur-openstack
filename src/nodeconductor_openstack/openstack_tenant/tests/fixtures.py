@@ -11,22 +11,22 @@ class OpenStackTenantFixture(openstack_fixtures.OpenStackFixture):
     @cached_property
     def openstack_tenant_service_settings(self):
         return factories.OpenStackTenantServiceSettingsFactory(
-            name=self.openstack_tenant.name,
-            scope=self.openstack_tenant,
+            name=self.tenant.name,
+            scope=self.tenant,
             customer=self.customer,
             backend_url=self.openstack_service_settings.backend_url,
-            username=self.openstack_tenant.user_username,
-            password=self.openstack_tenant.user_password,
+            username=self.tenant.user_username,
+            password=self.tenant.user_password,
             options={
-                'availability_zone': self.openstack_tenant.availability_zone,
-                'tenant_id': self.openstack_tenant.backend_id,
+                'availability_zone': self.tenant.availability_zone,
+                'tenant_id': self.tenant.backend_id,
             },
         )
 
     @cached_property
     def openstack_tenant_service(self):
         return factories.OpenStackTenantServiceFactory(
-            name=self.openstack_tenant.name,
+            name=self.tenant.name,
             customer=self.customer,
             settings=self.openstack_tenant_service_settings
         )

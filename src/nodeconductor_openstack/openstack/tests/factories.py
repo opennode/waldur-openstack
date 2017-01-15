@@ -122,10 +122,11 @@ class SecurityGroupFactory(TenantMixin, factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
 
     @classmethod
-    def get_url(cls, sgp=None):
+    def get_url(cls, sgp=None, action=None):
         if sgp is None:
             sgp = SecurityGroupFactory()
-        return 'http://testserver' + reverse('openstack-sgp-detail', kwargs={'uuid': sgp.uuid})
+        url = 'http://testserver' + reverse('openstack-sgp-detail', kwargs={'uuid': sgp.uuid})
+        return url if action is None else url + action + '/'
 
     @classmethod
     def get_list_url(cls):
@@ -148,7 +149,7 @@ class FloatingIPFactory(TenantMixin, factory.DjangoModelFactory):
         model = models.FloatingIP
 
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
-    status = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
+    runtime_state = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
     address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
 
     @classmethod
@@ -182,3 +183,46 @@ class TenantFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstack-tenant-list')
+
+
+class NetworkFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.Network
+
+    name = factory.Sequence(lambda n: 'network%s' % n)
+    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+    tenant = factory.SubFactory(TenantFactory)
+    state = models.Network.States.OK
+
+    @classmethod
+    def get_url(cls, network=None, action=None):
+        if network is None:
+            network = NetworkFactory()
+
+        url = 'http://testserver' + reverse('openstack-network-detail', kwargs={'uuid': network.uuid.hex})
+        return url if action is None else url + action + '/'
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstack-network-list')
+
+
+class SubNetFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.SubNet
+
+    name = factory.Sequence(lambda n: 'subnet%s' % n)
+    network = factory.SubFactory(NetworkFactory)
+    service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+
+    @classmethod
+    def get_url(cls, subnet=None, action=None):
+        if subnet is None:
+            subnet = SubNetFactory()
+
+        url = 'http://testserver' + reverse('openstack-subnet-detail', kwargs={'uuid': subnet.uuid.hex})
+        return url if action is None else url + action + '/'
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstack-subnet-list')

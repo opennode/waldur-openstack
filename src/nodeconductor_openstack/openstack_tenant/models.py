@@ -74,16 +74,19 @@ class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):
 @python_2_unicode_compatible
 class FloatingIP(structure_models.ServiceProperty):
     address = models.GenericIPAddressField(protocol='IPv4')
-    status = models.CharField(max_length=30)
+    runtime_state = models.CharField(max_length=30)
     backend_network_id = models.CharField(max_length=255, editable=False)
     is_booked = models.BooleanField(default=False, help_text='Defines is FloatingIP booked by NodeConductor.')
 
     def __str__(self):
-        return '%s:%s | %s' % (self.address, self.status, self.settings)
+        return '%s:%s | %s' % (self.address, self.runtime_state, self.settings)
 
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-fip'
+
+    def get_backend(self):
+        return self.settings.get_backend()
 
 
 class Volume(structure_models.Storage):

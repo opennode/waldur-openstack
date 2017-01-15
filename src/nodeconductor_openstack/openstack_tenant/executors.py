@@ -483,6 +483,25 @@ class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
             )
 
 
+class InstanceUnassignFloatingIpExecutor(core_executors.ActionExecutor):
+    action = 'Unassign floating IP'
+
+    @classmethod
+    def get_task_signature(cls, instance, serializer_instance=None, floating_ip=None, **kwargs):
+        _tasks = [core_tasks.BackendMethodTask().si(
+            serializer_instance,
+            'unassign_floating_ip',
+            state_transition='begin_updating'
+        ), tasks.PollRuntimeStateTask().si(
+            core_utils.serialize_instance(floating_ip),
+            backend_pull_method='pull_floating_ip_runtime_state',
+            success_state='DOWN',
+            erred_state='ACTIVE',
+        ).set(countdown=30)]
+
+        return chain(*_tasks)
+
+
 class InstanceStopExecutor(core_executors.ActionExecutor):
     action = 'Stop'
 

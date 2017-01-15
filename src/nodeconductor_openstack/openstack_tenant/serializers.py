@@ -86,7 +86,7 @@ class FloatingIPSerializer(structure_serializers.BasePropertySerializer):
 
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.FloatingIP
-        fields = ('url', 'uuid', 'settings', 'address', 'status', 'is_booked',)
+        fields = ('url', 'uuid', 'settings', 'address', 'runtime_state', 'is_booked',)
         extra_kwargs = {
             'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-fip-detail'},
             'settings': {'lookup_field': 'uuid'},
@@ -280,9 +280,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         )
 
     def create(self, validated_data):
-        # source volume should be added to context on creation
-        source_volume = self.context['source_volume']
-        validated_data['source_volume'] = source_volume
+        validated_data['source_volume'] = source_volume = self.context['view'].get_object()
         validated_data['service_project_link'] = source_volume.service_project_link
         validated_data['size'] = source_volume.size
         return super(SnapshotSerializer, self).create(validated_data)
@@ -394,7 +392,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = super(InstanceSerializer, self).get_fields()
         field = fields.get('floating_ip')
         if field:
-            field.query_params = {'status': 'DOWN'}
+            field.query_params = {'runtime_state': 'DOWN'}
             field.value_field = 'url'
             field.display_name_field = 'address'
 
@@ -454,8 +452,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         # Case 1. If floating_ip!=None then requested floating IP is assigned to the instance.
         if floating_ip:
 
-            if floating_ip.status != 'DOWN':
-                raise serializers.ValidationError({'floating_ip': 'Floating IP status must be DOWN.'})
+            if floating_ip.runtime_state != 'DOWN':
+                raise serializers.ValidationError({'floating_ip': 'Floating IP runtime_state must be DOWN.'})
 
             if floating_ip.settings != spl.service.settings:
                 raise serializers.ValidationError({
@@ -551,7 +549,7 @@ class AssignFloatingIpSerializer(serializers.Serializer):
         fields = super(AssignFloatingIpSerializer, self).get_fields()
         if self.instance:
             query_params = {
-                'status': 'DOWN',
+                'runtime_state': 'DOWN',
                 'settings_uuid': self.instance.service_project_link.service.settings.uuid.hex,
             }
 
@@ -563,8 +561,8 @@ class AssignFloatingIpSerializer(serializers.Serializer):
 
     def validate_floating_ip(self, floating_ip):
         if floating_ip is not None:
-            if floating_ip.status != 'DOWN':
-                raise serializers.ValidationError("Floating IP status must be DOWN.")
+            if floating_ip.runtime_state != 'DOWN':
+                raise serializers.ValidationError("Floating IP runtime_state must be DOWN.")
             elif floating_ip.settings != self.instance.service_project_link.service.settings:
                 raise serializers.ValidationError("Floating IP must belong to same settings as instance.")
         return floating_ip
@@ -632,8 +630,8 @@ class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
 
     def validate(self, attrs):
-        if self.instance.backups.exists():
-            raise serializers.ValidationError('Cannot delete instance that has backups.')
+        if attrs['delete_volumes'] and models.Snapshot.objects.filter(source_volume__instance=self.instance).exists():
+            raise serializers.ValidationError('Cannot delete instance. One of its volumes has attached snapshot.')
         return attrs
 
 
@@ -691,7 +689,7 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
     def validate(self, attrs):
         flavor = attrs['flavor']
-        backup = self.context['backup']
+        backup = self.context['view'].get_object()
         if flavor.settings != backup.instance.service_project_link.service.settings:
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
         return attrs
@@ -767,7 +765,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        validated_data['instance'] = instance = self.context['instance']
+        validated_data['instance'] = instance = self.context['view'].get_object()
         validated_data['service_project_link'] = instance.service_project_link
         validated_data['metadata'] = self.get_backup_metadata(instance)
         backup = super(BackupSerializer, self).create(validated_data)
@@ -825,7 +823,7 @@ class BackupScheduleSerializer(serializers.HyperlinkedModelSerializer):
         }
 
     def create(self, validated_data):
-        validated_data['instance'] = self.context['instance']
+        validated_data['instance'] = self.context['view'].get_object()
         return super(BackupScheduleSerializer, self).create(validated_data)
 
 

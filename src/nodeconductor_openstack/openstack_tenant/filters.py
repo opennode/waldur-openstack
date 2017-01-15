@@ -32,6 +32,13 @@ class FlavorFilter(structure_filters.ServicePropertySettingsFilter):
         ]
 
 
+class FloatingIPFilter(structure_filters.ServicePropertySettingsFilter):
+
+    class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
+        model = models.FloatingIP
+        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('runtime_state',)
+
+
 class VolumeFilter(structure_filters.BaseResourceStateFilter):
     instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='instance__uuid')
     instance_uuid = core_filters.UUIDFilter(name='instance__uuid')

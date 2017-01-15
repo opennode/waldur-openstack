@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 from django.db.models import signals
+from django_fsm import signals as fsm_signals
 
 
 class OpenStackTenantConfig(AppConfig):
@@ -20,7 +21,7 @@ class OpenStackTenantConfig(AppConfig):
         # Initialize service settings quotas based on tenant.
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
-        from nodeconductor_openstack.openstack.models import Tenant
+        from nodeconductor_openstack.openstack.models import Tenant, SecurityGroup, FloatingIP
         for quota in Tenant.get_quotas_fields():
             ServiceSettings.add_quota_field(
                 name=quota.name,
@@ -57,4 +58,40 @@ class OpenStackTenantConfig(AppConfig):
             handlers.log_backup_schedule_deletion,
             sender=models.BackupSchedule,
             dispatch_uid='openstack_tenant.handlers.log_backup_schedule_deletion',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.create_floating_ip,
+            sender=FloatingIP,
+            dispatch_uid='openstack_tenant.handlers.create_floating_ip',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.update_floating_ip,
+            sender=FloatingIP,
+            dispatch_uid='openstack_tenant.handlers.update_floating_ip',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.create_security_group,
+            sender=SecurityGroup,
+            dispatch_uid='openstack_tenant.handlers.create_security_group',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.update_security_group,
+            sender=SecurityGroup,
+            dispatch_uid='openstack_tenant.handlers.update_security_group',
+        )
+
+        signals.post_delete.connect(
+            handlers.delete_security_group,
+            sender=SecurityGroup,
+            dispatch_uid='openstack_tenant.handlers.delete_security_group',
+        )
+
+        signals.post_delete.connect(
+            handlers.delete_floating_ip,
+            sender=FloatingIP,
+            dispatch_uid='openstack_tenant.handlers.delete_floating_ip',
         )

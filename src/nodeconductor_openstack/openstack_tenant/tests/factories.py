@@ -186,7 +186,7 @@ class FloatingIPFactory(factory.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: 'floating_ip%s' % n)
     settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
-    status = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
+    runtime_state = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
     address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
 
     @classmethod

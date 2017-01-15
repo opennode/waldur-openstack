@@ -2,9 +2,6 @@ from ddt import ddt, data
 from mock import patch
 from rest_framework import test, status
 
-from nodeconductor.core.models import SynchronizationStates
-from nodeconductor.structure.tests import factories as structure_factories
-
 from .. import models
 from . import factories, fixtures
 
@@ -21,7 +18,6 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
         self.valid_data = {
             'name': 'test_security_group',
             'description': 'test security_group description',
-            'tenant': factories.TenantFactory.get_url(self.fixture.openstack_tenant),
             'rules': [
                 {
                     'protocol': 'tcp',
@@ -31,7 +27,7 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
                 }
             ]
         }
-        self.url = factories.SecurityGroupFactory.get_list_url()
+        self.url = factories.TenantFactory.get_url(self.fixture.tenant, action='create_security_group')
 
     @data('owner', 'admin', 'manager')
     def test_user_with_access_can_create_security_group(self, user):
@@ -42,7 +38,7 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
         self.assertTrue(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
     def test_security_group_can_not_be_created_if_quota_is_over_limit(self):
-        self.fixture.openstack_tenant.set_quota_limit('security_group_count', 0)
+        self.fixture.tenant.set_quota_limit('security_group_count', 0)
 
         self.client.force_authenticate(self.fixture.admin)
         response = self.client.post(self.url, self.valid_data)
@@ -51,7 +47,7 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
         self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
     def test_security_group_can_not_be_created_if_rules_quota_is_over_limit(self):
-        self.fixture.openstack_tenant.set_quota_limit('security_group_rule_count', 0)
+        self.fixture.tenant.set_quota_limit('security_group_rule_count', 0)
 
         self.client.force_authenticate(self.fixture.admin)
         response = self.client.post(self.url, self.valid_data)
@@ -68,16 +64,7 @@ class SecurityGroupCreateTest(BaseSecurityGroupTest):
             self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
             security_group = models.SecurityGroup.objects.get(name=self.valid_data['name'])
 
-            mocked_execute.assert_called_once_with(security_group, async=True)
-
-    def test_security_group_raises_validation_error_on_wrong_tenant_in_request(self):
-        del self.valid_data['tenant']
-
-        self.client.force_authenticate(self.fixture.admin)
-        response = self.client.post(self.url, data=self.valid_data)
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
+            mocked_execute.assert_called_once_with(security_group)
 
     def test_security_group_raises_validation_error_if_rule_port_is_invalid(self):
         self.valid_data['rules'][0]['to_port'] = 80000
@@ -96,54 +83,54 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
         super(SecurityGroupUpdateTest, self).setUp()
         self.security_group = factories.SecurityGroupFactory(
             service_project_link=self.fixture.openstack_spl,
-            tenant=self.fixture.openstack_tenant,
-            state=SynchronizationStates.IN_SYNC)
+            tenant=self.fixture.tenant,
+            state=models.SecurityGroup.States.OK)
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
-    @data('admin', 'manager')
-    def test_user_with_access_can_update_security_group_rules(self, user):
-        rules = [
-            {
-                'protocol': 'udp',
-                'from_port': 100,
-                'to_port': 8001,
-                'cidr': '11.11.1.2/24',
-            }
-        ]
-
+    @data('staff', 'owner', 'admin', 'manager')
+    def test_user_with_access_can_update_security_group(self, user):
         self.client.force_authenticate(getattr(self.fixture, user))
-        response = self.client.patch(self.url, data={'rules': rules})
+
+        data = {'name': 'new_name'}
+        response = self.client.patch(self.url, data=data)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        reread_security_group = models.SecurityGroup.objects.get(pk=self.security_group.pk)
-        self.assertEqual(len(rules), reread_security_group.rules.count())
-        saved_rule = reread_security_group.rules.first()
-        for key, value in rules[0].items():
-            self.assertEqual(getattr(saved_rule, key), value)
+        self.security_group.refresh_from_db()
+        self.assertEqual(self.security_group.name, data['name'])
+
+    @data('user')
+    def test_user_without_access_cannot_update_security_group(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.patch(self.url, data={'name': 'new_name'})
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_security_group_can_not_be_updated_in_unstable_state(self):
-        self.security_group.state = SynchronizationStates.ERRED
+        self.client.force_authenticate(self.fixture.admin)
+        self.security_group.state = models.SecurityGroup.States.ERRED
         self.security_group.save()
 
-        self.client.force_authenticate(self.fixture.admin)
-        response = self.client.patch(self.url, data={'rules': []})
+        response = self.client.patch(self.url, data={'name': 'new_name'})
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
-    def test_security_group_tenant_can_not_be_updated(self):
-        new_tenant = factories.TenantFactory(service_project_link=self.fixture.openstack_spl)
-        new_tenant_url = factories.TenantFactory.get_url(new_tenant)
 
+class SecurityGroupSetRulesTest(BaseSecurityGroupTest):
+
+    def setUp(self):
+        super(SecurityGroupSetRulesTest, self).setUp()
+        self.security_group = factories.SecurityGroupFactory(
+            service_project_link=self.fixture.openstack_spl,
+            tenant=self.fixture.tenant,
+            state=models.SecurityGroup.States.OK)
+        self.url = factories.SecurityGroupFactory.get_url(self.security_group, action='set_rules')
+
+    def test_security_group_rules_can_not_be_added_if_quota_is_over_limit(self):
         self.client.force_authenticate(self.fixture.admin)
-        self.client.patch(self.url, data={'tenant': {'url': new_tenant_url}})
+        self.fixture.tenant.set_quota_limit('security_group_rule_count', 0)
 
-        reread_security_group = models.SecurityGroup.objects.get(pk=self.security_group.pk)
-        self.assertNotEqual(new_tenant, reread_security_group.tenant)
-
-    def test_security_group_rules_can_not_be_updated_if_rules_quota_is_over_limit(self):
-        self.fixture.openstack_tenant.set_quota_limit('security_group_rule_count', 0)
-
-        rules = [
+        data = [
             {
                 'protocol': 'udp',
                 'from_port': 100,
@@ -151,33 +138,33 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
                 'cidr': '11.11.1.2/24',
             }
         ]
-
-        self.client.force_authenticate(self.fixture.admin)
-        response = self.client.patch(self.url, data={'rules': rules})
+        response = self.client.post(self.url, data=data)
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        reread_security_group = models.SecurityGroup.objects.get(pk=self.security_group.pk)
-        self.assertEqual(reread_security_group.rules.count(), self.security_group.rules.count())
+        self.security_group.refresh_from_db()
+        self.assertEqual(self.security_group.rules.count(), 0)
 
-    def test_security_group_update_starts_sync_task(self):
+    def test_security_group_update_starts_calls_executor(self):
         self.client.force_authenticate(self.fixture.admin)
 
-        with patch('nodeconductor_openstack.openstack.executors.SecurityGroupUpdateExecutor.execute') as mocked_execute:
-            response = self.client.patch(self.url, data={'name': 'new_name'})
+        execute_method = 'nodeconductor_openstack.openstack.executors.PushSecurityGroupRulesExecutor.execute'
+        with patch(execute_method) as mocked_execute:
+            response = self.client.post(self.url, data=[])
 
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
-            mocked_execute.assert_called_once_with(self.security_group, updated_fields={'name'}, async=True)
+            self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+            mocked_execute.assert_called_once_with(self.security_group)
 
     def test_user_can_remove_rule_from_security_group(self):
-        rule1 = factories.SecurityGroupRuleFactory(security_group=self.security_group)
-        factories.SecurityGroupRuleFactory(security_group=self.security_group)
+        rule_to_remain = factories.SecurityGroupRuleFactory(security_group=self.security_group)
+        rule_to_delete = factories.SecurityGroupRuleFactory(security_group=self.security_group)
         self.client.force_authenticate(self.fixture.admin)
 
-        response = self.client.patch(self.url, data={'rules': [{'id': rule1.id}]})
+        response = self.client.post(self.url, data=[{'id': rule_to_remain.id}])
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(self.security_group.rules.count(), 1)
-        self.assertEqual(self.security_group.rules.all()[0], rule1)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        exist_rules = self.security_group.rules.all()
+        self.assertIn(rule_to_remain, exist_rules)
+        self.assertNotIn(rule_to_delete, exist_rules)
 
     def test_user_can_add_new_security_group_rule_and_left_existant(self):
         exist_rule = factories.SecurityGroupRuleFactory(security_group=self.security_group)
@@ -189,9 +176,9 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
             'cidr': '11.11.1.2/24',
         }
 
-        response = self.client.patch(self.url, data={'rules': [{'id': exist_rule.id}, new_rule_data]})
+        response = self.client.post(self.url, data=[{'id': exist_rule.id}, new_rule_data])
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         self.assertEqual(self.security_group.rules.count(), 2)
         self.assertTrue(self.security_group.rules.filter(id=exist_rule.id).exists())
         self.assertTrue(self.security_group.rules.filter(**new_rule_data).exists())
@@ -204,11 +191,11 @@ class SecurityGroupDeleteTest(BaseSecurityGroupTest):
         super(SecurityGroupDeleteTest, self).setUp()
         self.security_group = factories.SecurityGroupFactory(
             service_project_link=self.fixture.openstack_spl,
-            tenant=self.fixture.openstack_tenant,
-            state=SynchronizationStates.IN_SYNC)
+            tenant=self.fixture.tenant,
+            state=models.SecurityGroup.States.OK)
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
-    @data('admin', 'manager')
+    @data('admin', 'manager', 'staff', 'owner')
     def test_project_administrator_can_delete_security_group(self, user):
         self.client.force_authenticate(getattr(self.fixture, user))
 
@@ -219,7 +206,7 @@ class SecurityGroupDeleteTest(BaseSecurityGroupTest):
             mocked_execute.assert_called_once_with(self.security_group, force=False, async=True)
 
     def test_security_group_can_be_deleted_from_erred_state(self):
-        self.security_group.state = SynchronizationStates.ERRED
+        self.security_group.state = models.SecurityGroup.States.ERRED
         self.security_group.save()
 
         self.client.force_authenticate(self.fixture.admin)
@@ -235,19 +222,18 @@ class SecurityGroupRetreiveTest(BaseSecurityGroupTest):
         super(SecurityGroupRetreiveTest, self).setUp()
         self.security_group = factories.SecurityGroupFactory(
             service_project_link=self.fixture.openstack_spl,
-            tenant=self.fixture.openstack_tenant,
+            tenant=self.fixture.tenant,
         )
-
         self.url = factories.SecurityGroupFactory.get_url(self.security_group)
 
-    @data('admin', 'manager')
+    @data('admin', 'manager', 'staff', 'owner')
     def test_user_can_access_security_groups_of_project_instances_he_has_role_in(self, user):
         self.client.force_authenticate(getattr(self.fixture, user))
-
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    def test_user_cannot_access_security_groups_of_instances_not_connected_to_him(self):
-        self.client.force_authenticate(user=structure_factories.UserFactory())
+    @data('user')
+    def test_user_cannot_access_security_groups_of_instances_not_connected_to_him(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

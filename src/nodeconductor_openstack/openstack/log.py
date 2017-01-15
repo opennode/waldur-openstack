@@ -12,4 +12,5 @@ class TenantQuotaLogger(EventLogger):
             'resources': event_types,
         }
 
+
 event_logger.register('openstack_tenant_quota', TenantQuotaLogger)
