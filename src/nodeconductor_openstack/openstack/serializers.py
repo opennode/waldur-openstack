@@ -465,22 +465,22 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         if not validated_data.get('availability_zone'):
             validated_data['availability_zone'] = spl.service.settings.get_option('availability_zone') or ''
         # init tenant user username(if not defined) and password
+        slugified_name = slugify(validated_data['name'])[:30]
         if not validated_data.get('user_username'):
-            name = validated_data['name']
-            validated_data['user_username'] = slugify(name)[:30] + '-user'
+            validated_data['user_username'] = slugified_name + '-user'
         validated_data['user_password'] = core_utils.pwgen()
 
         subnet_cidr = validated_data.pop('subnet_cidr')
         with transaction.atomic():
             tenant = super(TenantSerializer, self).create(validated_data)
             network = models.Network.objects.create(
-                name=slugify(name)[:30] + '-int-net',
+                name=slugified_name + '-int-net',
                 description='Internal network for tenant %s' % tenant.name,
                 tenant=tenant,
                 service_project_link=tenant.service_project_link,
             )
             models.SubNet.objects.create(
-                name=slugify(name)[:30] + '-sub-net',
+                name=slugified_name + '-sub-net',
                 description='SubNet for tenant %s internal network' % tenant.name,
                 network=network,
                 service_project_link=tenant.service_project_link,
