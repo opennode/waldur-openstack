@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 from celery import chain
 
 from nodeconductor.core import executors as core_executors, tasks as core_tasks, utils as core_utils
+from nodeconductor_openstack.openstack import tasks as openstack_tasks
 
 from . import tasks, models
 
@@ -46,7 +47,7 @@ class VolumeDeleteExecutor(core_executors.DeleteExecutor):
             return chain(
                 core_tasks.BackendMethodTask().si(
                     serialized_volume, 'delete_volume', state_transition='begin_deleting'),
-                tasks.PollBackendCheckTask().si(serialized_volume, 'is_volume_deleted'),
+                openstack_tasks.PollBackendCheckTask().si(serialized_volume, 'is_volume_deleted'),
             )
         else:
             return core_tasks.StateTransitionTask().si(serialized_volume, state_transition='begin_deleting')
@@ -244,7 +245,7 @@ class SnapshotDeleteExecutor(core_executors.DeleteExecutor):
             return chain(
                 core_tasks.BackendMethodTask().si(
                     serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting'),
-                tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'),
+                openstack_tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'),
             )
         else:
             return core_tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
@@ -371,7 +372,7 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
                 backend_method='delete_instance',
                 state_transition='begin_deleting',
             ),
-            tasks.PollBackendCheckTask().si(
+            openstack_tasks.PollBackendCheckTask().si(
                 serialized_instance,
                 backend_check_method='is_instance_deleted'
             ),
@@ -600,7 +601,7 @@ class BackupDeleteExecutor(core_executors.DeleteExecutor):
             _tasks.append(core_tasks.BackendMethodTask().si(
                 serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting'))
         for serialized_snapshot in serialized_snapshots:
-            _tasks.append(tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'))
+            _tasks.append(openstack_tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'))
             _tasks.append(core_tasks.DeletionTask().si(serialized_snapshot))
 
         return chain(*_tasks)
