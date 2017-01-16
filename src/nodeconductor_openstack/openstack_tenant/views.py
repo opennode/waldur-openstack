@@ -493,7 +493,7 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return super(BackupViewSet, self).retrieve(request, *args, **kwargs)
 
     @decorators.detail_route(methods=['post'])
-    def restore(self, request, instance, uuid=None):
+    def restore(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         backup_restoration = serializer.save()
