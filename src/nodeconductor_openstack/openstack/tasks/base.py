@@ -28,6 +28,7 @@ class TenantCreateSuccessTask(core_tasks.StateTransitionTask):
         subnet = network.subnets.first()
         self.state_transition(network, 'set_ok')
         self.state_transition(subnet, 'set_ok')
+        self.state_transition(tenant, 'set_ok')
         return super(TenantCreateSuccessTask, self).execute(tenant)
 
 
