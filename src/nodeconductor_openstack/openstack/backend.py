@@ -595,6 +595,20 @@ class OpenStackBackend(BaseOpenStackBackend):
                 six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
+    def are_all_instances_deleted(self, tenant):
+        # TODO [TM:1/16/17] test it
+        nova = self.nova_client
+
+        try:
+            servers = nova.servers.list()
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            print "returned instances %s" % servers
+            print len(servers)
+            return not servers
+
+    @log_backend_action()
     def delete_tenant_snapshots(self, tenant):
         cinder = self.cinder_client
 
@@ -613,6 +627,19 @@ class OpenStackBackend(BaseOpenStackBackend):
                 six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
+    def are_all_snapshots_deleted(self, tenant):
+        cinder = self.cinder_client
+
+        try:
+            snapshots = cinder.volume_snapshots.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            print "returned snapshots %s" % snapshots
+            print len(snapshots)
+            return not snapshots
+
+    @log_backend_action()
     def delete_tenant_volumes(self, tenant):
         cinder = self.cinder_client
 
@@ -629,6 +656,19 @@ class OpenStackBackend(BaseOpenStackBackend):
                 logger.debug("Volume %s is already gone from tenant %s", volume.id, tenant.backend_id)
             except cinder_exceptions.ClientException as e:
                 six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def are_all_volumes_deleted(self, tenant):
+        cinder = self.cinder_client
+
+        try:
+            volumes = cinder.volumes.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            print "returned volumes %s" % volumes
+            print len(volumes)
+            return not volumes
 
     @log_backend_action()
     def delete_tenant_user(self, tenant):
