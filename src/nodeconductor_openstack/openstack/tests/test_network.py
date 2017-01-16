@@ -24,6 +24,7 @@ class NetworkCreateActionTest(BaseNetworkTest):
 
 class NetworkCreateSubnetActionTest(BaseNetworkTest):
     action_name = 'create_subnet'
+    quota_name = 'subnet_count'
 
     def setUp(self):
         super(NetworkCreateSubnetActionTest, self).setUp()
@@ -54,6 +55,21 @@ class NetworkCreateSubnetActionTest(BaseNetworkTest):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         executor_action_mock.assert_called_once()
 
+    @mock.patch('nodeconductor_openstack.openstack.executors.SubNetCreateExecutor.execute')
+    def test_create_subnet_increases_quota_usage(self, executor_action_mock):
+        response = self.client.post(self.url, self.request_data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.fixture.tenant.quotas.get(name=self.quota_name).usage, 1)
+        executor_action_mock.assert_called_once()
+
+    @mock.patch('nodeconductor_openstack.openstack.executors.SubNetCreateExecutor.execute')
+    def test_create_subnet_does_not_create_subnet_if_quota_exceeds_set_limit(self, executor_action_mock):
+        self.fixture.tenant.set_quota_limit(self.quota_name, 0)
+        response = self.client.post(self.url, self.request_data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.fixture.tenant.quotas.get(name=self.quota_name).usage, 0)
+        executor_action_mock.assert_not_called()
+
 
 class NetworkUpdateActionTest(BaseNetworkTest):
 
@@ -74,6 +90,7 @@ class NetworkUpdateActionTest(BaseNetworkTest):
         executor_action_mock.assert_called_once()
 
 
+@mock.patch('nodeconductor_openstack.openstack.executors.NetworkDeleteExecutor.execute')
 class NetworkDeleteActionTest(BaseNetworkTest):
 
     def setUp(self):
@@ -84,7 +101,6 @@ class NetworkDeleteActionTest(BaseNetworkTest):
             'name': 'test_name',
         }
 
-    @mock.patch('nodeconductor_openstack.openstack.executors.NetworkDeleteExecutor.execute')
     def test_delete_action_triggers_delete_executor(self, executor_action_mock):
         url = factories.NetworkFactory.get_url(network=self.fixture.network)
         response = self.client.delete(url, self.request_data)
@@ -92,3 +108,11 @@ class NetworkDeleteActionTest(BaseNetworkTest):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         executor_action_mock.assert_called_once()
 
+    def test_delete_action_decreases_quota_usage(self, executor_action_mock):
+        url = factories.NetworkFactory.get_url(network=self.fixture.network)
+        self.fixture.network.increase_backend_quotas_usage()
+        self.assertEqual(self.fixture.tenant.quotas.get(name='network_count').usage, 1)
+
+        response = self.client.delete(url, self.request_data)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        executor_action_mock.assert_called_once()

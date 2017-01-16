@@ -146,3 +146,33 @@ class TenantCreateFloatingIPTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(self.tenant.floating_ips.count(), 0)
         self.assertFalse(mocked_task.called)
+
+
+@patch('nodeconductor_openstack.openstack.executors.NetworkCreateExecutor.execute')
+class TenantCreateNetworkTest(BaseTenantActionsTest):
+    quota_name = 'network_count'
+
+    def setUp(self):
+        super(TenantCreateNetworkTest, self).setUp()
+        self.client.force_authenticate(self.fixture.owner)
+        self.url = factories.TenantFactory.get_url(self.tenant, 'create_network')
+        self.request_data = {
+            'name': 'test_network_name'
+        }
+
+    def test_that_network_quota_is_increased_when_network_is_created(self, mocked_task):
+        response = self.client.post(self.url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.tenant.networks.count(), 1)
+        self.assertEqual(self.tenant.quotas.get(name=self.quota_name).usage, 1)
+        self.assertTrue(mocked_task.called)
+
+    def test_that_network_is_not_created_when_quota_exceeds_set_limit(self, mocked_task):
+        self.tenant.set_quota_limit(self.quota_name, 0)
+        response = self.client.post(self.url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.tenant.networks.count(), 0)
+        self.assertEqual(self.tenant.quotas.get(name=self.quota_name).usage, 0)
+        self.assertFalse(mocked_task.called)

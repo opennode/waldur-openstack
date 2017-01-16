@@ -555,6 +555,9 @@ class OpenStackBackend(BaseOpenStackBackend):
             except neutron_exceptions.NeutronClientException as e:
                 six.reraise(OpenStackBackendError, e)
 
+        tenant.set_quota_usage(tenant.Quotas.network_count, 0)
+        tenant.set_quota_usage(tenant.Quotas.subnet_count, 0)
+
     @log_backend_action()
     def delete_tenant_security_groups(self, tenant):
         nova = self.nova_client
@@ -914,6 +917,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             neutron.delete_network(network.backend_id)
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
+        else:
+            network.decrease_backend_quotas_usage()
 
     def import_network(self, network_backend_id):
         neutron = self.neutron_admin_client
@@ -987,6 +992,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             neutron.delete_subnet(subnet.backend_id)
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
+        else:
+            subnet.decrease_backend_quotas_usage()
 
     def import_subnet(self, subnet_backend_id):
         neutron = self.neutron_admin_client
