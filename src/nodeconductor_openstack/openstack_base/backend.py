@@ -261,7 +261,7 @@ class BaseOpenStackBackend(ServiceBackend):
         try:
             nova_quotas = nova.quotas.get(tenant_id=tenant_backend_id)
             cinder_quotas = cinder.quotas.get(tenant_id=tenant_backend_id)
-            neutron_quotas = neutron.show_quota(project_id=tenant_backend_id)['quota']
+            neutron_quotas = neutron.show_quota(tenant_id=tenant_backend_id)['quota']
         except (nova_exceptions.ClientException,
                 cinder_exceptions.ClientException,
                 neutron_exceptions.NeutronClientException) as e:
