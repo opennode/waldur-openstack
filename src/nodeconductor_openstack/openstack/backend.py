@@ -595,8 +595,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
-    def are_all_instances_deleted(self, tenant):
-        # TODO [TM:1/16/17] test it
+    def are_all_tenant_instances_deleted(self, tenant):
         nova = self.nova_client
 
         try:
@@ -604,8 +603,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            print "returned instances %s" % servers
-            print len(servers)
             return not servers
 
     @log_backend_action()
@@ -627,7 +624,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
-    def are_all_snapshots_deleted(self, tenant):
+    def are_all_tenant_snapshots_deleted(self, tenant):
         cinder = self.cinder_client
 
         try:
@@ -635,8 +632,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            print "returned snapshots %s" % snapshots
-            print len(snapshots)
             return not snapshots
 
     @log_backend_action()
@@ -658,7 +653,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
-    def are_all_volumes_deleted(self, tenant):
+    def are_all_tenant_volumes_deleted(self, tenant):
         cinder = self.cinder_client
 
         try:
@@ -666,8 +661,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            print "returned volumes %s" % volumes
-            print len(volumes)
             return not volumes
 
     @log_backend_action()

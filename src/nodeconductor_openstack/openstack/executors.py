@@ -143,26 +143,25 @@ class TenantDeleteExecutor(core_executors.DeleteExecutor):
                 serialized_tenant, backend_method='delete_tenant_security_groups',
             ),
             core_tasks.BackendMethodTask().si(
-                serialized_tenant, backend_method='delete_tenant_instances',
-            ),
-            tasks.PollBackendCheckTask().si(
-                serialized_tenant,
-                backend_check_method='are_all_instances_deleted'
-            ),
-            core_tasks.BackendMethodTask().si(
                 serialized_tenant, backend_method='delete_tenant_snapshots',
             ),
             tasks.PollBackendCheckTask().si(
                 serialized_tenant,
-                backend_check_method='are_all_snapshots_deleted'
+                backend_check_method='are_all_tenant_snapshots_deleted'
             ),
-            # The countdown is needed for volumes to transit into proper state after instances deletion
             core_tasks.BackendMethodTask().si(
-                serialized_tenant, backend_method='delete_tenant_volumes',
-            ).set(countdown=30),
+                serialized_tenant, backend_method='delete_tenant_instances',
+            ),
             tasks.PollBackendCheckTask().si(
                 serialized_tenant,
-                backend_check_method='are_all_volumes_deleted'
+                backend_check_method='are_all_tenant_instances_deleted'
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, backend_method='delete_tenant_volumes',
+            ).set(),
+            tasks.PollBackendCheckTask().si(
+                serialized_tenant,
+                backend_check_method='are_all_tenant_volumes_deleted'
             ),
         ]
 
