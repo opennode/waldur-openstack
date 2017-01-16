@@ -687,6 +687,16 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
                     'required': True},
         )
 
+    def get_fields(self):
+        fields = super(BackupRestorationSerializer, self).get_fields()
+        backup = self.context['view'].get_object()
+        fields['flavor'].display_name_field = 'name'
+        fields['flavor'].view_name = 'openstacktenant-flavor-detail'
+        fields['flavor'].query_params = {
+            'settings_uuid': backup.instance.service_project_link.service.settings.uuid
+        }
+        return fields
+
     def validate(self, attrs):
         flavor = attrs['flavor']
         backup = self.context['view'].get_object()
@@ -697,7 +707,7 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         flavor = validated_data['flavor']
-        validated_data['backup'] = backup = self.context['backup']
+        validated_data['backup'] = backup = self.context['view'].get_object()
         source_instance = backup.instance
         # instance that will be restored
         metadata = backup.metadata or {}
