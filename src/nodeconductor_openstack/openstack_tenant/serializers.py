@@ -697,7 +697,7 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         flavor = validated_data['flavor']
-        validated_data['backup'] = backup = self.context['backup']
+        validated_data['backup'] = backup = self.context['view'].get_object()
         source_instance = backup.instance
         # instance that will be restored
         metadata = backup.metadata or {}
