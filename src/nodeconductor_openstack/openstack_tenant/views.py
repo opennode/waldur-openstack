@@ -211,6 +211,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         """ Detach instance from volume """
         volume = self.get_object()
         executors.VolumeDetachExecutor().execute(volume)
+        return response.Response({'status': 'detach was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     detach_validators = [_is_volume_bootable,
                          core_validators.RuntimeStateValidator('in-use'),
