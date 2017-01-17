@@ -140,10 +140,10 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'device', 'metadata',
-            'action', 'instance',
+            'action', 'instance', 'type',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
-            'size', 'type', 'image',
+            'size', 'image',
         )
         extra_kwargs = dict(
             instance={'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
