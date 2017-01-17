@@ -230,7 +230,9 @@ class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.FloatingIP
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-                    'runtime_state', 'address', 'tenant', 'backend_network_id')
+                    'runtime_state', 'address', 'backend_network_id',
+                    'tenant', 'tenant_name', 'tenant_uuid')
+        related_paths = ('tenant',)
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
                     'runtime_state', 'address', 'description', 'name', 'tenant', 'backend_network_id')
         extra_kwargs = dict(
