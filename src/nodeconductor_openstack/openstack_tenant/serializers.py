@@ -673,7 +673,6 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
 
 
 class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
-    # requires backup in context on creation
     name = serializers.CharField(
         required=False, help_text='New instance name. Leave blank to use source instance name.')
 
@@ -689,11 +688,12 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
     def get_fields(self):
         fields = super(BackupRestorationSerializer, self).get_fields()
-        fields['flavor'].display_name_field = 'name'
-        fields['flavor'].view_name = 'openstacktenant-flavor-detail'
-        if self.instance:
+        if self.context['view'].action == 'restore':
+            fields['flavor'].display_name_field = 'name'
+            fields['flavor'].view_name = 'openstacktenant-flavor-detail'
+            backup = self.context['view'].get_object()
             fields['flavor'].query_params = {
-                'settings_uuid': self.instance.backup.service_project_link.service.settings.uuid,
+                'settings_uuid': backup.service_project_link.service.settings.uuid,
             }
         return fields
 
