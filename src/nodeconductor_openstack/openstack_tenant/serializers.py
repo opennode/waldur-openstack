@@ -689,12 +689,12 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
     def get_fields(self):
         fields = super(BackupRestorationSerializer, self).get_fields()
-        backup = self.context['view'].get_object()
         fields['flavor'].display_name_field = 'name'
         fields['flavor'].view_name = 'openstacktenant-flavor-detail'
-        fields['flavor'].query_params = {
-            'settings_uuid': backup.instance.service_project_link.service.settings.uuid
-        }
+        if self.instance:
+            fields['flavor'].query_params = {
+                'settings_uuid': self.instance.backup.service_project_link.service.settings.uuid,
+            }
         return fields
 
     def validate(self, attrs):

@@ -1,5 +1,5 @@
 from django.utils import six
-from rest_framework import decorators, response, status, permissions, filters as rf_filters, exceptions, \
+from rest_framework import decorators, response, status, filters as rf_filters, exceptions, \
     serializers as rf_serializers
 
 from nodeconductor.core import (views as core_views, exceptions as core_exceptions, permissions as core_permissions,
