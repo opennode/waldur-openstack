@@ -55,6 +55,12 @@ class BaseSecurityGroupRule(models.Model):
                 'Wrong cidr value. Expected cidr format: <0-255>.<0-255>.<0-255>.<0-255>/<0-32>')
 
     def clean(self):
+        if self.to_port is None:
+            raise ValidationError('"to_port" cannot be empty')
+
+        if self.from_port is None:
+            raise ValidationError('"from_port" cannot be empty')
+
         if self.protocol == 'icmp':
             self.validate_icmp()
         elif self.protocol in ('tcp', 'udp'):
