@@ -277,6 +277,8 @@ class BaseOpenStackBackend(ServiceBackend):
             Tenant.Quotas.security_group_count: neutron_quotas['security_group'],
             Tenant.Quotas.security_group_rule_count: neutron_quotas['security_group_rule'],
             Tenant.Quotas.floating_ip_count: neutron_quotas['floatingip'],
+            Tenant.Quotas.network_count: neutron_quotas['network'],
+            Tenant.Quotas.subnet_count: neutron_quotas['subnet'],
         }
 
     def get_tenant_quotas_usage(self, tenant_backend_id):
@@ -289,6 +291,8 @@ class BaseOpenStackBackend(ServiceBackend):
             instances = nova.servers.list()
             security_groups = nova.security_groups.list()
             floating_ips = neutron.list_floatingips(tenant_id=tenant_backend_id)['floatingips']
+            networks = neutron.list_networks(tenant_id=tenant_backend_id)['networks']
+            subnets = neutron.list_subnets(tenant_id=tenant_backend_id)['subnets']
 
             flavors = {flavor.id: flavor for flavor in nova.flavors.list()}
 
@@ -317,4 +321,6 @@ class BaseOpenStackBackend(ServiceBackend):
             Tenant.Quotas.security_group_count: len(security_groups),
             Tenant.Quotas.security_group_rule_count: len(sum([sg.rules for sg in security_groups], [])),
             Tenant.Quotas.floating_ip_count: len(floating_ips),
+            Tenant.Quotas.network_count: len(networks),
+            Tenant.Quotas.subnet_count: len(subnets),
         }

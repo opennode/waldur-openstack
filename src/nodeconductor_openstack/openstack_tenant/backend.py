@@ -328,7 +328,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
-    def create_snapshot(self, snapshot, force=False):
+    def create_snapshot(self, snapshot, force=True):
         kwargs = {
             'name': snapshot.name,
             'description': snapshot.description,

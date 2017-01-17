@@ -140,10 +140,10 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'device', 'metadata',
-            'action', 'instance',
+            'action', 'instance', 'type',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
-            'size', 'type', 'image',
+            'size', 'image',
         )
         extra_kwargs = dict(
             instance={'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
@@ -673,7 +673,6 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
 
 
 class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
-    # requires backup in context on creation
     name = serializers.CharField(
         required=False, help_text='New instance name. Leave blank to use source instance name.')
 
@@ -687,6 +686,17 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
                     'required': True},
         )
 
+    def get_fields(self):
+        fields = super(BackupRestorationSerializer, self).get_fields()
+        if self.context['view'].action == 'restore':
+            fields['flavor'].display_name_field = 'name'
+            fields['flavor'].view_name = 'openstacktenant-flavor-detail'
+            backup = self.context['view'].get_object()
+            fields['flavor'].query_params = {
+                'settings_uuid': backup.service_project_link.service.settings.uuid,
+            }
+        return fields
+
     def validate(self, attrs):
         flavor = attrs['flavor']
         backup = self.context['view'].get_object()
@@ -697,7 +707,7 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         flavor = validated_data['flavor']
-        validated_data['backup'] = backup = self.context['backup']
+        validated_data['backup'] = backup = self.context['view'].get_object()
         source_instance = backup.instance
         # instance that will be restored
         metadata = backup.metadata or {}

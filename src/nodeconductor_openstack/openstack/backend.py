@@ -555,6 +555,9 @@ class OpenStackBackend(BaseOpenStackBackend):
             except neutron_exceptions.NeutronClientException as e:
                 six.reraise(OpenStackBackendError, e)
 
+        tenant.set_quota_usage(tenant.Quotas.network_count, 0)
+        tenant.set_quota_usage(tenant.Quotas.subnet_count, 0)
+
     @log_backend_action()
     def delete_tenant_security_groups(self, tenant):
         nova = self.nova_client
@@ -592,6 +595,17 @@ class OpenStackBackend(BaseOpenStackBackend):
                 six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
+    def are_all_tenant_instances_deleted(self, tenant):
+        nova = self.nova_client
+
+        try:
+            servers = nova.servers.list()
+        except nova_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            return not servers
+
+    @log_backend_action()
     def delete_tenant_snapshots(self, tenant):
         cinder = self.cinder_client
 
@@ -610,6 +624,17 @@ class OpenStackBackend(BaseOpenStackBackend):
                 six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
+    def are_all_tenant_snapshots_deleted(self, tenant):
+        cinder = self.cinder_client
+
+        try:
+            snapshots = cinder.volume_snapshots.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            return not snapshots
+
+    @log_backend_action()
     def delete_tenant_volumes(self, tenant):
         cinder = self.cinder_client
 
@@ -626,6 +651,17 @@ class OpenStackBackend(BaseOpenStackBackend):
                 logger.debug("Volume %s is already gone from tenant %s", volume.id, tenant.backend_id)
             except cinder_exceptions.ClientException as e:
                 six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action()
+    def are_all_tenant_volumes_deleted(self, tenant):
+        cinder = self.cinder_client
+
+        try:
+            volumes = cinder.volumes.list()
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        else:
+            return not volumes
 
     @log_backend_action()
     def delete_tenant_user(self, tenant):
@@ -914,6 +950,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             neutron.delete_network(network.backend_id)
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
+        else:
+            network.decrease_backend_quotas_usage()
 
     def import_network(self, network_backend_id):
         neutron = self.neutron_admin_client
@@ -987,6 +1025,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             neutron.delete_subnet(subnet.backend_id)
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
+        else:
+            subnet.decrease_backend_quotas_usage()
 
     def import_subnet(self, subnet_backend_id):
         neutron = self.neutron_admin_client

@@ -1,5 +1,5 @@
 from django.utils import six
-from rest_framework import decorators, response, status, permissions, filters as rf_filters, exceptions, \
+from rest_framework import decorators, response, status, filters as rf_filters, exceptions, \
     serializers as rf_serializers
 
 from nodeconductor.core import (views as core_views, exceptions as core_exceptions, permissions as core_permissions,
@@ -149,7 +149,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     destroy_validators = [
         _volume_snapshots_exist,
         core_validators.StateValidator(models.Volume.States.OK, models.Volume.States.ERRED),
-        core_validators.RuntimeStateValidator('available', 'error', 'error_restoring', 'error_extending'),
+        core_validators.RuntimeStateValidator('available', 'error', 'error_restoring', 'error_extending', ''),
     ]
 
     def _is_volume_bootable(volume):
@@ -493,7 +493,7 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return super(BackupViewSet, self).retrieve(request, *args, **kwargs)
 
     @decorators.detail_route(methods=['post'])
-    def restore(self, request, instance, uuid=None):
+    def restore(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         backup_restoration = serializer.save()
