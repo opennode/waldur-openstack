@@ -140,11 +140,11 @@ class SetBackupErredTask(core_tasks.ErrorStateTransitionTask):
             schedule.save()
 
 
-class ForceDeleteBackupTask(core_tasks.StateTransitionTask):
+class ForceDeleteBackupTask(core_tasks.DeletionTask):
 
     def execute(self, backup):
         backup.snapshots.all().delete()
-        backup.delete()
+        super(ForceDeleteBackupTask, self).execute(backup)
 
 
 class SetBackupRestorationErredTask(core_tasks.ErrorStateTransitionTask):
