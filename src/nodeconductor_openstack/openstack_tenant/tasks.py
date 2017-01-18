@@ -279,6 +279,9 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
 class ScheduleBackups(core_tasks.BackgroundTask):
     name = 'openstack_tenant.ScheduleBackups'
 
+    def is_equal(self, other_task, serialized_service_settings):
+        return self.name == other_task.get('name')
+
     def run(self):
         backup_schedules = models.BackupSchedule.objects.filter(is_active=True, next_trigger_at__lt=timezone.now())
         for backup_schedule in backup_schedules:
@@ -311,6 +314,9 @@ class ScheduleBackups(core_tasks.BackgroundTask):
 class DeleteExpiredBackups(core_tasks.BackgroundTask):
     name = 'openstack_tenant.DeleteExpiredBackups'
 
+    def is_equal(self, other_task, serialized_service_settings):
+        return self.name == other_task.get('name')
+
     def run(self):
         from . import executors
         for backup in models.Backup.objects.filter(kept_until__lt=timezone.now(), state=models.Backup.States.OK):
@@ -319,6 +325,9 @@ class DeleteExpiredBackups(core_tasks.BackgroundTask):
 
 class SetErredStuckResources(core_tasks.BackgroundTask):
     name = 'openstack_tenant.SetErredStuckResources'
+
+    def is_equal(self, other_task, serialized_service_settings):
+        return self.name == other_task.get('name')
 
     def run(self):
         for model in (models.Instance, models.Volume, models.Snapshot):
