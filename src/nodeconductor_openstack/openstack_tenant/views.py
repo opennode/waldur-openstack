@@ -460,6 +460,9 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     delete_executor = executors.BackupDeleteExecutor
 
+    def perform_update(self, serializer):
+        serializer.save()
+
     def list(self, request, *args, **kwargs):
         """
         To create a backup, issue the following **POST** request:
