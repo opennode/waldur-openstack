@@ -460,6 +460,8 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     delete_executor = executors.BackupDeleteExecutor
 
+    # method has to be overridden in order to avoid triggering of UpdateExecutor
+    # which is a default action for all ResourceViewSet(s)
     def perform_update(self, serializer):
         serializer.save()
 
