@@ -611,7 +611,7 @@ class BackupDeleteExecutor(core_executors.DeleteExecutor):
         if not force:
             return tasks.SetBackupErredTask().s(serialized_backup)
         else:
-            return tasks.ForceDeleteBackupTask().s(serialized_backup)
+            return tasks.ForceDeleteBackupTask().si(serialized_backup)
 
 
 class BackupRestorationExecutor(core_executors.CreateExecutor):
