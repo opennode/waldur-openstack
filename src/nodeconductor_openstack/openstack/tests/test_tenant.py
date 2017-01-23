@@ -7,6 +7,7 @@ from nodeconductor.structure.tests import factories as structure_factories
 from nodeconductor_openstack.openstack.models import Tenant, OpenStackService
 
 from . import factories, fixtures
+from .. import models
 
 
 class BaseTenantActionsTest(test.APISimpleTestCase):
@@ -15,6 +16,51 @@ class BaseTenantActionsTest(test.APISimpleTestCase):
         super(BaseTenantActionsTest, self).setUp()
         self.fixture = fixtures.OpenStackFixture()
         self.tenant = self.fixture.tenant
+
+
+class TenantCreateTest(BaseTenantActionsTest):
+    def setUp(self):
+        super(TenantCreateTest, self).setUp()
+        self.valid_data = {
+            'name': 'Test tenant',
+            'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(self.fixture.openstack_spl),
+        }
+        self.url = factories.TenantFactory.get_list_url()
+
+    def test_cannot_create_tenant_with_service_settings_username(self):
+        self.client.force_authenticate(self.fixture.staff)
+        self.fixture.openstack_service_settings.username = 'admin'
+        self.fixture.openstack_service_settings.save()
+        data = self.valid_data.copy()
+        data['user_username'] = self.fixture.openstack_service_settings.username
+
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(models.Tenant.objects.filter(user_username=data['user_username']).exists())
+
+    def test_cannot_create_tenant_with_blacklisted_username(self):
+        self.client.force_authenticate(self.fixture.staff)
+        self.fixture.openstack_service_settings.options['blacklisted_usernames'] = ['admin']
+        data = self.valid_data.copy()
+        data['user_username'] = self.fixture.openstack_service_settings.options['blacklisted_usernames'][0]
+
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(models.Tenant.objects.filter(user_username=data['user_username']).exists())
+
+    def test_cannot_create_tenant_with_duplicated_username(self):
+        self.client.force_authenticate(self.fixture.staff)
+        self.fixture.tenant.user_username = 'username'
+        self.fixture.tenant.save()
+        data = self.valid_data.copy()
+        data['user_username'] = self.fixture.tenant.user_username
+
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(models.Tenant.objects.filter(user_username=data['user_username']).count(), 1)
 
 
 @patch('nodeconductor_openstack.openstack.executors.TenantPushQuotasExecutor.execute')
@@ -63,10 +109,10 @@ class TenantDeleteTest(BaseTenantActionsTest):
 
 
 @ddt
-class ServiceTenantCreateTest(BaseTenantActionsTest):
+class TenantCreateServiceTest(BaseTenantActionsTest):
 
     def setUp(self):
-        super(ServiceTenantCreateTest, self).setUp()
+        super(TenantCreateServiceTest, self).setUp()
         self.settings = self.tenant.service_project_link.service.settings
         self.url = factories.TenantFactory.get_url(self.tenant, 'create_service')
 
