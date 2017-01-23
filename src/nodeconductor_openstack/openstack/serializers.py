@@ -71,7 +71,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
             },
             'access_url': {
                 'label': 'Access URL',
-            }
+            },
         }
 
     def _validate_settings(self, settings):
@@ -230,11 +230,11 @@ class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.FloatingIP
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-                    'runtime_state', 'address', 'backend_network_id',
-                    'tenant', 'tenant_name', 'tenant_uuid')
+            'runtime_state', 'address', 'backend_network_id',
+            'tenant', 'tenant_name', 'tenant_uuid')
         related_paths = ('tenant',)
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-                    'runtime_state', 'address', 'description', 'name', 'tenant', 'backend_network_id')
+            'runtime_state', 'address', 'description', 'name', 'tenant', 'backend_network_id')
         extra_kwargs = dict(
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
@@ -456,6 +456,23 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         if settings.backend_url:
             parsed = urlparse.urlparse(settings.backend_url)
             return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
+
+    def validate(self, attrs):
+        if not attrs.get('user_username'):
+            attrs['user_username'] = slugify(attrs['name'])[:30] + '-user'
+
+        service_settings = attrs['service_project_link'].service.settings
+        neighbour_tenants = models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
+        exist_usernames = [service_settings.username] + list(neighbour_tenants.values_list('user_username', flat=True))
+        if attrs['user_username'] in exist_usernames:
+            raise serializers.ValidationError(
+                'Name "%s" is already registered. Please choose another one.' % attrs['user_username'])
+
+        blacklisted_usernames = service_settings.options.get(
+            'blacklisted_usernames', settings.NODECONDUCTOR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
+        if attrs['user_username'] in blacklisted_usernames:
+            raise serializers.ValidationError('Name "%s" cannot be used as tenant user username.')
+        return attrs
 
     def create(self, validated_data):
         spl = validated_data['service_project_link']
