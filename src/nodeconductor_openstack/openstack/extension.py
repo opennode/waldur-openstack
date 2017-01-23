@@ -86,6 +86,7 @@ class OpenStackExtension(NodeConductorExtension):
                 'ALLOCATION_POOL_START': '{first_octet}.{second_octet}.{third_octet}.10',
                 'ALLOCATION_POOL_END': '{first_octet}.{second_octet}.{third_octet}.200',
             },
+            'DEFAULT_BLACKLISTED_USERNAMES': ['admin', 'service'],
         }
 
     @staticmethod
