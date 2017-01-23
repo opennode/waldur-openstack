@@ -463,15 +463,16 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
         service_settings = attrs['service_project_link'].service.settings
         neighbour_tenants = models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
-        exist_usernames = [service_settings.username] + list(neighbour_tenants.values_list('user_username', flat=True))
-        if attrs['user_username'] in exist_usernames:
+        existing_usernames = [service_settings.username] + list(neighbour_tenants.values_list('user_username', flat=True))
+        user_username = attrs['user_username']
+        if user_username in existing_usernames:
             raise serializers.ValidationError(
-                'Name "%s" is already registered. Please choose another one.' % attrs['user_username'])
+                'Name "%s" is already registered. Please choose another one.' % user_username)
 
         blacklisted_usernames = service_settings.options.get(
             'blacklisted_usernames', settings.NODECONDUCTOR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
-        if attrs['user_username'] in blacklisted_usernames:
-            raise serializers.ValidationError('Name "%s" cannot be used as tenant user username.')
+        if user_username in blacklisted_usernames:
+            raise serializers.ValidationError('Name "%s" cannot be used as tenant user username.' % user_username)
         return attrs
 
     def create(self, validated_data):
