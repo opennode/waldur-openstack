@@ -1,6 +1,6 @@
 from django.utils import six
-from rest_framework import decorators, response, status, filters as rf_filters, exceptions, \
-    serializers as rf_serializers
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import decorators, response, status, exceptions, serializers as rf_serializers
 
 from nodeconductor.core import (views as core_views, exceptions as core_exceptions, permissions as core_permissions,
                                 validators as core_validators)
@@ -102,7 +102,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     queryset = models.Image.objects.all().order_by('settings', 'name')
     serializer_class = serializers.ImageSerializer
     lookup_field = 'uuid'
-    filter_class = structure_filters.ServicePropertySettingsFilter
+    filter_class = filters.ImageFilter
 
 
 class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
@@ -128,7 +128,7 @@ class SecurityGroupViewSet(structure_views.BaseServicePropertyViewSet):
     queryset = models.SecurityGroup.objects.all().order_by('settings', 'name')
     serializer_class = serializers.SecurityGroupSerializer
     lookup_field = 'uuid'
-    filter_class = structure_filters.ServicePropertySettingsFilter
+    filter_class = filters.SecurityGroupFilter
 
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
@@ -518,7 +518,7 @@ class BackupScheduleViewSet(core_views.ActionsViewSet):
     serializer_class = serializers.BackupScheduleSerializer
     lookup_field = 'uuid'
     filter_class = filters.BackupScheduleFilter
-    filter_backends = (structure_filters.GenericRoleFilter, rf_filters.DjangoFilterBackend)
+    filter_backends = (structure_filters.GenericRoleFilter, DjangoFilterBackend)
     disabled_actions = ['create']
     permission_classes = (core_permissions.ActionsPermission,)
 

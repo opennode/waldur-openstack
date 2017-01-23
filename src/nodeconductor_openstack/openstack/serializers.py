@@ -53,7 +53,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                 'default_value': 'http://keystone.example.com:5000/v2.0',
             },
             'is_admin': {
-                'default_value': True,
+                'default_value': 'True',
             },
             'username': {
                 'default_value': 'admin',

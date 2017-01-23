@@ -1,7 +1,6 @@
 import django_filters
 
 from nodeconductor.core import filters as core_filters
-from nodeconductor.core.filters import UUIDFilter
 from nodeconductor.structure import filters as structure_filters
 
 from . import models
@@ -15,7 +14,7 @@ class OpenStackServiceProjectLinkFilter(structure_filters.BaseServiceProjectLink
 
 
 class SecurityGroupFilter(structure_filters.BaseResourceStateFilter):
-    tenant_uuid = UUIDFilter(name='tenant__uuid')
+    tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
 
     class Meta(object):
@@ -23,12 +22,7 @@ class SecurityGroupFilter(structure_filters.BaseResourceStateFilter):
 
 
 class IpMappingFilter(django_filters.FilterSet):
-    project = UUIDFilter(name='project__uuid')
-
-    # XXX: remove after upgrading to django-filter 0.12
-    #      which is still unavailable at https://pypi.python.org/simple/django-filter/
-    private_ip = django_filters.CharFilter()
-    public_ip = django_filters.CharFilter()
+    project = django_filters.UUIDFilter(name='project__uuid')
 
     class Meta(object):
         model = models.IpMapping
@@ -40,7 +34,7 @@ class IpMappingFilter(django_filters.FilterSet):
 
 
 class FloatingIPFilter(structure_filters.BaseResourceFilter):
-    tenant_uuid = UUIDFilter(name='tenant__uuid')
+    tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
 
     class Meta(structure_filters.BaseResourceStateFilter.Meta):
@@ -50,6 +44,8 @@ class FloatingIPFilter(structure_filters.BaseResourceFilter):
 
 class FlavorFilter(structure_filters.ServicePropertySettingsFilter):
 
+    o = django_filters.OrderingFilter(fields=('cores', 'ram', 'disk'))
+
     class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
         model = models.Flavor
         fields = dict({
@@ -57,18 +53,10 @@ class FlavorFilter(structure_filters.ServicePropertySettingsFilter):
             'ram': ['exact', 'gte', 'lte'],
             'disk': ['exact', 'gte', 'lte'],
         }, **{field: ['exact'] for field in structure_filters.ServicePropertySettingsFilter.Meta.fields})
-        order_by = [
-            'cores',
-            '-cores',
-            'ram',
-            '-ram',
-            'disk',
-            '-disk',
-        ]
 
 
 class NetworkFilter(structure_filters.BaseResourceFilter):
-    tenant_uuid = UUIDFilter(name='tenant__uuid')
+    tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
 
     class Meta(structure_filters.BaseResourceStateFilter.Meta):
@@ -76,9 +64,9 @@ class NetworkFilter(structure_filters.BaseResourceFilter):
 
 
 class SubNetFilter(structure_filters.BaseResourceFilter):
-    tenant_uuid = UUIDFilter(name='network__tenant__uuid')
+    tenant_uuid = django_filters.UUIDFilter(name='network__tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='network__tenant__uuid')
-    network_uuid = UUIDFilter(name='network__uuid')
+    network_uuid = django_filters.UUIDFilter(name='network__uuid')
     network = core_filters.URLFilter(view_name='openstack-network-detail', name='network__uuid')
 
     class Meta(structure_filters.BaseResourceStateFilter.Meta):
