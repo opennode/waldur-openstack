@@ -157,7 +157,7 @@ def update_security_group(sender, instance, name, source, target, **kwargs):
 
     security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
     if security_group:
-        security_group.name = instance.name,
+        security_group.name = instance.name
         security_group.description = instance.description
         security_group.save()
 
