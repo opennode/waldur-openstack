@@ -79,10 +79,18 @@ class Flavor(LoggableMixin, structure_models.ServiceProperty):
     ram = models.PositiveIntegerField(help_text='Memory size in MiB')
     disk = models.PositiveIntegerField(help_text='Root disk size in MiB')
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-flavor'
+
 
 class Image(structure_models.ServiceProperty):
     min_disk = models.PositiveIntegerField(default=0, help_text='Minimum disk size in MiB')
     min_ram = models.PositiveIntegerField(default=0, help_text='Minimum memory size in MiB')
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-image'
 
 
 class SecurityGroup(structure_models.NewResource):
@@ -123,6 +131,10 @@ class IpMapping(core_models.UuidMixin):
     public_ip = models.GenericIPAddressField(protocol='IPv4')
     private_ip = models.GenericIPAddressField(protocol='IPv4')
     project = models.ForeignKey(structure_models.Project, related_name='+')
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstack-ip-mapping'
 
 
 @python_2_unicode_compatible

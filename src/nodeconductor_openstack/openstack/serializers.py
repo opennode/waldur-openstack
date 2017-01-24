@@ -45,7 +45,6 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
-        view_name = 'openstack-detail'
         required_fields = 'backend_url', 'username', 'password', 'tenant_name'
         fields = structure_serializers.BaseServiceSerializer.Meta.fields + ('is_admin_tenant',)
         extra_field_options = {
@@ -54,7 +53,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                 'default_value': 'http://keystone.example.com:5000/v2.0',
             },
             'is_admin': {
-                'default_value': True,
+                'default_value': 'True',
             },
             'username': {
                 'default_value': 'admin',
@@ -100,7 +99,6 @@ class FlavorSerializer(structure_serializers.BasePropertySerializer):
 
     class Meta(object):
         model = models.Flavor
-        view_name = 'openstack-flavor-detail'
         fields = ('url', 'uuid', 'name', 'cores', 'ram', 'disk', 'display_name')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
@@ -117,7 +115,6 @@ class ImageSerializer(structure_serializers.BasePropertySerializer):
 
     class Meta(object):
         model = models.Image
-        view_name = 'openstack-image-detail'
         fields = ('url', 'uuid', 'name', 'min_disk', 'min_ram')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
@@ -128,7 +125,6 @@ class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkS
 
     class Meta(structure_serializers.BaseServiceProjectLinkSerializer.Meta):
         model = models.OpenStackServiceProjectLink
-        view_name = 'openstack-spl-detail'
         extra_kwargs = {
             'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},
         }
@@ -158,7 +154,6 @@ class NestedServiceProjectLinkSerializer(structure_serializers.PermissionFieldFi
             'service', 'service_name', 'service_uuid',
         )
         related_paths = 'project', 'service'
-        view_name = 'openstack-spl-detail'
         extra_kwargs = {
             'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},
             'project': {'lookup_field': 'uuid'},
@@ -175,7 +170,7 @@ class NestedServiceProjectLinkSerializer(structure_serializers.PermissionFieldFi
 class ExternalNetworkSerializer(serializers.Serializer):
     vlan_id = serializers.CharField(required=False)
     vxlan_id = serializers.CharField(required=False)
-    network_ip = core_serializers.IPAddressField()
+    network_ip = serializers.IPAddressField(protocol='ipv4')
     network_prefix = serializers.IntegerField(min_value=0, max_value=32)
     ips_count = serializers.IntegerField(min_value=1, required=False)
 
@@ -205,7 +200,8 @@ class ExternalNetworkSerializer(serializers.Serializer):
         return attrs
 
 
-class IpMappingSerializer(serializers.HyperlinkedModelSerializer):
+class IpMappingSerializer(core_serializers.AugmentedSerializerMixin,
+                          serializers.HyperlinkedModelSerializer):
 
     class Meta:
         model = models.IpMapping
@@ -214,7 +210,6 @@ class IpMappingSerializer(serializers.HyperlinkedModelSerializer):
             'url': {'lookup_field': 'uuid'},
             'project': {'lookup_field': 'uuid', 'view_name': 'project-detail'}
         }
-        view_name = 'openstack-ip-mapping-detail'
 
 
 class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
@@ -239,7 +234,6 @@ class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
             tenant={'lookup_field': 'uuid', 'view_name': 'openstack-tenant-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
-        view_name = 'openstack-fip-detail'
 
     def create(self, validated_data):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
@@ -312,7 +306,6 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SecurityGroup
-        view_name = 'openstack-sgp-detail'  # deprecated
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'tenant', 'tenant_name', 'tenant_uuid', 'rules',
         )
@@ -346,7 +339,6 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
 
     class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
         model = models.Tenant
-        view_name = 'openstack-tenant-detail'
 
     def create(self, validated_data):
         service_project_link = validated_data['service_project_link']
@@ -435,7 +427,6 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
     class Meta(structure_serializers.PrivateCloudSerializer.Meta):
         model = models.Tenant
-        view_name = 'openstack-tenant-detail'
         fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
             'availability_zone', 'internal_network_id', 'external_network_id',
             'user_username', 'user_password', 'quotas', 'subnet_cidr',
@@ -531,7 +522,6 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Network
-        view_name = 'openstack-network-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'tenant', 'tenant_name', 'is_external', 'type', 'segmentation_id', 'subnets')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
@@ -569,7 +559,6 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SubNet
-        view_name = 'openstack-subnet-detail'
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'tenant', 'tenant_name', 'network', 'network_name', 'cidr',
             'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
