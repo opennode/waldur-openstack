@@ -798,11 +798,11 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
     def create_backup_snapshots(backup):
         for volume in backup.instance.volumes.all():
             snapshot = models.Snapshot.objects.create(
-                name='Snapshot for volume %s' % volume.name,
+                name='Part of backup: %s (volume: %s)' % (backup.name[:60], volume.name[:60]),
                 service_project_link=backup.service_project_link,
                 size=volume.size,
                 source_volume=volume,
-                description='Part of backup %s' % backup.uuid.hex,
+                description='Part of backup %s (UUID: %s)' % (backup.name, backup.uuid.hex),
                 metadata={
                     'source_volume_name': volume.name,
                     'source_volume_description': volume.description,
