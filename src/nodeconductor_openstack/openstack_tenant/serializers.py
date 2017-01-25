@@ -691,16 +691,22 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
             fields['flavor'].display_name_field = 'name'
             fields['flavor'].view_name = 'openstacktenant-flavor-detail'
             backup = self.context['view'].get_object()
+            # It is assumed that valid OpenStack Instance has exactly one bootable volume
+            system_volume = backup.instance.volumes.get(bootable=True)
             fields['flavor'].query_params = {
                 'settings_uuid': backup.service_project_link.service.settings.uuid,
+                'disk__gte': system_volume.size,
             }
         return fields
 
     def validate(self, attrs):
         flavor = attrs['flavor']
         backup = self.context['view'].get_object()
+        system_volume = backup.instance.volumes.get(bootable=True)
         if flavor.settings != backup.instance.service_project_link.service.settings:
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
+        if flavor.disk < system_volume.size:
+            raise serializers.ValidationError({'flavor': "Flavor disk size should match system volume size."})
         return attrs
 
     @transaction.atomic
