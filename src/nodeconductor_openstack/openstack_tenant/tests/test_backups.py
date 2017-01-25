@@ -120,3 +120,32 @@ class BackupSourceFilterTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(2, len(response.data))
         self.assertEqual(factories.InstanceFactory.get_url(instance1), response.data[0]['instance'])
+
+
+class BackupRestorationTest(test.APITransactionTestCase):
+    def setUp(self):
+        user = structure_factories.UserFactory(is_staff=True)
+        self.client.force_authenticate(user=user)
+
+        self.backup = factories.BackupFactory(state=models.Backup.States.OK)
+        self.url = factories.BackupFactory.get_url(self.backup, 'restore')
+
+        system_volume = self.backup.instance.volumes.get(bootable=True)
+        self.disk_size = system_volume.size
+
+        service_settings = self.backup.instance.service_project_link.service.settings
+        self.valid_flavor = factories.FlavorFactory(disk=self.disk_size + 10, settings=service_settings)
+        self.invalid_flavor = factories.FlavorFactory(disk=self.disk_size - 10, settings=service_settings)
+
+    def test_flavor_disk_size_should_match_system_volume_size(self):
+        response = self.client.post(self.url, {
+            'flavor': factories.FlavorFactory.get_url(self.valid_flavor)
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_if_flavor_disk_size_lesser_then_system_volume_size_validation_fails(self):
+        response = self.client.post(self.url, {
+            'flavor': factories.FlavorFactory.get_url(self.invalid_flavor)
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['flavor'], ['Flavor disk size should match system volume size.'])

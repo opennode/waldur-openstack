@@ -418,11 +418,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         if any([flavor.settings != settings, image.settings != settings]):
             raise serializers.ValidationError(
-                "Flavor and image must belong to the same service settings as service project link.")
+                'Flavor and image must belong to the same service settings as service project link.')
 
         if image.min_ram > flavor.ram:
             raise serializers.ValidationError(
-                {'flavor': "RAM of flavor is not enough for selected image %s" % image.min_ram})
+                {'flavor': 'RAM of flavor is not enough for selected image %s' % image.min_ram})
 
         if image.min_disk > flavor.disk:
             raise serializers.ValidationError({
@@ -431,12 +431,12 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         if image.min_disk > attrs['system_volume_size']:
             raise serializers.ValidationError(
-                {'system_volume_size': "System volume size has to be greater than %s" % image.min_disk})
+                {'system_volume_size': 'System volume size has to be greater than %s' % image.min_disk})
 
         for security_group in attrs.get('security_groups', []):
             if security_group.settings != settings:
                 raise serializers.ValidationError(
-                    "Security group {} does not belong to the same service settings as service project link.".format(
+                    'Security group {} does not belong to the same service settings as service project link.'.format(
                         security_group.name))
 
         self._validate_external_ip(attrs)
@@ -561,9 +561,9 @@ class AssignFloatingIpSerializer(serializers.Serializer):
     def validate_floating_ip(self, floating_ip):
         if floating_ip is not None:
             if floating_ip.runtime_state != 'DOWN':
-                raise serializers.ValidationError("Floating IP runtime_state must be DOWN.")
+                raise serializers.ValidationError('Floating IP runtime_state must be DOWN.')
             elif floating_ip.settings != self.instance.service_project_link.service.settings:
-                raise serializers.ValidationError("Floating IP must belong to same settings as instance.")
+                raise serializers.ValidationError('Floating IP must belong to same settings as instance.')
         return floating_ip
 
     def save(self):
@@ -598,15 +598,15 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 
             if value.name == self.instance.flavor_name:
                 raise serializers.ValidationError(
-                    "New flavor is the same as current.")
+                    'New flavor is the same as current.')
 
             if value.settings != spl.service.settings:
                 raise serializers.ValidationError(
-                    "New flavor is not within the same service settings")
+                    'New flavor is not within the same service settings')
 
             if value.disk < self.instance.flavor_disk:
                 raise serializers.ValidationError(
-                    "New flavor disk should be greater than the previous value")
+                    'New flavor disk should be greater than the previous value')
         return value
 
     @transaction.atomic
@@ -657,7 +657,7 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
         for security_group in security_groups:
             if security_group.settings != spl.service.settings:
                 raise serializers.ValidationError(
-                    "Security group %s is not within the same service settings" % security_group.name)
+                    'Security group %s is not within the same service settings' % security_group.name)
 
         return security_groups
 
@@ -691,16 +691,22 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
             fields['flavor'].display_name_field = 'name'
             fields['flavor'].view_name = 'openstacktenant-flavor-detail'
             backup = self.context['view'].get_object()
+            # It is assumed that valid OpenStack Instance has exactly one bootable volume
+            system_volume = backup.instance.volumes.get(bootable=True)
             fields['flavor'].query_params = {
                 'settings_uuid': backup.service_project_link.service.settings.uuid,
+                'disk__gte': system_volume.size,
             }
         return fields
 
     def validate(self, attrs):
         flavor = attrs['flavor']
         backup = self.context['view'].get_object()
+        system_volume = backup.instance.volumes.get(bootable=True)
         if flavor.settings != backup.instance.service_project_link.service.settings:
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
+        if flavor.disk < system_volume.size:
+            raise serializers.ValidationError({'flavor': 'Flavor disk size should match system volume size.'})
         return attrs
 
     @transaction.atomic

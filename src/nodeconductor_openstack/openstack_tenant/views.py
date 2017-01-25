@@ -243,7 +243,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     """
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
-
+    filter_class = filters.InstanceFilter
     pull_executor = executors.InstancePullExecutor
 
     update_executor = executors.InstanceUpdateExecutor
