@@ -54,6 +54,13 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
         fields = structure_filters.BaseResourceStateFilter.Meta.fields
 
 
+class InstanceFilter(structure_filters.BaseResourceFilter):
+    tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
+
+    class Meta(structure_filters.BaseResourceFilter.Meta):
+        model = models.Instance
+
+
 class BackupFilter(structure_filters.BaseResourceFilter):
     instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='instance__uuid')
     instance_uuid = django_filters.UUIDFilter(name='instance__uuid')
