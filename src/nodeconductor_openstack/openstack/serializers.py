@@ -41,6 +41,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
         'access_url': 'Publicly accessible OpenStack dashboard URL',
+        'dns_nameservers': 'Default value for new subnets DNS name servers. Should be defined as list.',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
@@ -497,6 +498,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
                 service_project_link=tenant.service_project_link,
                 cidr=subnet_cidr,
                 allocation_pools=_generate_subnet_allocation_pool(subnet_cidr),
+                dns_nameservers=spl.service.settings.options.get('dns_nameservers', [])
             )
         return tenant
 
@@ -556,12 +558,13 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         read_only=True,
         lookup_field='uuid')
     tenant_name = serializers.CharField(source='network.tenant.name', read_only=True)
+    dns_nameservers = JsonField(read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SubNet
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'tenant', 'tenant_name', 'network', 'network_name', 'cidr',
-            'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+            'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp', 'dns_nameservers')
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('cidr',)
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'tenant', 'network', 'gateway_ip', 'ip_version', 'enable_dhcp')
@@ -580,7 +583,9 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         network = validated_data['network']
         validated_data['service_project_link'] = network.service_project_link
+        spl = network.service_project_link
         validated_data['allocation_pools'] = _generate_subnet_allocation_pool(validated_data['cidr'])
+        validated_data['dns_nameservers'] = spl.service.settings.options.get('dns_nameservers', [])
         return super(SubNetSerializer, self).create(validated_data)
 
 
