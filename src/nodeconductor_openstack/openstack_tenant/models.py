@@ -275,6 +275,7 @@ class BackupSchedule(core_models.UuidMixin,
     retention_time = models.PositiveIntegerField(
         help_text='Retention time in days, if 0 - backup will be kept forever')
     maximal_number_of_backups = models.PositiveSmallIntegerField()
+    call_count = models.PositiveSmallIntegerField(default=0, help_text="How many times backup schedule was called.")
 
     tracker = FieldTracker()
 
