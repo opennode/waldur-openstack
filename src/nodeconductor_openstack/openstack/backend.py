@@ -992,6 +992,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             'ip_version': subnet.ip_version,
             'enable_dhcp': subnet.enable_dhcp,
         }
+        if subnet.dns_nameservers:
+            data['dns_nameservers'] = subnet.dns_nameservers
         try:
             response = neutron.create_subnet({'subnets': [data]})
             # Automatically create router for subnet
