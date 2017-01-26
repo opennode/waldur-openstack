@@ -256,6 +256,7 @@ class SubNet(structure_models.NewResource):
     allocation_pools = JSONField(default={})
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
+    dns_nameservers = JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')
 
     def get_backend(self):
         return self.network.get_backend()

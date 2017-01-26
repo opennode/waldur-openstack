@@ -991,6 +991,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             'allocation_pools': subnet.allocation_pools,
             'ip_version': subnet.ip_version,
             'enable_dhcp': subnet.enable_dhcp,
+            'dns_nameservers': subnet.dns_nameservers,
         }
         try:
             response = neutron.create_subnet({'subnets': [data]})

@@ -41,6 +41,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
         'access_url': 'Publicly accessible OpenStack dashboard URL',
+        'dns_nameservers': 'Default value for new subnets DNS name servers',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
@@ -497,6 +498,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
                 service_project_link=tenant.service_project_link,
                 cidr=subnet_cidr,
                 allocation_pools=_generate_subnet_allocation_pool(subnet_cidr),
+                dns_nameservers=spl.service.settings.options.get('dns_nameservers', [])
             )
         return tenant
 
