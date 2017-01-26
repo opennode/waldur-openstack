@@ -558,12 +558,13 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         read_only=True,
         lookup_field='uuid')
     tenant_name = serializers.CharField(source='network.tenant.name', read_only=True)
+    dns_nameservers = JsonField(read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SubNet
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'tenant', 'tenant_name', 'network', 'network_name', 'cidr',
-            'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp')
+            'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp', 'dns_nameservers')
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + ('cidr',)
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'tenant', 'network', 'gateway_ip', 'ip_version', 'enable_dhcp')
