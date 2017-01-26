@@ -41,7 +41,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
         'access_url': 'Publicly accessible OpenStack dashboard URL',
-        'dns_nameservers': 'Default value for new subnets DNS name servers',
+        'dns_nameservers': 'Default value for new subnets DNS name servers. Should be defined as list.',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
