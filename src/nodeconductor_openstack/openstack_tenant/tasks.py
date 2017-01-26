@@ -290,8 +290,10 @@ class ScheduleBackups(core_tasks.BackgroundTask):
             serializer = serializers.BackupSerializer
             try:
                 with transaction.atomic():
+                    backup_schedule.call_count += 1
+                    backup_schedule.save()
                     backup = models.Backup.objects.create(
-                        name='Backup of %s' % backup_schedule.instance.name,
+                        name='Backup#%s of %s' % (backup_schedule.call_count, backup_schedule.instance.name),
                         description='Scheduled backup of instance "%s"' % backup_schedule.instance,
                         service_project_link=backup_schedule.instance.service_project_link,
                         instance=backup_schedule.instance,
