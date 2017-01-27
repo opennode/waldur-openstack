@@ -520,7 +520,6 @@ class BackupScheduleViewSet(core_views.ActionsViewSet):
     filter_class = filters.BackupScheduleFilter
     filter_backends = (structure_filters.GenericRoleFilter, DjangoFilterBackend)
     disabled_actions = ['create']
-    permission_classes = (permissions.IsAuthenticated, core_permissions.ActionsPermission,)
 
     unsafe_methods_permissions = [structure_permissions.is_administrator]
 

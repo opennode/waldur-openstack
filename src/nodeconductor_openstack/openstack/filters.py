@@ -55,6 +55,12 @@ class FlavorFilter(structure_filters.ServicePropertySettingsFilter):
         }, **{field: ['exact'] for field in structure_filters.ServicePropertySettingsFilter.Meta.fields})
 
 
+class ImageFilter(structure_filters.ServicePropertySettingsFilter):
+
+    class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
+        model = models.Image
+
+
 class NetworkFilter(structure_filters.BaseResourceFilter):
     tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
