@@ -210,3 +210,7 @@ class BackupSchedulePermissionsTest(helpers.PermissionsTest):
         url = backup_schedule_url(self.schedule)
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_anonymous_user_can_not_access_backup_schedule(self):
+        response = self.client.list(factories.BackupScheduleFactory.get_list_url())
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
