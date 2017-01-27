@@ -1,6 +1,6 @@
 from django.utils import six
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import decorators, response, status, exceptions, serializers as rf_serializers
+from rest_framework import decorators, permissions, response, status, exceptions, serializers as rf_serializers
 
 from nodeconductor.core import (views as core_views, exceptions as core_exceptions, permissions as core_permissions,
                                 validators as core_validators)
