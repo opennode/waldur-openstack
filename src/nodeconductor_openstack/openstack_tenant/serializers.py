@@ -810,7 +810,6 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
 
 
 class BackupScheduleSerializer(structure_serializers.BaseResourceSerializer):
-    # Serializer requires OpenStack Instance in context on creation
     instance_name = serializers.ReadOnlyField(source='instance.name')
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
                                        initial=timezone.get_current_timezone_name(),
