@@ -525,7 +525,7 @@ class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetac
     def perform_update(self, serializer):
         serializer.save()
 
-    # method has to be overridden in order to avoid triggering of UpdateExecutor
+    # method has to be overridden in order to avoid triggering of DeleteExecutor
     # which is a default action for all ResourceViewSet(s)
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
