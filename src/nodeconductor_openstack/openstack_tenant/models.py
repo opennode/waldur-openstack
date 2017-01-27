@@ -263,10 +263,6 @@ class BackupRestoration(core_models.UuidMixin, TimeStampedModel):
 class BackupSchedule(structure_models.NewResource,
                      core_models.ScheduleMixin):
 
-    class Permissions(object):
-        customer_path = 'instance__service_project_link__project__customer'
-        project_path = 'instance__service_project_link__project'
-
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='backup_schedules', on_delete=models.PROTECT)
     instance = models.ForeignKey(Instance, related_name='backup_schedules')

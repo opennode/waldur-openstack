@@ -519,7 +519,6 @@ class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetac
     serializer_class = serializers.BackupScheduleSerializer
     filter_class = filters.BackupScheduleFilter
     disabled_actions = ['create']
-    permission_classes = (core_permissions.ActionsPermission,)
 
     # method has to be overridden in order to avoid triggering of UpdateExecutor
     # which is a default action for all ResourceViewSet(s)
