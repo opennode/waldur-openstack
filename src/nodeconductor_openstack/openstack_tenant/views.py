@@ -513,21 +513,24 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     restore_serializer_class = serializers.BackupRestorationSerializer
 
 
-class BackupScheduleViewSet(core_views.ActionsViewSet):
+class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                               structure_views.ResourceViewSet)):
     queryset = models.BackupSchedule.objects.all()
     serializer_class = serializers.BackupScheduleSerializer
-    lookup_field = 'uuid'
     filter_class = filters.BackupScheduleFilter
-    filter_backends = (structure_filters.GenericRoleFilter, DjangoFilterBackend)
     disabled_actions = ['create']
 
-    unsafe_methods_permissions = [structure_permissions.is_administrator]
-
+    # method has to be overridden in order to avoid triggering of UpdateExecutor
+    # which is a default action for all ResourceViewSet(s)
     def perform_update(self, serializer):
-        super(BackupScheduleViewSet, self).perform_update(serializer)
+        serializer.save()
 
-    def perform_destroy(self, schedule):
-        super(BackupScheduleViewSet, self).perform_destroy(schedule)
+    # method has to be overridden in order to avoid triggering of DeleteExecutor
+    # which is a default action for all ResourceViewSet(s)
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return response.Response(status=status.HTTP_204_NO_CONTENT)
 
     def list(self, request, *args, **kwargs):
         """
