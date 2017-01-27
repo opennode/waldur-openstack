@@ -1,6 +1,6 @@
 from django.utils import six
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import decorators, response, status, exceptions, serializers as rf_serializers
+from rest_framework import decorators, permissions, response, status, exceptions, serializers as rf_serializers
 
 from nodeconductor.core import (views as core_views, exceptions as core_exceptions, permissions as core_permissions,
                                 validators as core_validators)
@@ -520,7 +520,7 @@ class BackupScheduleViewSet(core_views.ActionsViewSet):
     filter_class = filters.BackupScheduleFilter
     filter_backends = (structure_filters.GenericRoleFilter, DjangoFilterBackend)
     disabled_actions = ['create']
-    permission_classes = (core_permissions.ActionsPermission,)
+    permission_classes = (permissions.IsAuthenticated, core_permissions.ActionsPermission,)
 
     unsafe_methods_permissions = [structure_permissions.is_administrator]
 
