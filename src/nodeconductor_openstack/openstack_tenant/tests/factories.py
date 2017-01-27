@@ -224,7 +224,7 @@ class BackupScheduleFactory(factory.DjangoModelFactory):
 
     instance = factory.SubFactory(InstanceFactory)
     state = models.BackupSchedule.States.OK
-    service_project_link = factory.SubFactory(OpenStackTenantServiceProjectLinkFactory)
+    service_project_link = factory.SelfAttribute('instance.service_project_link')
     retention_time = 10
     is_active = True
     maximal_number_of_backups = 3
