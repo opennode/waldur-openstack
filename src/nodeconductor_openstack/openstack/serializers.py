@@ -138,7 +138,6 @@ class TenantQuotaSerializer(serializers.Serializer):
     ram = serializers.IntegerField(min_value=1, required=False)
     vcpu = serializers.IntegerField(min_value=1, required=False)
     storage = serializers.IntegerField(min_value=1, required=False)
-    backup_storage = serializers.IntegerField(min_value=1, required=False)
     security_group_count = serializers.IntegerField(min_value=1, required=False)
     security_group_rule_count = serializers.IntegerField(min_value=1, required=False)
 

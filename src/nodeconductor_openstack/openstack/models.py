@@ -170,7 +170,6 @@ class Tenant(structure_models.PrivateCloud):
         vcpu = QuotaField(default_limit=20, is_backend=True)
         ram = QuotaField(default_limit=51200, is_backend=True)
         storage = QuotaField(default_limit=1024000, is_backend=True)
-        backup_storage = QuotaField(default_limit=1024000, is_backend=True)
         instances = QuotaField(default_limit=30, is_backend=True)
         security_group_count = QuotaField(default_limit=100, is_backend=True)
         security_group_rule_count = QuotaField(default_limit=100, is_backend=True)
