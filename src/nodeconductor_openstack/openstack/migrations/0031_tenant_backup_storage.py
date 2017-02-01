@@ -12,6 +12,12 @@ def cleanup_tenant_quotas(apps, schema_editor):
         obj.quotas.exclude(name__in=quota_names).delete()
 
 
+def cleanup_openstackservice_quotas(apps, schema_editor):
+    quota_names = models.OpenStackService.get_quotas_names()
+    for obj in models.OpenStackService.objects.all():
+        obj.quotas.exclude(name__in=quota_names).delete()
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -20,4 +26,5 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(cleanup_tenant_quotas),
+        migrations.RunPython(cleanup_openstackservice_quotas),
     ]

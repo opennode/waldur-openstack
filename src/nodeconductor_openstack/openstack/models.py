@@ -39,7 +39,6 @@ class OpenStackService(structure_models.Service):
         vcpu = ServiceUsageAggregatorQuotaField()
         ram = ServiceUsageAggregatorQuotaField()
         storage = ServiceUsageAggregatorQuotaField()
-        backup_storage = ServiceUsageAggregatorQuotaField()
         instances = ServiceUsageAggregatorQuotaField()
         security_group_count = ServiceUsageAggregatorQuotaField()
         security_group_rule_count = ServiceUsageAggregatorQuotaField()
