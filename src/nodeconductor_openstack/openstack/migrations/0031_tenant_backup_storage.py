@@ -9,10 +9,10 @@ from nodeconductor.quotas import models as quotas_models
 from .. import models
 
 
-def delete_backup_storage_quota_from_tenant(apps, schema_editor):
-    tenant_content_type = ContentType.objects.get_for_model(models.Tenant)
-    quota_name = 'backup_storage'
-    quotas_models.Quota.objects.filter(name=quota_name, content_type=tenant_content_type).delete()
+def cleanup_tenant_quotas(apps, schema_editor):
+    for obj in models.Tenant.objects.all():
+        quotas_names = models.Tenant.QUOTAS_NAMES + [f.name for f in models.Tenant.get_quotas_fields()]
+        obj.quotas.exclude(name__in=quotas_names).delete()
 
 
 class Migration(migrations.Migration):
@@ -22,5 +22,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(delete_backup_storage_quota_from_tenant),
+        migrations.RunPython(cleanup_tenant_quotas),
     ]
