@@ -33,13 +33,13 @@ class FloatingIPFilter(structure_filters.ServicePropertySettingsFilter):
         fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('runtime_state',)
 
 
-class VolumeFilter(structure_filters.BaseResourceStateFilter):
+class VolumeFilter(structure_filters.BaseResourceFilter):
     instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='instance__uuid')
     instance_uuid = django_filters.UUIDFilter(name='instance__uuid')
 
-    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+    class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Volume
-        fields = structure_filters.BaseResourceStateFilter.Meta.fields + ('instance', 'instance_uuid')
+        fields = structure_filters.BaseResourceFilter.Meta.fields + ('instance', 'instance_uuid')
 
 
 class SnapshotFilter(structure_filters.BaseResourceFilter):
@@ -49,9 +49,9 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
     backup_uuid = django_filters.UUIDFilter(name='backups__uuid')
     backup = core_filters.URLFilter(view_name='openstacktenant-backup-detail', name='backups__uuid')
 
-    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+    class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Snapshot
-        fields = structure_filters.BaseResourceStateFilter.Meta.fields
+        fields = structure_filters.BaseResourceFilter.Meta.fields
 
 
 class InstanceFilter(structure_filters.BaseResourceFilter):
@@ -68,9 +68,9 @@ class BackupFilter(structure_filters.BaseResourceFilter):
         view_name='openstacktenant-backup-schedule-detail', name='backup_schedule__uuid')
     backup_schedule_uuid = django_filters.UUIDFilter(name='backup_schedule__uuid')
 
-    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+    class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Backup
-        fields = structure_filters.BaseResourceStateFilter.Meta.fields + (
+        fields = structure_filters.BaseResourceFilter.Meta.fields + (
             'instance', 'instance_uuid', 'backup_schedule', 'backup_schedule_uuid')
 
 

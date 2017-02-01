@@ -248,7 +248,7 @@ class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass
 class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
-    filter_class = structure_filters.BaseResourceStateFilter
+    filter_class = structure_filters.BaseResourceFilter
 
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
