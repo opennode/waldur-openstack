@@ -13,14 +13,12 @@ from nodeconductor.structure import serializers as structure_serializers
 
 from . import models, fields
 
-
 logger = logging.getLogger(__name__)
 
 
 class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                         core_serializers.RequiredFieldsMixin,
                         structure_serializers.BaseServiceSerializer):
-
     SERVICE_ACCOUNT_FIELDS = {
         'backend_url': 'Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)',
         'username': 'Tenant user username',
@@ -49,7 +47,6 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
 
 
 class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkSerializer):
-
     class Meta(structure_serializers.BaseServiceProjectLinkSerializer.Meta):
         model = models.OpenStackTenantServiceProjectLink
         extra_kwargs = {
@@ -58,7 +55,6 @@ class ServiceProjectLinkSerializer(structure_serializers.BaseServiceProjectLinkS
 
 
 class ImageSerializer(structure_serializers.BasePropertySerializer):
-
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.Image
         fields = ('url', 'uuid', 'name', 'settings', 'min_disk', 'min_ram',)
@@ -69,7 +65,6 @@ class ImageSerializer(structure_serializers.BasePropertySerializer):
 
 
 class FlavorSerializer(structure_serializers.BasePropertySerializer):
-
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.Flavor
         fields = ('url', 'uuid', 'name', 'settings', 'cores', 'ram', 'disk',)
@@ -80,7 +75,6 @@ class FlavorSerializer(structure_serializers.BasePropertySerializer):
 
 
 class FloatingIPSerializer(structure_serializers.BasePropertySerializer):
-
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.FloatingIP
         fields = ('url', 'uuid', 'settings', 'address', 'runtime_state', 'is_booked',)
@@ -114,7 +108,6 @@ class SecurityGroupSerializer(structure_serializers.BasePropertySerializer):
 
 
 class VolumeSerializer(structure_serializers.BaseResourceSerializer):
-
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
         view_name='openstacktenant-detail',
@@ -247,7 +240,6 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 
 
 class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
-
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
         view_name='openstacktenant-detail',
@@ -295,7 +287,6 @@ class NestedVolumeSerializer(core_serializers.AugmentedSerializerMixin,
 
 
 class NestedSecurityGroupRuleSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = models.SecurityGroupRule
         fields = ('id', 'protocol', 'from_port', 'to_port', 'cidr')
@@ -330,7 +321,6 @@ class NestedSecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
 
 
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
-
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
         view_name='openstacktenant-detail',
@@ -690,13 +680,16 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
         if self.context['view'].action == 'restore':
             fields['flavor'].display_name_field = 'name'
             fields['flavor'].view_name = 'openstacktenant-flavor-detail'
-            backup = self.context['view'].get_object()
-            # It is assumed that valid OpenStack Instance has exactly one bootable volume
-            system_volume = backup.instance.volumes.get(bootable=True)
-            fields['flavor'].query_params = {
-                'settings_uuid': backup.service_project_link.service.settings.uuid,
-                'disk__gte': system_volume.size,
-            }
+            view = self.context['view']
+            # View doesn't have object during schema generation
+            if hasattr(view, 'lookup_field') and view.lookup_field in view.kwargs:
+                backup = view.get_object()
+                # It is assumed that valid OpenStack Instance has exactly one bootable volume
+                system_volume = backup.instance.volumes.get(bootable=True)
+                fields['flavor'].query_params = {
+                    'settings_uuid': backup.service_project_link.service.settings.uuid,
+                    'disk__gte': system_volume.size,
+                }
         return fields
 
     def validate(self, attrs):
@@ -819,25 +812,37 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             backup.snapshots.add(snapshot)
 
 
-class BackupScheduleSerializer(core_serializers.AugmentedSerializerMixin,
-                               serializers.HyperlinkedModelSerializer):
+class BackupScheduleSerializer(structure_serializers.BaseResourceSerializer):
     instance_name = serializers.ReadOnlyField(source='instance.name')
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
                                        initial=timezone.get_current_timezone_name(),
                                        default=timezone.get_current_timezone_name())
+    service = serializers.HyperlinkedRelatedField(
+        source='service_project_link.service',
+        view_name='openstacktenant-detail',
+        read_only=True,
+        lookup_field='uuid')
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstacktenant-spl-detail',
+        read_only=True,
+    )
 
-    class Meta(object):
+    class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.BackupSchedule
-        fields = ('url', 'uuid', 'name', 'description', 'retention_time', 'timezone', 'instance', 'instance_name',
-                  'maximal_number_of_backups', 'schedule', 'is_active', 'error_message', 'next_trigger_at')
-        read_only_fields = ('url', 'uuid', 'is_active', 'backups', 'next_trigger_at', 'instance')
+        fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
+            'retention_time', 'timezone', 'instance', 'instance_name', 'maximal_number_of_backups', 'schedule',
+            'is_active', 'next_trigger_at')
+        read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
+            'is_active', 'backups', 'next_trigger_at', 'instance', 'service_project_link')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
         }
 
     def create(self, validated_data):
-        validated_data['instance'] = self.context['view'].get_object()
+        instance = self.context['view'].get_object()
+        validated_data['instance'] = instance
+        validated_data['service_project_link'] = instance.service_project_link
         return super(BackupScheduleSerializer, self).create(validated_data)
 
 

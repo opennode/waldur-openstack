@@ -13,7 +13,7 @@ class OpenStackServiceProjectLinkFilter(structure_filters.BaseServiceProjectLink
         model = models.OpenStackServiceProjectLink
 
 
-class SecurityGroupFilter(structure_filters.BaseResourceStateFilter):
+class SecurityGroupFilter(structure_filters.BaseResourceFilter):
     tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
 
@@ -37,7 +37,7 @@ class FloatingIPFilter(structure_filters.BaseResourceFilter):
     tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
 
-    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+    class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.FloatingIP
         fields = structure_filters.BaseResourceFilter.Meta.fields + ('runtime_state', )
 
@@ -55,11 +55,17 @@ class FlavorFilter(structure_filters.ServicePropertySettingsFilter):
         }, **{field: ['exact'] for field in structure_filters.ServicePropertySettingsFilter.Meta.fields})
 
 
+class ImageFilter(structure_filters.ServicePropertySettingsFilter):
+
+    class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
+        model = models.Image
+
+
 class NetworkFilter(structure_filters.BaseResourceFilter):
     tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
 
-    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+    class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Network
 
 
@@ -69,5 +75,5 @@ class SubNetFilter(structure_filters.BaseResourceFilter):
     network_uuid = django_filters.UUIDFilter(name='network__uuid')
     network = core_filters.URLFilter(view_name='openstack-network-detail', name='network__uuid')
 
-    class Meta(structure_filters.BaseResourceStateFilter.Meta):
+    class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.SubNet
