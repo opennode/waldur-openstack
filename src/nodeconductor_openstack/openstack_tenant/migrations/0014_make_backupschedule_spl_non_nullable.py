@@ -8,7 +8,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('openstack_tenant', '0012_backupschedule_resource'),
+        ('openstack_tenant', '0013_init_backupschedule_spl'),
     ]
 
     operations = [

@@ -9,13 +9,6 @@ import taggit.managers
 import django_fsm
 
 
-def initialize_backupschedule_project_links(apps, schema_editor):
-    BackupSchedule = apps.get_model('openstack_tenant', 'BackupSchedule')
-    for backup_schedule in BackupSchedule.objects.iterator():
-        backup_schedule.service_project_link = backup_schedule.instance.service_project_link
-        backup_schedule.save()
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -60,5 +53,4 @@ class Migration(migrations.Migration):
             name='tags',
             field=taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags'),
         ),
-        migrations.RunPython(initialize_backupschedule_project_links),
     ]
