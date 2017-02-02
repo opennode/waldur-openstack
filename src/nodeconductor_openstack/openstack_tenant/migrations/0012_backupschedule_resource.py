@@ -61,10 +61,4 @@ class Migration(migrations.Migration):
             field=taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags'),
         ),
         migrations.RunPython(initialize_backupschedule_project_links),
-        migrations.AlterField(
-            model_name='backupschedule',
-            name='service_project_link',
-            field=models.ForeignKey(related_name='backup_schedules', on_delete=django.db.models.deletion.PROTECT, to='openstack_tenant.OpenStackTenantServiceProjectLink'),
-            preserve_default=False,
-        ),
     ]
