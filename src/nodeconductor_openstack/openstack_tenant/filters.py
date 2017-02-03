@@ -39,7 +39,7 @@ class VolumeFilter(structure_filters.BaseResourceFilter):
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Volume
-        fields = structure_filters.BaseResourceFilter.Meta.fields + ('instance', 'instance_uuid')
+        fields = structure_filters.BaseResourceFilter.Meta.fields + ('runtime_state',)
 
 
 class SnapshotFilter(structure_filters.BaseResourceFilter):
@@ -51,7 +51,7 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Snapshot
-        fields = structure_filters.BaseResourceFilter.Meta.fields
+        fields = structure_filters.BaseResourceFilter.Meta.fields + ('runtime_state',)
 
 
 class InstanceFilter(structure_filters.BaseResourceFilter):
@@ -59,6 +59,7 @@ class InstanceFilter(structure_filters.BaseResourceFilter):
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Instance
+        fields = structure_filters.BaseResourceFilter.Meta.fields + ('runtime_state',)
 
 
 class BackupFilter(structure_filters.BaseResourceFilter):
@@ -70,8 +71,6 @@ class BackupFilter(structure_filters.BaseResourceFilter):
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Backup
-        fields = structure_filters.BaseResourceFilter.Meta.fields + (
-            'instance', 'instance_uuid', 'backup_schedule', 'backup_schedule_uuid')
 
 
 class BackupScheduleFilter(django_filters.FilterSet):
