@@ -757,17 +757,19 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
     metadata = core_fields.JsonField(read_only=True)
     instance_name = serializers.ReadOnlyField(source='instance.name')
     restorations = BackupRestorationSerializer(many=True, read_only=True)
+    backup_schedule_uuid = serializers.ReadOnlyField(source='backup_schedule.uuid')
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Backup
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'kept_until', 'metadata', 'instance', 'instance_name', 'restorations')
+            'kept_until', 'metadata', 'instance', 'instance_name', 'restorations',
+            'backup_schedule', 'backup_schedule_uuid')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'instance', 'service_project_link')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
-            # 'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstack-schedule-detail'},
+            'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-backup-schedule-detail'},
         }
 
     @transaction.atomic
