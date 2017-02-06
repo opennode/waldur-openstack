@@ -159,7 +159,7 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
                 ('uuid', nodeconductor.core.fields.UUIDField()),
                 ('available_for_all', models.BooleanField(default=False, help_text='Service will be automatically added to all customers projects if it is available for all')),
-                ('customer', models.ForeignKey(to='structure.Customer')),
+                ('customer', models.ForeignKey(verbose_name='organization', to='structure.Customer')),
             ],
             options={
                 'verbose_name': 'OpenStack service',
