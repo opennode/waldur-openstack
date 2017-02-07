@@ -41,6 +41,14 @@ class BackupScheduleUsageTest(test.APISimpleTestCase):
         self.assertEqual(
             response.data['maximal_number_of_backups'], self.backup_schedule_data['maximal_number_of_backups'])
         self.assertEqual(response.data['schedule'], self.backup_schedule_data['schedule'])
+        backup_schedule = models.BackupSchedule.objects.first()
+
+    def test_backup_schedule_default_state_is_OK(self):
+        response = self.client.post(self.create_url, self.backup_schedule_data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        backup_schedule = models.BackupSchedule.objects.first()
+        self.assertIsNotNone(backup_schedule)
+        self.assertEqual(backup_schedule.state, backup_schedule.States.OK)
 
     def test_backup_schedule_can_not_be_created_with_wrong_schedule(self):
         # wrong schedule:

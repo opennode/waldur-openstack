@@ -845,6 +845,7 @@ class BackupScheduleSerializer(structure_serializers.BaseResourceSerializer):
         instance = self.context['view'].get_object()
         validated_data['instance'] = instance
         validated_data['service_project_link'] = instance.service_project_link
+        validated_data['state'] = instance.States.OK
         return super(BackupScheduleSerializer, self).create(validated_data)
 
 
