@@ -12,7 +12,7 @@ from keystoneauth1 import session as keystone_session
 from ceilometerclient import client as ceilometer_client
 from cinderclient.v2 import client as cinder_client
 from glanceclient.v1 import client as glance_client
-from keystoneclient.v2_0 import client as keystone_client
+from keystoneclient.v3 import client as keystone_client
 from neutronclient.v2_0 import client as neutron_client
 from novaclient.v2 import client as nova_client
 
