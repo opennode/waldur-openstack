@@ -31,6 +31,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
     SERVICE_ACCOUNT_FIELDS = {
         'backend_url': 'Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)',
         'username': 'Administrative user',
+        'domain': 'Domain ID. If not defined default domain will be used.',
         'password': '',
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
@@ -435,7 +436,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             'internal_network_id', 'external_network_id', 'user_password',
         )
         protected_fields = structure_serializers.PrivateCloudSerializer.Meta.protected_fields + (
-            'user_username',
+            'user_username', 'subnet_cidr',
         )
 
     def get_access_url(self, tenant):
@@ -449,6 +450,9 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
 
     def validate(self, attrs):
+        if self.instance is not None:
+            return attrs
+
         if not attrs.get('user_username'):
             attrs['user_username'] = slugify(attrs['name'])[:30] + '-user'
 

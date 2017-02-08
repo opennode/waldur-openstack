@@ -1,11 +1,11 @@
 import mock
+import unittest
 
 from rest_framework import status
 
 from nodeconductor.structure.tests import factories as structure_factories
 
 from .test_backend import BaseBackendTestCase
-
 from . import factories
 from .. import models
 
@@ -22,6 +22,7 @@ class BaseImportTestCase(BaseBackendTestCase):
         self.url = factories.OpenStackServiceFactory.get_url(self.service, 'link')
 
 
+@unittest.skip('Import operation is not supported yet.')
 class TenantImportTestCase(BaseImportTestCase):
     def setUp(self):
         super(TenantImportTestCase, self).setUp()

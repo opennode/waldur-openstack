@@ -39,9 +39,23 @@ class OpenStackBackend(BaseOpenStackBackend):
             return True
 
     def sync(self):
+        self._check_domain()
         self._pull_flavors()
         self._pull_images()
         self._pull_service_settings_quotas()
+
+    def _check_domain(self):
+        if not self.settings.domain:
+            return
+        try:
+            self._get_domain()
+        except keystone_exceptions.NotFound:
+            raise OpenStackBackendError('Domain with ID "%s" does not exist at backend.' % self.settings.domain)
+
+    def _get_domain(self):
+        """ Get current domain """
+        keystone = self.keystone_admin_client
+        return keystone.domains.get(self.settings.domain or 'default')
 
     def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
         nova = self.nova_client
@@ -354,7 +368,8 @@ class OpenStackBackend(BaseOpenStackBackend):
     def create_tenant(self, tenant):
         keystone = self.keystone_admin_client
         try:
-            backend_tenant = keystone.tenants.create(tenant_name=tenant.name, description=tenant.description)
+            backend_tenant = keystone.projects.create(
+                name=tenant.name, description=tenant.description, domain=self._get_domain())
             tenant.backend_id = backend_tenant.id
             tenant.save(update_fields=['backend_id'])
         except keystone_exceptions.ClientException as e:
@@ -363,7 +378,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def import_tenant(self, tenant_backend_id, service_project_link=None, save=True):
         keystone = self.keystone_admin_client
         try:
-            backend_tenant = keystone.tenants.get(tenant_backend_id)
+            backend_tenant = keystone.projects.get(tenant_backend_id)
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -397,10 +412,10 @@ class OpenStackBackend(BaseOpenStackBackend):
             admin_user = keystone.users.find(name=self.settings.username)
             admin_role = keystone.roles.find(name='admin')
             try:
-                keystone.roles.add_user_role(
+                keystone.roles.grant(
                     user=admin_user.id,
                     role=admin_role.id,
-                    tenant=tenant.backend_id)
+                    project=tenant.backend_id)
             except keystone_exceptions.Conflict:
                 pass
         except keystone_exceptions.ClientException as e:
@@ -419,10 +434,10 @@ class OpenStackBackend(BaseOpenStackBackend):
                 role = keystone.roles.find(name='Member')
             except keystone_exceptions.NotFound:
                 role = keystone.roles.find(name='_member_')
-            keystone.roles.add_user_role(
+            keystone.roles.grant(
                 user=user.id,
                 role=role.id,
-                tenant=tenant.backend_id,
+                project=tenant.backend_id,
             )
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
@@ -439,7 +454,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         ).values_list('backend_id', flat=True))
         keystone = self.keystone_admin_client
         try:
-            tenants = keystone.tenants.list()
+            tenants = keystone.projects.list(domain=self._get_domain())
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -684,7 +699,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         logger.info("Deleting tenant %s", tenant.backend_id)
         try:
-            keystone.tenants.delete(tenant.backend_id)
+            keystone.projects.delete(tenant.backend_id)
         except keystone_exceptions.NotFound:
             logger.debug("Tenant %s is already gone", tenant.backend_id)
         except keystone_exceptions.ClientException as e:
@@ -1193,7 +1208,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     def update_tenant(self, tenant):
         keystone = self.keystone_admin_client
         try:
-            keystone.tenants.update(tenant.backend_id, name=tenant.name, description=tenant.description)
+            keystone.projects.update(tenant.backend_id, name=tenant.name, description=tenant.description)
         except keystone_exceptions.NotFound as e:
             logger.error('Tenant with id %s does not exist', tenant.backend_id)
             six.reraise(OpenStackBackendError, e)

@@ -677,10 +677,10 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
     def get_fields(self):
         fields = super(BackupRestorationSerializer, self).get_fields()
-        if self.context['view'].action == 'restore':
+        view = self.context.get('view')  # On docs generation context does not contain "view".
+        if view and view.action == 'restore':
             fields['flavor'].display_name_field = 'name'
             fields['flavor'].view_name = 'openstacktenant-flavor-detail'
-            view = self.context['view']
             # View doesn't have object during schema generation
             if hasattr(view, 'lookup_field') and view.lookup_field in view.kwargs:
                 backup = view.get_object()
@@ -845,6 +845,7 @@ class BackupScheduleSerializer(structure_serializers.BaseResourceSerializer):
         instance = self.context['view'].get_object()
         validated_data['instance'] = instance
         validated_data['service_project_link'] = instance.service_project_link
+        validated_data['state'] = instance.States.OK
         return super(BackupScheduleSerializer, self).create(validated_data)
 
 
