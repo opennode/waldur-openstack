@@ -278,3 +278,11 @@ class SnapshotFactory(factory.DjangoModelFactory):
             snapshot = SnapshotFactory()
         url = 'http://testserver' + reverse('openstacktenant-snapshot-detail', kwargs={'uuid': snapshot.uuid})
         return url if action is None else url + action + '/'
+
+
+class SnapshotRestorationFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.SnapshotRestoration
+
+    snapshot = factory.SubFactory(SnapshotFactory)
+    volume = factory.SubFactory(VolumeFactory)

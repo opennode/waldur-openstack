@@ -33,7 +33,6 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
             'name': expected_name
         }
 
-
         response = self.client.post(url, request_data)
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
@@ -63,4 +62,27 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+
+
+class SnapshotRetrieveTest(test.APITransactionTestCase):
+
+    def setUp(self):
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.client.force_authenticate(self.fixture.owner)
+
+    def test_list_of_restored_volumes_are_displayed_at_shopshot_endpoint(self):
+        snapshot_restoration = factories.SnapshotRestorationFactory(snapshot=self.fixture.openstack_snapshot)
+        url = factories.SnapshotFactory.get_url(snapshot=snapshot_restoration.snapshot)
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['uuid'], snapshot_restoration.snapshot.uuid.hex)
+        self.assertIn('restorations', response.data)
+        self.assertEquals(len(response.data['restorations']), 1)
+        restored_volume = response.data['restorations'][0]
+        self.assertEqual(restored_volume['volume_name'], snapshot_restoration.volume.name)
+        self.assertEqual(restored_volume['volume_state'], snapshot_restoration.volume.state)
+        self.assertEqual(restored_volume['volume_runtime_state'], snapshot_restoration.volume.runtime_state)
+        self.assertEqual(restored_volume['volume_size'], snapshot_restoration.volume.size)
+        self.assertEqual(restored_volume['volume_device'], snapshot_restoration.volume.device)
 
