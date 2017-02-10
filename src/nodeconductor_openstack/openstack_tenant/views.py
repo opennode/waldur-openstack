@@ -226,8 +226,12 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     @decorators.detail_route(methods=['post'])
     def restore(self, request, uuid=None):
-        # TODO [TM:2/10/17] implementation.
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return response.Response({'status': 'restore was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
+    restore_serializer_class = serializers.SnapshotRestorationSerializer
 
 
 class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,

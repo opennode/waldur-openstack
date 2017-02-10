@@ -58,4 +58,5 @@ class OpenStackTenantFixture(openstack_fixtures.OpenStackFixture):
             service_project_link=self.openstack_tenant_spl,
             state=models.Volume.States.OK,
             runtime_state=models.Volume.RuntimeStates.OFFLINE,
+            source_volume=self.openstack_volume,
         )

@@ -268,6 +268,8 @@ class SnapshotFactory(factory.DjangoModelFactory):
 
     size = 1024
     service_project_link = factory.SubFactory(OpenStackTenantServiceProjectLinkFactory)
+    source_volume = factory.SubFactory(VolumeFactory)
+    name = factory.Sequence(lambda n: 'John Doe #%s' % n)
 
     @classmethod
     def get_url(cls, snapshot, action=None):

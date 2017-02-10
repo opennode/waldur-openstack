@@ -864,3 +864,43 @@ class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSeriali
         fields['start'].default = core_utils.timeshift(hours=-1)
         fields['end'].default = core_utils.timeshift()
         return fields
+
+
+class SnapshotRestorationSerializer(serializers.HyperlinkedModelSerializer):
+    name = serializers.CharField(required=False, help_text='New volume name. Leave blank to use snapshot name.')
+    description = serializers.CharField(required=False, help_text='New volume name. Leave blank to use default.')
+
+    class Meta(object):
+        model = models.SnapshotRestoration
+        fields = ('uuid', 'snapshot', 'created', 'volume', 'name', 'description')
+        read_only_fields = ('url', 'uuid', 'snapshot', 'created', 'volume')
+        extra_kwargs = dict(
+            volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
+            snapshot={'lookup_field': 'uuid',
+                      'view_name': 'openstacktenant-snapshot-detail',
+                      'allow_null': False,
+                      'required': True},
+        )
+
+    def create(self, validated_data):
+        snapshot = self.context['view'].get_object()
+        validated_data['snapshot'] = snapshot
+        name = validated_data.pop('name', None) or '{0}-volume'.format(snapshot.name[:143])
+        description = validated_data.pop('description', None) or 'Restored from snapshot %s' % snapshot.uuid.hex
+
+        volume = models.Volume(
+            source_snapshot=snapshot,
+            service_project_link=snapshot.service_project_link,
+            name=name,
+            description=description,
+            size=snapshot.size,
+        )
+
+        if 'source_volume_image_metadata' in snapshot.metadata:
+            volume.image_metadata = snapshot.metadata['source_volume_image_metadata']
+
+        volume.save()
+        volume.increase_backend_quotas_usage()
+        validated_data['volume'] = volume
+
+        return super(SnapshotRestorationSerializer, self).create(validated_data)
