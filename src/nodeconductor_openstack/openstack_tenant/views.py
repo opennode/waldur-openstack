@@ -228,7 +228,9 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     def restore(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        restoration = serializer.save()
+
+        executors.SnapshotRestorationExecutor().execute(restoration)
         return response.Response({'status': 'restore was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     restore_serializer_class = serializers.SnapshotRestorationSerializer

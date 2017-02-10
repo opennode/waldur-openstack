@@ -662,3 +662,32 @@ class BackupRestorationExecutor(core_executors.CreateExecutor):
     @classmethod
     def get_failure_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
         return tasks.SetBackupRestorationErredTask().s(serialized_backup_restoration)
+
+
+class SnapshotRestorationExecutor(core_executors.CreateExecutor):
+    """ Restores volume from snapshot instance """
+
+    @classmethod
+    def get_task_signature(cls, snapshot_restoration, serialized_snapshot_restoration, **kwargs):
+        serialized_volume = core_utils.serialize_instance(snapshot_restoration.volume)
+
+        _tasks = [
+            tasks.ThrottleProvisionTask().si(
+                serialized_volume, 'create_volume', state_transition='begin_creating'),
+            tasks.PollRuntimeStateTask().si(
+                serialized_volume, 'pull_volume_runtime_state', success_state='available', erred_state='error',
+            ).set(countdown=30),
+            core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
+        ]
+
+        return chain(*_tasks)
+
+    @classmethod
+    def get_success_signature(cls, snapshot_restoration, serialized_snapshot_restoration, **kwargs):
+        serialized_volume = core_utils.serialize_instance(snapshot_restoration.volume)
+        return core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok')
+
+    @classmethod
+    def get_failure_signature(cls, snapshot_restoration, serialized_snapshot_restoration, **kwargs):
+        serialized_volume = core_utils.serialize_instance(snapshot_restoration.volume)
+        return core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_erred')
