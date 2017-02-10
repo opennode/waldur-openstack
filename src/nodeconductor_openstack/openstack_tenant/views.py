@@ -232,6 +232,7 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response({'status': 'restore was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     restore_serializer_class = serializers.SnapshotRestorationSerializer
+    restore_validators = [core_validators.StateValidator(models.Snapshot.States.OK)]
 
 
 class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
