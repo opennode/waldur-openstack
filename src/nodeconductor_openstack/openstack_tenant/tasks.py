@@ -296,18 +296,17 @@ class SetErredStuckResources(core_tasks.BackgroundTask):
 
 
 class LimitedPerTypeThrottleMixin(object):
-    DEFAULT_LIMIT = 4
 
     def get_limit(self, resource):
         nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
         limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
         model_name = SupportedServices.get_name_for_model(resource)
-        return limit_per_type.get(model_name, self.DEFAULT_LIMIT)
+        return limit_per_type.get(model_name, super(LimitedPerTypeThrottleMixin, self).DEFAULT_LIMIT)
 
 
-class TenantThrottleProvisionTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionTask):
+class ThrottleProvisionTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionTask):
     pass
 
 
-class TenantThrottleProvisionStateTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionStateTask):
+class ThrottleProvisionStateTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionStateTask):
     pass
