@@ -4,13 +4,12 @@ import logging
 
 from datetime import timedelta
 
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from nodeconductor.core import tasks as core_tasks, models as core_models, utils as core_utils
 from nodeconductor.quotas import exceptions as quotas_exceptions
-from nodeconductor.structure import SupportedServices, models as structure_models, ServiceBackendError
+from nodeconductor.structure import models as structure_models, ServiceBackendError
 
 from nodeconductor_openstack.openstack_base.backend import update_pulled_fields
 
@@ -46,56 +45,6 @@ class PollRuntimeStateTask(core_tasks.Task):
                 '%s %s (PK: %s) runtime state become erred: %s' % (
                     instance.__class__.__name__, instance, instance.pk, erred_state))
         return instance
-
-
-class RetryUntilAvailableTask(core_tasks.Task):
-    max_retries = 300
-    default_retry_delay = 5
-
-    def pre_execute(self, instance):
-        if not self.is_available(instance):
-            self.retry()
-        super(RetryUntilAvailableTask, self).pre_execute(instance)
-
-    def is_available(self, instance):
-        return True
-
-
-class BaseThrottleProvisionTask(RetryUntilAvailableTask):
-    """
-    One OpenStack settings does not support provisioning of more than
-    4 instances together, also there are limitations for volumes and snapshots.
-    Before starting resource provisioning we need to count how many resources
-    are already in "creating" state and delay provisioning if there are too many of them.
-    """
-    DEFAULT_LIMIT = 4
-
-    def is_available(self, instance):
-        usage = self.get_usage(instance)
-        limit = self.get_limit(instance)
-        return usage <= limit
-
-    def get_usage(self, instance):
-        service_settings = instance.service_project_link.service.settings
-        model_class = instance._meta.model
-        return model_class.objects.filter(
-            state=core_models.StateMixin.States.CREATING,
-            service_project_link__service__settings=service_settings
-        ).count()
-
-    def get_limit(self, instance):
-        nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
-        limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
-        model_name = SupportedServices.get_name_for_model(instance)
-        return limit_per_type.get(model_name, self.DEFAULT_LIMIT)
-
-
-class ThrottleProvisionTask(BaseThrottleProvisionTask, core_tasks.BackendMethodTask):
-    pass
-
-
-class ThrottleProvisionStateTask(BaseThrottleProvisionTask, core_tasks.StateTransitionTask):
-    pass
 
 
 class SetInstanceErredTask(core_tasks.ErrorStateTransitionTask):

@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 from celery import chain
 
 from nodeconductor.core import executors as core_executors, tasks as core_tasks, utils as core_utils
+from nodeconductor.structure import tasks as structure_tasks
 from nodeconductor_openstack.openstack import tasks as openstack_tasks
 
 from . import tasks, models
@@ -13,7 +14,7 @@ class VolumeCreateExecutor(core_executors.CreateExecutor):
     @classmethod
     def get_task_signature(cls, volume, serialized_volume, **kwargs):
         return chain(
-            tasks.ThrottleProvisionTask().si(
+            structure_tasks.ThrottleProvisionTask().si(
                 serialized_volume,
                 'create_volume',
                 state_transition='begin_creating'
@@ -210,7 +211,7 @@ class SnapshotCreateExecutor(core_executors.CreateExecutor):
     @classmethod
     def get_task_signature(cls, snapshot, serialized_snapshot, **kwargs):
         return chain(
-            tasks.ThrottleProvisionTask().si(
+            structure_tasks.ThrottleProvisionTask().si(
                 serialized_snapshot,
                 'create_snapshot',
                 state_transition='begin_creating'
@@ -270,10 +271,10 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
-        _tasks = [tasks.ThrottleProvisionStateTask().si(serialized_instance, state_transition='begin_creating')]
+        _tasks = [structure_tasks.ThrottleProvisionStateTask().si(serialized_instance, state_transition='begin_creating')]
         # Create volumes
         for serialized_volume in serialized_volumes:
-            _tasks.append(tasks.ThrottleProvisionTask().si(
+            _tasks.append(structure_tasks.ThrottleProvisionTask().si(
                 serialized_volume, 'create_volume', state_transition='begin_creating'))
         for index, serialized_volume in enumerate(serialized_volumes):
             # Wait for volume creation
@@ -565,7 +566,7 @@ class BackupCreateExecutor(core_executors.CreateExecutor):
 
         _tasks = [core_tasks.StateTransitionTask().si(serialized_backup, state_transition='begin_creating')]
         for serialized_snapshot in serialized_snapshots:
-            _tasks.append(tasks.ThrottleProvisionTask().si(
+            _tasks.append(structure_tasks.ThrottleProvisionTask().si(
                 serialized_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'))
         for index, serialized_snapshot in enumerate(serialized_snapshots):
             _tasks.append(tasks.PollRuntimeStateTask().si(
@@ -625,14 +626,14 @@ class BackupRestorationExecutor(core_executors.CreateExecutor):
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
         _tasks = [
-            tasks.ThrottleProvisionStateTask().si(
+            structure_tasks.ThrottleProvisionStateTask().si(
                 serialized_instance,
                 state_transition='begin_creating'
             )
         ]
         # Create volumes
         for serialized_volume in serialized_volumes:
-            _tasks.append(tasks.ThrottleProvisionTask().si(
+            _tasks.append(structure_tasks.ThrottleProvisionTask().si(
                 serialized_volume, 'create_volume', state_transition='begin_creating'))
         for index, serialized_volume in enumerate(serialized_volumes):
             # Wait for volume creation
