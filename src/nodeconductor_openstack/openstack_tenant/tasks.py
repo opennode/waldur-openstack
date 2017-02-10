@@ -4,12 +4,14 @@ import logging
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from nodeconductor.core import tasks as core_tasks, models as core_models, utils as core_utils
 from nodeconductor.quotas import exceptions as quotas_exceptions
-from nodeconductor.structure import models as structure_models, ServiceBackendError
+from nodeconductor.structure import (models as structure_models, ServiceBackendError, tasks as structure_tasks,
+SupportedServices)
 
 from nodeconductor_openstack.openstack_base.backend import update_pulled_fields
 
@@ -291,3 +293,21 @@ class SetErredStuckResources(core_tasks.BackgroundTask):
                 logger.warning('Switching resource %s to erred state, '
                                'because provisioning is timed out.',
                                core_utils.serialize_instance(resource))
+
+
+class LimitedPerTypeThrottleMixin(object):
+    DEFAULT_LIMIT = 4
+
+    def get_limit(self, instance):
+        nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
+        limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
+        model_name = SupportedServices.get_name_for_model(instance)
+        return limit_per_type.get(model_name, self.DEFAULT_LIMIT)
+
+
+class TenantThrottleProvisionTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionTask):
+    pass
+
+
+class TenantThrottleProvisionStateTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionStateTask):
+    pass
