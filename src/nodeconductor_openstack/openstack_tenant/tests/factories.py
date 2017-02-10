@@ -260,3 +260,18 @@ class BackupFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstacktenant-backup-list')
+
+
+class SnapshotFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.Snapshot
+
+    size = 1024
+    service_project_link = factory.SubFactory(OpenStackTenantServiceProjectLinkFactory)
+
+    @classmethod
+    def get_url(cls, snapshot, action=None):
+        if snapshot is None:
+            snapshot = SnapshotFactory()
+        url = 'http://testserver' + reverse('openstacktenant-snapshot-detail', kwargs={'uuid': snapshot.uuid})
+        return url if action is None else url + action + '/'

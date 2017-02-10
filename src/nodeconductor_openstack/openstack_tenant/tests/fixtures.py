@@ -51,3 +51,11 @@ class OpenStackTenantFixture(openstack_fixtures.OpenStackFixture):
             state=models.Instance.States.OK,
             runtime_state=models.Instance.RuntimeStates.SHUTOFF,
         )
+
+    @cached_property
+    def openstack_snapshot(self):
+        return factories.SnapshotFactory(
+            service_project_link=self.openstack_tenant_spl,
+            state=models.Volume.States.OK,
+            runtime_state=models.Volume.RuntimeStates.OFFLINE,
+        )

@@ -224,6 +224,11 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     pull_executor = executors.SnapshotPullExecutor
     filter_class = filters.SnapshotFilter
 
+    @decorators.detail_route(methods=['post'])
+    def restore(self, request, uuid=None):
+        # TODO [TM:2/10/17] implementation.
+        return response.Response({'status': 'restore was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
 
 class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewSet)):
