@@ -6,7 +6,7 @@ from django.core.cache import cache
 from django.utils import six, timezone
 from requests import ConnectionError
 
-from keystoneauth1.identity import v2
+from keystoneauth1.identity import v3
 from keystoneauth1 import session as keystone_session
 
 from ceilometerclient import client as ceilometer_client
@@ -67,7 +67,7 @@ class OpenStackSession(dict):
     def __init__(self, ks_session=None, verify_ssl=False, **credentials):
         self.keystone_session = ks_session
         if not self.keystone_session:
-            auth_plugin = v2.Password(**credentials)
+            auth_plugin = v3.Password(**credentials)
             self.keystone_session = keystone_session.Session(auth=auth_plugin, verify=verify_ssl)
 
         try:
@@ -76,7 +76,7 @@ class OpenStackSession(dict):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackAuthorizationFailed, e)
 
-        for opt in ('auth_ref', 'auth_url', 'tenant_id', 'tenant_name'):
+        for opt in ('auth_ref', 'auth_url', 'project_id', 'project_name', 'project_domain_name'):
             self[opt] = getattr(self.auth, opt)
 
     def __getattr__(self, name):
@@ -87,17 +87,18 @@ class OpenStackSession(dict):
         if not isinstance(session, dict) or not session.get('auth_ref'):
             raise OpenStackBackendError('Invalid OpenStack session')
 
-        args = {'auth_url': session['auth_url'], 'token': session['auth_ref'].auth_token}
-        if session['tenant_id']:
-            args['tenant_id'] = session['tenant_id']
-        elif session['tenant_name']:
-            args['tenant_name'] = session['tenant_name']
+        args = {
+            'auth_url': session['auth_url'],
+            'token': session['auth_ref'].auth_token,
+        }
+        if session.get('project_id'):
+            args['project_id'] = session['project_id']
+        elif session.get('project_name') and session.get('project_domain_name'):
+            args['project_name'] = session['project_name']
+            args['project_domain_name'] = session['project_domain_name']
 
-        ks_session = keystone_session.Session(auth=v2.Token(**args), verify=verify_ssl)
-        return cls(
-            ks_session=ks_session,
-            tenant_id=session['tenant_id'],
-            tenant_name=session['tenant_name'])
+        ks_session = keystone_session.Session(auth=v3.Token(**args), verify=verify_ssl)
+        return cls(ks_session=ks_session)
 
     def validate(self):
         if self.auth.auth_ref.expires > timezone.now() + datetime.timedelta(minutes=10):
@@ -186,16 +187,18 @@ class BaseOpenStackBackend(ServiceBackend):
         return '%s_%s_%s' % (self.settings.uuid.hex, hashed_settings_key, key)
 
     def get_client(self, name=None, admin=False):
+        domain_name = self.settings.domain or 'Default'
         credentials = {
             'auth_url': self.settings.backend_url,
             'username': self.settings.username,
             'password': self.settings.password,
+            'user_domain_name': domain_name,
         }
-
         if self.tenant_id:
-            credentials['tenant_id'] = self.tenant_id
+            credentials['project_id'] = self.tenant_id
         else:
-            credentials['tenant_name'] = self.settings.get_option('tenant_name')
+            credentials['project_domain_name'] = domain_name
+            credentials['project_name'] = self.settings.get_option('tenant_name')
 
         # Skip cache if service settings do no exist
         if not self.settings.uuid:

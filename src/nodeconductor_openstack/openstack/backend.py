@@ -39,23 +39,14 @@ class OpenStackBackend(BaseOpenStackBackend):
             return True
 
     def sync(self):
-        self._check_domain()
         self._pull_flavors()
         self._pull_images()
         self._pull_service_settings_quotas()
 
-    def _check_domain(self):
-        if not self.settings.domain:
-            return
-        try:
-            self._get_domain()
-        except keystone_exceptions.NotFound:
-            raise OpenStackBackendError('Domain with ID "%s" does not exist at backend.' % self.settings.domain)
-
     def _get_domain(self):
         """ Get current domain """
         keystone = self.keystone_admin_client
-        return keystone.domains.get(self.settings.domain or 'default')
+        return keystone.domains.find(name=self.settings.domain or 'Default')
 
     def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
         nova = self.nova_client
@@ -118,7 +109,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         return rule
 
     def _pull_flavors(self):
-        nova = self.nova_client
+        nova = self.nova_admin_client
         try:
             flavors = nova.flavors.findall(is_public=True)
         except nova_exceptions.ClientException as e:
@@ -429,6 +420,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             user = keystone.users.create(
                 name=tenant.user_username,
                 password=tenant.user_password,
+                domain=self._get_domain(),
             )
             try:
                 role = keystone.roles.find(name='Member')
