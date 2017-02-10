@@ -301,7 +301,7 @@ class LimitedPerTypeThrottleMixin(object):
         nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
         limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
         model_name = SupportedServices.get_name_for_model(resource)
-        return limit_per_type.get(model_name, super(LimitedPerTypeThrottleMixin, self).DEFAULT_LIMIT)
+        return limit_per_type.get(model_name, super(LimitedPerTypeThrottleMixin, self).get_limit(resource))
 
 
 class ThrottleProvisionTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionTask):
