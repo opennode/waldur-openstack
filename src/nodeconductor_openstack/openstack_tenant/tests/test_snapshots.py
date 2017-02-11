@@ -11,7 +11,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         self.fixture = fixtures.OpenStackTenantFixture()
         self.client.force_authenticate(self.fixture.owner)
 
-    def test_snapshot_restore_created_snapshot_restoration_object(self):
+    def test_snapshot_restore_creates_snapshot_restoration(self):
         url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
 
         response = self.client.post(url)
@@ -25,7 +25,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         self.assertIn(self.fixture.openstack_snapshot.name, restoration.volume.name)
         self.assertIn(self.fixture.openstack_snapshot.uuid.hex, restoration.volume.description)
 
-    def test_user_is_able_to_specify_name_of_the_restored_volume(self):
+    def test_user_is_able_to_specify_a_name_of_the_restored_volume(self):
         url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
 
         expected_name = 'C:/ Drive'
@@ -39,7 +39,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         restoration = models.SnapshotRestoration.objects.first()
         self.assertIn(expected_name, restoration.volume.name)
 
-    def test_user_is_able_to_specify_description_of_the_restored_volume(self):
+    def test_user_is_able_to_specify_a_description_of_the_restored_volume(self):
         url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
 
         expected_description = 'Restored after blue screen.'
@@ -53,7 +53,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         restoration = models.SnapshotRestoration.objects.first()
         self.assertIn(expected_description, restoration.volume.description)
 
-    def test_restore_is_not_available_if_snapshot_not_in_OK_state(self):
+    def test_restore_is_not_available_if_snapshot_is_not_in_OK_state(self):
         snapshot = factories.SnapshotFactory(
             service_project_link=self.fixture.openstack_tenant_spl,
             source_volume=self.fixture.openstack_volume,
@@ -70,7 +70,7 @@ class SnapshotRetrieveTest(test.APITransactionTestCase):
         self.fixture = fixtures.OpenStackTenantFixture()
         self.client.force_authenticate(self.fixture.owner)
 
-    def test_list_of_restored_volumes_are_displayed_at_shopshot_endpoint(self):
+    def test_a_list_of_restored_volumes_are_displayed_at_snapshot_endpoint(self):
         snapshot_restoration = factories.SnapshotRestorationFactory(snapshot=self.fixture.openstack_snapshot)
         url = factories.SnapshotFactory.get_url(snapshot=snapshot_restoration.snapshot)
 
