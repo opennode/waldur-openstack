@@ -155,7 +155,6 @@ class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
     volume = models.OneToOneField(Volume, related_name='+')
 
     class Permissions(object):
-        # TODO [TM:2/10/17] Cover permissions with tests.
         customer_path = 'snapshot__service_project_link__project__customer'
         project_path = 'snapshot__service_project_link__project'
 
