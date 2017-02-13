@@ -788,6 +788,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             nova.security_groups.delete(security_group.backend_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+        security_group.decrease_backend_quotas_usage()
 
     @log_backend_action()
     def update_security_group(self, security_group):
@@ -1206,13 +1207,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
 
     def _pull_service_settings_quotas(self):
-        if isinstance(self.settings.scope, models.Tenant):
-            tenant = self.settings.scope
-            self.pull_tenant_quotas(tenant)
-            self._copy_tenant_quota_to_settings(tenant)
-            return
         nova = self.nova_admin_client
-
         try:
             stats = nova.hypervisor_stats.statistics()
         except nova_exceptions.ClientException as e:

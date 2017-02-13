@@ -11,7 +11,7 @@ from django.utils import timezone
 from nodeconductor.core import tasks as core_tasks, models as core_models, utils as core_utils
 from nodeconductor.quotas import exceptions as quotas_exceptions
 from nodeconductor.structure import (models as structure_models, ServiceBackendError, tasks as structure_tasks,
-SupportedServices)
+                                     SupportedServices)
 
 from nodeconductor_openstack.openstack_base.backend import update_pulled_fields
 

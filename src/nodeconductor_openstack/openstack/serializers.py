@@ -536,10 +536,13 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
+    @transaction.atomic
     def create(self, validated_data):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
-        return super(NetworkSerializer, self).create(validated_data)
+        network = super(NetworkSerializer, self).create(validated_data)
+        network.increase_backend_quotas_usage()
+        return network
 
 
 class SubNetSerializer(structure_serializers.BaseResourceSerializer):
