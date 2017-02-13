@@ -240,8 +240,8 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 
 
 class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
-    name = serializers.CharField(required=False, help_text='New volume name. Leave blank to use snapshot name.')
-    description = serializers.CharField(required=False, help_text='New volume name. Leave blank to use default.')
+    name = serializers.CharField(write_only=True, help_text='New volume name.')
+    description = serializers.CharField(required=False, help_text='New volume name. Leave blank to use snapshot name.')
 
     class Meta(object):
         model = models.SnapshotRestoration
@@ -259,13 +259,12 @@ class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, s
     def create(self, validated_data):
         snapshot = self.context['view'].get_object()
         validated_data['snapshot'] = snapshot
-        name = validated_data.pop('name', None) or '{0}-volume'.format(snapshot.name[:143])
-        description = validated_data.pop('description', None) or 'Restored from snapshot %s' % snapshot.uuid.hex
+        description = validated_data.pop('description', None) or 'Restored from snapshot %s' % snapshot.name
 
         volume = models.Volume(
             source_snapshot=snapshot,
             service_project_link=snapshot.service_project_link,
-            name=name,
+            name=validated_data.pop('name'),
             description=description,
             size=snapshot.size,
         )

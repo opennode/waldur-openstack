@@ -13,8 +13,11 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
     def test_snapshot_restore_creates_snapshot_restoration(self):
         url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
+        request_data = {
+            'name': '/dev/sdb1',
+        }
 
-        response = self.client.post(url)
+        response = self.client.post(url, request_data)
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(models.SnapshotRestoration.objects.count(), 1)
@@ -44,6 +47,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
         expected_description = 'Restored after blue screen.'
         request_data = {
+            'name': '/dev/sdb2',
             'description': expected_description,
         }
 
