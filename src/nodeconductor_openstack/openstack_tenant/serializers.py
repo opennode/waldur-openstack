@@ -255,6 +255,7 @@ class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, s
             volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
         )
 
+    @transaction.atomic
     def create(self, validated_data):
         snapshot = self.context['view'].get_object()
         validated_data['snapshot'] = snapshot

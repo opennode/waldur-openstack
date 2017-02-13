@@ -63,6 +63,21 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
+    def test_restore_cannot_be_made_if_volume_exceeds_quota(self):
+        quota = self.fixture.openstack_tenant_service_settings.quotas.get(name='volumes')
+        quota.limit = quota.usage
+        quota.save()
+        snapshot = self.fixture.openstack_snapshot
+        expected_volumes_amount = models.Volume.objects.count()
+
+        url = factories.SnapshotFactory.get_url(snapshot=snapshot, action='restore')
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        snapshot.refresh_from_db()
+        self.assertEqual(snapshot.state, snapshot.States.OK)
+        self.assertEqual(expected_volumes_amount, models.Volume.objects.count())
+
 
 class SnapshotRetrieveTest(test.APITransactionTestCase):
 
