@@ -16,7 +16,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
         response = self.client.post(url)
 
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(models.SnapshotRestoration.objects.count(), 1)
         restoration = models.SnapshotRestoration.objects.first()
         restored_volume = models.Volume.objects.exclude(pk=self.fixture.openstack_snapshot.source_volume.pk).first()
@@ -35,9 +35,11 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
         response = self.client.post(url, request_data)
 
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-        restoration = models.SnapshotRestoration.objects.first()
-        self.assertIn(expected_name, restoration.volume.name)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_volume = models.SnapshotRestoration.objects.first().volume
+        self.assertIn(expected_name, created_volume.name)
+        self.assertEqual(response.data['uuid'], created_volume.uuid.hex)
+        self.assertEqual(response.data['name'], created_volume.name)
 
     def test_user_is_able_to_specify_a_description_of_the_restored_volume(self):
         url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
@@ -49,9 +51,11 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
         response = self.client.post(url, request_data)
 
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-        restoration = models.SnapshotRestoration.objects.first()
-        self.assertIn(expected_description, restoration.volume.description)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_volume = models.SnapshotRestoration.objects.first().volume
+        self.assertIn(expected_description, created_volume.description)
+        self.assertEqual(response.data['uuid'], created_volume.uuid.hex)
+        self.assertEqual(response.data['description'], created_volume.description)
 
     def test_restore_is_not_available_if_snapshot_is_not_in_OK_state(self):
         snapshot = factories.SnapshotFactory(

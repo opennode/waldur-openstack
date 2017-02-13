@@ -231,7 +231,8 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         restoration = serializer.save()
 
         executors.SnapshotRestorationExecutor().execute(restoration)
-        return response.Response({'status': 'restore was scheduled'}, status=status.HTTP_202_ACCEPTED)
+        serialized_volume = serializers.VolumeSerializer(restoration.volume, context={'request': self.request})
+        return response.Response(serialized_volume.data, status=status.HTTP_201_CREATED)
 
     restore_serializer_class = serializers.SnapshotRestorationSerializer
     restore_validators = [core_validators.StateValidator(models.Snapshot.States.OK)]
