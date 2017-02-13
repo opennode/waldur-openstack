@@ -22,8 +22,6 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         restored_volume = models.Volume.objects.exclude(pk=self.fixture.openstack_snapshot.source_volume.pk).first()
         self.assertEqual(self.fixture.openstack_snapshot, restoration.snapshot)
         self.assertEqual(restored_volume, restoration.volume)
-        self.assertIn(self.fixture.openstack_snapshot.name, restoration.volume.name)
-        self.assertIn(self.fixture.openstack_snapshot.uuid.hex, restoration.volume.description)
 
     def test_user_is_able_to_specify_a_name_of_the_restored_volume(self):
         url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
