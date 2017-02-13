@@ -135,7 +135,7 @@ def delete_floating_ip(sender, instance, **kwargs):
     if not settings:
         return
 
-    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
+    floating_ip = models.FloatingIP.objects.filter(settings=settings, backend_id=instance.backend_id).first()
     if floating_ip:
         floating_ip.delete()
 
