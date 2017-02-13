@@ -38,7 +38,7 @@ class SnapshotPermissionsTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     @data('user')
-    def test_user_cannot_restore_snapshot_if_he_is_not_associated_with_it(self, user):
+    def test_user_cannot_restore_snapshot_if_he_has_no_project_level_permissions(self, user):
         self.client.force_authenticate(user=getattr(self.fixture, user))
 
         response = self._make_restore_request()
