@@ -269,7 +269,7 @@ class SnapshotFactory(factory.DjangoModelFactory):
     size = 1024
     service_project_link = factory.SubFactory(OpenStackTenantServiceProjectLinkFactory)
     source_volume = factory.SubFactory(VolumeFactory)
-    name = factory.Sequence(lambda n: 'John Doe #%s' % n)
+    name = factory.Sequence(lambda n: 'Snapshot #%s' % n)
     state = models.Snapshot.States.OK
 
     @classmethod
