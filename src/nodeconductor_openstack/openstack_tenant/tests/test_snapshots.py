@@ -30,7 +30,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
         expected_name = 'C:/ Drive'
         request_data = {
-            'name': expected_name
+            'name': expected_name,
         }
 
         response = self.client.post(url, request_data)
@@ -46,7 +46,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
         expected_description = 'Restored after blue screen.'
         request_data = {
-            'description': expected_description
+            'description': expected_description,
         }
 
         response = self.client.post(url, request_data)
