@@ -158,9 +158,6 @@ class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
         customer_path = 'snapshot__service_project_link__project__customer'
         project_path = 'snapshot__service_project_link__project'
 
-    def get_backend(self):
-        return self.backup.get_backend()
-
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-snapshot-restoration'
