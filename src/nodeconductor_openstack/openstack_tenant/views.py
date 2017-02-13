@@ -224,6 +224,19 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     pull_executor = executors.SnapshotPullExecutor
     filter_class = filters.SnapshotFilter
 
+    @decorators.detail_route(methods=['post'])
+    def restore(self, request, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        restoration = serializer.save()
+
+        executors.SnapshotRestorationExecutor().execute(restoration)
+        serialized_volume = serializers.VolumeSerializer(restoration.volume, context={'request': self.request})
+        return response.Response(serialized_volume.data, status=status.HTTP_201_CREATED)
+
+    restore_serializer_class = serializers.SnapshotRestorationSerializer
+    restore_validators = [core_validators.StateValidator(models.Snapshot.States.OK)]
+
 
 class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewSet)):

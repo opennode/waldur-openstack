@@ -150,6 +150,19 @@ class Snapshot(structure_models.Storage):
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
 
 
+class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
+    snapshot = models.ForeignKey(Snapshot, related_name='restorations')
+    volume = models.OneToOneField(Volume, related_name='+')
+
+    class Permissions(object):
+        customer_path = 'snapshot__service_project_link__project__customer'
+        project_path = 'snapshot__service_project_link__project'
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-snapshot-restoration'
+
+
 class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMixin, structure_models.NewResource):
 
     class RuntimeStates(object):
