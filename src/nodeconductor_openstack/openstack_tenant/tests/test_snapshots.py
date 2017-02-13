@@ -1,8 +1,60 @@
+from ddt import ddt, data
 from rest_framework import test, status
 
 from nodeconductor_openstack.openstack_tenant import models
 
 from . import factories, fixtures
+
+
+@ddt
+class SnapshotPermissionsTest(test.APITransactionTestCase):
+
+    def setUp(self):
+        self.fixture = fixtures.OpenStackTenantFixture()
+
+    def _make_restore_request(self):
+        url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
+        request_data = {
+            'name': '/dev/sdb1',
+        }
+
+        response = self.client.post(url, request_data)
+        return response
+
+    @data('global_support', 'customer_support', 'project_support')
+    def test_user_cannot_restore_snapshot_if_he_has_not_admin_access(self, user):
+        self.client.force_authenticate(user=getattr(self.fixture, user))
+
+        response = self._make_restore_request()
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @data('staff', 'owner', 'admin', 'manager')
+    def test_user_can_restore_snapshot_only_if_he_has_admin_access(self, user):
+        self.client.force_authenticate(user=getattr(self.fixture, user))
+
+        response = self._make_restore_request()
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    @data('user')
+    def test_user_cannot_restore_snapshot_if_he_is_not_associated_with_it(self, user):
+        self.client.force_authenticate(user=getattr(self.fixture, user))
+
+        response = self._make_restore_request()
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @data('user')
+    def test_user_cannot_see_snapshot_restoration_if_has_no_project_level_permissions(self, user):
+        self.client.force_authenticate(user=getattr(self.fixture, user))
+        self.fixture.openstack_snapshot
+
+        url = factories.SnapshotFactory.get_list_url()
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 0)
 
 
 class SnapshotRestoreTest(test.APITransactionTestCase):
