@@ -273,15 +273,6 @@ class TenantDetectExternalNetworkExecutor(core_executors.ActionExecutor):
             state_transition='begin_updating')
 
 
-class TenantPullFloatingIPsExecutor(core_executors.ActionExecutor):
-
-    @classmethod
-    def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
-        return core_tasks.BackendMethodTask().si(
-            serialized_tenant, 'pull_tenant_floating_ips',
-            state_transition='begin_updating')
-
-
 class TenantPullQuotasExecutor(core_executors.ActionExecutor):
 
     @classmethod
