@@ -239,10 +239,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 floating_ip.state != StateMixin.States.OK)
 
     def _update_floating_ip(self, floating_ip, backend_floating_ip):
-        # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
-        if not (floating_ip.runtime_state == 'BOOKED' and
-                backend_floating_ip['status'] == 'DOWN'):
-            floating_ip.runtime_state = backend_floating_ip['status']
+        floating_ip.runtime_state = backend_floating_ip['status']
         floating_ip.address = backend_floating_ip['floating_ip_address']
         floating_ip.name = backend_floating_ip['floating_ip_address']
         floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
