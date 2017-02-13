@@ -253,6 +253,7 @@ class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, s
         }
         extra_kwargs = dict(
             volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
+            volume_state={'source': 'volume.human_readable_state'}
         )
 
     @transaction.atomic

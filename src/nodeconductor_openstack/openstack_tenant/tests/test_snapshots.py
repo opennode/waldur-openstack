@@ -152,10 +152,4 @@ class SnapshotRetrieveTest(test.APITransactionTestCase):
         self.assertEqual(response.data['uuid'], snapshot_restoration.snapshot.uuid.hex)
         self.assertIn('restorations', response.data)
         self.assertEquals(len(response.data['restorations']), 1)
-        restored_volume = response.data['restorations'][0]
-        self.assertEqual(restored_volume['volume_name'], snapshot_restoration.volume.name)
-        self.assertEqual(restored_volume['volume_state'], snapshot_restoration.volume.state)
-        self.assertEqual(restored_volume['volume_runtime_state'], snapshot_restoration.volume.runtime_state)
-        self.assertEqual(restored_volume['volume_size'], snapshot_restoration.volume.size)
-        self.assertEqual(restored_volume['volume_device'], snapshot_restoration.volume.device)
 
