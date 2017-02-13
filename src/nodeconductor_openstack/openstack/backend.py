@@ -17,12 +17,10 @@ from nodeconductor_openstack.openstack_base.backend import (
     OpenStackBackendError, BaseOpenStackBackend, update_pulled_fields)
 from . import models
 
-
 logger = logging.getLogger(__name__)
 
 
 class OpenStackBackend(BaseOpenStackBackend):
-
     DEFAULTS = {
         'tenant_name': 'admin',
         'is_admin': True,
@@ -194,7 +192,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             tenant.set_quota_usage(quota_name, usage, fail_silently=True)
 
     @log_backend_action('pull floating IPs for tenant')
-    def pull_tenant_floating_ips(self, tenant):
+    def pull_floating_ips(self, tenant):
         neutron = self.neutron_client
 
         nc_floating_ips = {ip.backend_id: ip for ip in tenant.floating_ips.all()}
@@ -231,15 +229,27 @@ class OpenStackBackend(BaseOpenStackBackend):
             for ip_id in nc_ids & backend_ids:
                 nc_ip = nc_floating_ips[ip_id]
                 backend_ip = backend_floating_ips[ip_id]
-                if nc_ip.runtime_state != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
-                        or nc_ip.backend_network_id != backend_ip['floating_network_id']:
-                    # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
-                    if not (nc_ip.runtime_state == 'BOOKED' and backend_ip['status'] == 'DOWN'):
-                        nc_ip.runtime_state = backend_ip['status']
-                    nc_ip.address = backend_ip['floating_ip_address']
-                    nc_ip.backend_network_id = backend_ip['floating_network_id']
-                    nc_ip.save()
-                    logger.info('Updated existing floating IP port %s in database', nc_ip.uuid)
+                if self._floating_ip_changed(nc_ip, backend_ip):
+                    self._update_floating_ip(nc_ip, backend_ip)
+
+    def _floating_ip_changed(self, floating_ip, backend_floating_ip):
+        return (floating_ip.runtime_state != backend_floating_ip['status'] or
+                floating_ip.address != backend_floating_ip['floating_ip_address'] or
+                floating_ip.backend_network_id != backend_floating_ip['floating_network_id'] or
+                floating_ip.state != StateMixin.States.OK)
+
+    def _update_floating_ip(self, floating_ip, backend_floating_ip):
+        # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
+        if not (floating_ip.runtime_state == 'BOOKED' and
+                backend_floating_ip['status'] == 'DOWN'):
+            floating_ip.runtime_state = backend_floating_ip['status']
+        floating_ip.address = backend_floating_ip['floating_ip_address']
+        floating_ip.name = backend_floating_ip['floating_ip_address']
+        floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
+        floating_ip.state = StateMixin.States.OK
+
+        floating_ip.save(update_fields=['runtime_state', 'address', 'name', 'backend_network_id', 'state'])
+        logger.info('Updated existing floating IP port %s in database', floating_ip.uuid)
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
@@ -1083,16 +1093,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            floating_ip.runtime_state = backend_floating_ip['status']
-            floating_ip.address = backend_floating_ip['floating_ip_address']
-            floating_ip.name = backend_floating_ip['floating_ip_address']
-            floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
-            floating_ip.save()
-
-    @log_backend_action('pull floating ip')
-    def pull_floating_ips(self, tenant):
-        for floating_ip in tenant.floating_ips.iterator():
-            self.pull_floating_ip(floating_ip)
+            if self._floating_ip_changed(floating_ip, backend_floating_ip):
+                self._update_floating_ip(floating_ip, backend_floating_ip)
 
     @log_backend_action('delete floating ip')
     def delete_floating_ip(self, floating_ip):
