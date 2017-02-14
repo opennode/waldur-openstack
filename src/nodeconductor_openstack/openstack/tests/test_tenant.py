@@ -10,7 +10,7 @@ from . import factories, fixtures
 from .. import models
 
 
-class BaseTenantActionsTest(test.APISimpleTestCase):
+class BaseTenantActionsTest(test.APITransactionTestCase):
 
     def setUp(self):
         super(BaseTenantActionsTest, self).setUp()
@@ -222,3 +222,76 @@ class TenantCreateNetworkTest(BaseTenantActionsTest):
         self.assertEqual(self.tenant.networks.count(), 0)
         self.assertEqual(self.tenant.quotas.get(name=self.quota_name).usage, 0)
         self.assertFalse(mocked_task.called)
+
+
+@ddt
+class SecurityGroupCreateTest(BaseTenantActionsTest):
+    def setUp(self):
+        super(SecurityGroupCreateTest, self).setUp()
+        self.valid_data = {
+            'name': 'test_security_group',
+            'description': 'test security_group description',
+            'rules': [
+                {
+                    'protocol': 'tcp',
+                    'from_port': 1,
+                    'to_port': 10,
+                    'cidr': '11.11.1.2/24',
+                }
+            ]
+        }
+        self.url = factories.TenantFactory.get_url(self.fixture.tenant, action='create_security_group')
+
+    @data('owner', 'admin', 'manager')
+    def test_user_with_access_can_create_security_group(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+        response = self.client.post(self.url, self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
+
+    def test_security_group_can_not_be_created_if_quota_is_over_limit(self):
+        self.fixture.tenant.set_quota_limit('security_group_count', 0)
+
+        self.client.force_authenticate(self.fixture.admin)
+        response = self.client.post(self.url, self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
+
+    def test_security_group_quota_increses_on_security_group_creation(self):
+        self.client.force_authenticate(self.fixture.admin)
+        response = self.client.post(self.url, self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.fixture.tenant.quotas.get(name='security_group_count').usage, 1)
+        self.assertEqual(self.fixture.tenant.quotas.get(name='security_group_rule_count').usage, 1)
+
+    def test_security_group_can_not_be_created_if_rules_quota_is_over_limit(self):
+        self.fixture.tenant.set_quota_limit('security_group_rule_count', 0)
+
+        self.client.force_authenticate(self.fixture.admin)
+        response = self.client.post(self.url, self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
+
+    def test_security_group_creation_starts_sync_task(self):
+        self.client.force_authenticate(self.fixture.admin)
+
+        with patch('nodeconductor_openstack.openstack.executors.SecurityGroupCreateExecutor.execute') as mocked_execute:
+            response = self.client.post(self.url, data=self.valid_data)
+
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+            security_group = models.SecurityGroup.objects.get(name=self.valid_data['name'])
+
+            mocked_execute.assert_called_once_with(security_group)
+
+    def test_security_group_raises_validation_error_if_rule_port_is_invalid(self):
+        self.valid_data['rules'][0]['to_port'] = 80000
+
+        self.client.force_authenticate(self.fixture.admin)
+        response = self.client.post(self.url, data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())

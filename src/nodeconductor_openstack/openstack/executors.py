@@ -225,25 +225,20 @@ class TenantDeleteExternalNetworkExecutor(core_executors.ActionExecutor):
             serialized_tenant, 'delete_external_network', state_transition='begin_updating')
 
 
-class TenantCreateExternalNetworkExecutor(core_executors.ActionExecutor):
-
-    @classmethod
-    def get_task_signature(cls, tenant, serialized_tenant, external_network_data=None, **kwargs):
-        if external_network_data is None:
-            raise core_executors.ExecutorException(
-                'Argument `external_network_data` should be specified for TenantCreateExcternalNetworkExecutor')
-        return core_tasks.BackendMethodTask().si(
-            serialized_tenant, 'create_external_network',
-            state_transition='begin_updating',
-            **external_network_data)
-
-
 class TenantPushQuotasExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_task_signature(cls, tenant, serialized_tenant, quotas=None, **kwargs):
         return core_tasks.BackendMethodTask().si(
             serialized_tenant, 'push_tenant_quotas', quotas, state_transition='begin_updating')
+
+
+class TenantPullQuotasExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serialized_tenant, 'pull_tenant_quotas', state_transition='begin_updating')
 
 
 class TenantPullExecutor(core_executors.ActionExecutor):
