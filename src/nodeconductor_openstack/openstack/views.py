@@ -431,6 +431,12 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     change_password_serializer_class = serializers.TenantChangePasswordSerializer
 
+    def pull_quotas(self, request, uuid=None):
+        executors.TenantPullQuotasExecutor.execute(self.get_object())
+        return response.Response({'status': 'Quotas pull has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
+
+    pull_quotas_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.Network.objects.all()
