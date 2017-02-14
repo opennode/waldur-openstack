@@ -244,7 +244,7 @@ class TenantChangePasswordTest(BaseTenantActionsTest):
         self.client.force_authenticate(getattr(self.fixture, user))
         response = self.client.post(self.url, self.request_data)
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.user_password, self.request_data['new_user_password'])
 
