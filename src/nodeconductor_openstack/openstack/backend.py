@@ -1233,16 +1233,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         storage = sum(self.gb2mb(v.size) for v in volumes + snapshots)
         return storage
 
-    def _copy_tenant_quota_to_settings(self, tenant):
-        quotas = tenant.quotas.values('name', 'limit', 'usage')
-        limits = {quota['name']: quota['limit'] for quota in quotas}
-        usages = {quota['name']: quota['usage'] for quota in quotas}
-
-        for resource in ('vcpu', 'ram', 'storage'):
-            quota_name = 'openstack_%s' % resource
-            self.settings.set_quota_limit(quota_name, limits[resource])
-            self.settings.set_quota_usage(quota_name, usages[resource])
-
     def get_stats(self):
         tenants = models.Tenant.objects.filter(service_project_link__service__settings=self.settings)
         quota_names = ('vcpu', 'ram', 'storage')
