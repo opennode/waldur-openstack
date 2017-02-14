@@ -1,9 +1,9 @@
 """
-A copy of Django 1.10 password validators.
+A copy of Django 1.9 password validators.
 More details here:
-https://github.com/django/django/blob/stable/1.10.x/django/contrib/auth/password_validation.py
+https://github.com/django/django/blob/stable/1.9.x/django/contrib/auth/password_validation.py
 
-XXX: remove it after migration to 1.10 or if a backport is used.
+XXX: remove it after migration to 1.9 or if a backport is used.
 """
 
 from django.core.exceptions import ValidationError
