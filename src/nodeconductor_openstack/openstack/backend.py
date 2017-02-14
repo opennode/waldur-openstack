@@ -441,6 +441,16 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
+    @log_backend_action('change password for tenant user')
+    def change_tenant_user_password(self, tenant):
+        keystone = self.keystone_client
+
+        try:
+            keystone_user = keystone.users.find(name=tenant.user_username)
+            keystone.users.update(user=keystone_user, password=tenant.user_password)
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
     def get_resources_for_import(self, resource_type=None):
         if self.settings.get_option('is_admin'):
             return self.get_tenants_for_import()

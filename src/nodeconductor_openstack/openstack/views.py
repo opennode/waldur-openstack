@@ -426,7 +426,8 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        return response.Response({'status': 'Password has been changed'}, status=status.HTTP_200_OK)
+        executors.TenantChangeUserPasswordExecutor.execute(self.get_object())
+        return response.Response({'status': 'Password update has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
 
     change_password_serializer_class = serializers.TenantChangePasswordSerializer
 
