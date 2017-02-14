@@ -31,7 +31,7 @@ class BackupScheduleUsageTest(test.APISimpleTestCase):
             'name': 'test schedule',
             'retention_time': 3,
             'schedule': '*/5 * * * *',
-            'maximal_number_of_backups': 3,
+            'maximal_number_of_resources': 3,
         }
 
     def test_staff_can_create_backup_schedule(self):
@@ -39,7 +39,7 @@ class BackupScheduleUsageTest(test.APISimpleTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['retention_time'], self.backup_schedule_data['retention_time'])
         self.assertEqual(
-            response.data['maximal_number_of_backups'], self.backup_schedule_data['maximal_number_of_backups'])
+            response.data['maximal_number_of_resources'], self.backup_schedule_data['maximal_number_of_resources'])
         self.assertEqual(response.data['schedule'], self.backup_schedule_data['schedule'])
         backup_schedule = models.BackupSchedule.objects.first()
 
@@ -65,7 +65,7 @@ class BackupScheduleUsageTest(test.APISimpleTestCase):
             'retention_time': 3,
             'schedule': '*/5 * * * *',
             'timezone': 'Europe/London',
-            'maximal_number_of_backups': 3,
+            'maximal_number_of_resources': 3,
         }
         response = self.client.post(create_url, backup_schedule_data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -80,7 +80,7 @@ class BackupScheduleUsageTest(test.APISimpleTestCase):
             'retention_time': 3,
             'schedule': '*/5 * * * *',
             'timezone': 'incorrect',
-            'maximal_number_of_backups': 3,
+            'maximal_number_of_resources': 3,
         }
         response = self.client.post(create_url, backup_schedule_data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -93,7 +93,7 @@ class BackupScheduleUsageTest(test.APISimpleTestCase):
             'name': 'test schedule',
             'retention_time': 3,
             'schedule': '*/5 * * * *',
-            'maximal_number_of_backups': 3,
+            'maximal_number_of_resources': 3,
         }
         response = self.client.post(create_url, backup_schedule_data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -193,7 +193,7 @@ class BackupSchedulePermissionsTest(helpers.PermissionsTest):
             'name': 'test schedule',
             'retention_time': 3,
             'schedule': '*/5 * * * *',
-            'maximal_number_of_backups': 3,
+            'maximal_number_of_resources': 3,
         }
         yield {'url': create_url, 'method': 'POST', 'data': backup_schedule_data}
 

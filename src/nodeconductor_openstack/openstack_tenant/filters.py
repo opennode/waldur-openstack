@@ -83,6 +83,16 @@ class BackupScheduleFilter(django_filters.FilterSet):
         model = models.BackupSchedule
 
 
+class SnapshotScheduleFilter(django_filters.FilterSet):
+    name = django_filters.CharFilter(lookup_type='icontains')
+    description = django_filters.CharFilter(lookup_type='icontains')
+    source_volume = core_filters.URLFilter(view_name='openstacktenant-volume-detail', name='source_volume__uuid')
+    source_volume_uuid = django_filters.UUIDFilter(name='source_volume__uuid')
+
+    class Meta(object):
+        model = models.SnapshotSchedule
+
+
 class SecurityGroupFilter(structure_filters.ServicePropertySettingsFilter):
     class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
         model = models.SecurityGroup

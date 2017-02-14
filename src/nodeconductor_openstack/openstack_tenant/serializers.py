@@ -857,8 +857,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             backup.snapshots.add(snapshot)
 
 
-class BackupScheduleSerializer(structure_serializers.BaseResourceSerializer):
-    instance_name = serializers.ReadOnlyField(source='instance.name')
+class BaseScheduleSerializer(structure_serializers.BaseResourceSerializer):
     timezone = serializers.ChoiceField(choices=[(t, t) for t in pytz.all_timezones],
                                        initial=timezone.get_current_timezone_name(),
                                        default=timezone.get_current_timezone_name())
@@ -873,15 +872,27 @@ class BackupScheduleSerializer(structure_serializers.BaseResourceSerializer):
     )
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
-        model = models.BackupSchedule
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
-            'retention_time', 'timezone', 'instance', 'instance_name', 'maximal_number_of_backups', 'schedule',
+            'retention_time', 'timezone', 'maximal_number_of_resources', 'schedule',
             'is_active', 'next_trigger_at')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'is_active', 'backups', 'next_trigger_at', 'instance', 'service_project_link')
+            'is_active', 'next_trigger_at', 'service_project_link')
+
+
+class BackupScheduleSerializer(BaseScheduleSerializer):
+
+    class Meta(BaseScheduleSerializer.Meta):
+        model = models.BackupSchedule
+        fields = BaseScheduleSerializer.Meta.fields + (
+            'instance', 'instance_name')
+        read_only_fields = BaseScheduleSerializer.Meta.read_only_fields + (
+            'backups', 'instance')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
+        }
+        related_paths = {
+            'instance': ('name',),
         }
 
     def create(self, validated_data):
@@ -890,6 +901,30 @@ class BackupScheduleSerializer(structure_serializers.BaseResourceSerializer):
         validated_data['service_project_link'] = instance.service_project_link
         validated_data['state'] = instance.States.OK
         return super(BackupScheduleSerializer, self).create(validated_data)
+
+
+class SnapshotScheduleSerializer(BaseScheduleSerializer):
+
+    class Meta(BaseScheduleSerializer.Meta):
+        model = models.SnapshotSchedule
+        fields = BaseScheduleSerializer.Meta.fields + (
+            'source_volume', 'source_volume_name')
+        read_only_fields = BaseScheduleSerializer.Meta.read_only_fields + (
+            'snapshots', 'source_volume')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+            'source_volume': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
+        }
+        related_paths = {
+            'source_volume': ('name',),
+        }
+
+    def create(self, validated_data):
+        volume = self.context['view'].get_object()
+        validated_data['source_volume'] = volume
+        validated_data['service_project_link'] = volume.service_project_link
+        validated_data['state'] = volume.States.OK
+        return super(SnapshotScheduleSerializer, self).create(validated_data)
 
 
 class MeterSampleSerializer(serializers.Serializer):
