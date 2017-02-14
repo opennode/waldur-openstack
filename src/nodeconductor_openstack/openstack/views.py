@@ -422,7 +422,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     @decorators.detail_route(methods=['post'])
     def change_password(self, request, uuid=None):
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(instance=self.get_object(), data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
