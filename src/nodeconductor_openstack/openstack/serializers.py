@@ -604,20 +604,13 @@ def _generate_subnet_allocation_pool(cidr):
 
 
 class TenantChangePasswordSerializer(serializers.Serializer):
-    old_user_password = serializers.CharField(max_length=50, help_text='Tenant user password.')
     new_user_password = serializers.CharField(max_length=50,
                                               validators=[password_validation.validate_password],
                                               help_text='New tenant user passowrd.')
 
-    def validate_old_user_password(self, old_user_password):
-        tenant = self.context['view'].get_object()
-        if tenant.user_password != old_user_password:
-            raise serializers.ValidationError('Please provide a valid tenant user_password.')
-
-        return old_user_password
-
     def validate(self, attrs):
-        if attrs['old_user_password'] == attrs['new_user_password']:
+        tenant = self.context['view'].get_object()
+        if tenant.user_password == attrs['new_user_password']:
             raise serializers.ValidationError({'new_user_password': 'New password cannot match the old password.'})
 
         return attrs

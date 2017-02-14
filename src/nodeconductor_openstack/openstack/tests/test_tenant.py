@@ -235,7 +235,6 @@ class TenantChangePasswordTest(BaseTenantActionsTest):
         new_password = get_user_model().objects.make_random_password()[:50]
         self.request_data = {
             'user_username': self.tenant.user_username,
-            'old_user_password': self.tenant.user_password,
             'new_user_password': new_password
         }
 
@@ -273,7 +272,7 @@ class TenantChangePasswordTest(BaseTenantActionsTest):
 
     def test_user_cannot_set_password_if_it_matches_to_the_old_one(self):
         self.client.force_authenticate(self.fixture.owner)
-        self.request_data['new_user_password'] = self.request_data['old_user_password']
+        self.request_data['new_user_password'] = self.fixture.tenant.user_password
 
         response = self.client.post(self.url, self.request_data)
 
