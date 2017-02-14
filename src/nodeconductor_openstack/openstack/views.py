@@ -420,6 +420,16 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     pull_security_groups_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
+    @decorators.detail_route(methods=['post'])
+    def change_password(self, request, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return response.Response({'status': 'Password has been changed'}, status=status.HTTP_200_OK)
+
+    change_password_serializer_class = serializers.TenantChangePasswordSerializer
+
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.Network.objects.all()

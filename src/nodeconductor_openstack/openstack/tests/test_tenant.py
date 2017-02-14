@@ -1,4 +1,5 @@
 from ddt import data, ddt
+from django.contrib.auth import get_user_model
 from mock import patch
 
 from rest_framework import test, status
@@ -222,3 +223,58 @@ class TenantCreateNetworkTest(BaseTenantActionsTest):
         self.assertEqual(self.tenant.networks.count(), 0)
         self.assertEqual(self.tenant.quotas.get(name=self.quota_name).usage, 0)
         self.assertFalse(mocked_task.called)
+
+
+@ddt
+class TenantChangePasswordTest(BaseTenantActionsTest):
+
+    def setUp(self):
+        super(TenantChangePasswordTest, self).setUp()
+        self.tenant = self.fixture.tenant
+        self.url = factories.TenantFactory.get_url(self.tenant, action='change_password')
+        new_password = get_user_model().objects.make_random_password()[:50]
+        self.request_data = {
+            'user_username': self.tenant.user_username,
+            'old_user_password': self.tenant.user_password,
+            'new_user_password': new_password
+        }
+
+    @data('owner', 'staff', 'admin', 'manager')
+    def test_user_can_change_tenant_user_password(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+        response = self.client.post(self.url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.user_password, self.request_data['new_user_password'])
+
+    @data('global_support', 'customer_support', 'project_support')
+    def test_user_cannot_change_tenant_user_password(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+        response = self.client.post(self.url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_user_cannot_set_password_if_it_consists_only_with_digits(self):
+        self.request_data['new_user_password'] = 682992000
+
+        self.client.force_authenticate(self.fixture.owner)
+        response = self.client.post(self.url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_user_cannot_set_password_with_length_less_than_8_characters(self):
+        self.request_data['new_user_password'] = get_user_model().objects.make_random_password()[:7]
+
+        self.client.force_authenticate(self.fixture.owner)
+        response = self.client.post(self.url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_user_cannot_set_password_if_it_matches_to_the_old_one(self):
+        self.client.force_authenticate(self.fixture.owner)
+        self.request_data['new_user_password'] = self.request_data['old_user_password']
+
+        response = self.client.post(self.url, self.request_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
