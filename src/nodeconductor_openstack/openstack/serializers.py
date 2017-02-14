@@ -239,9 +239,7 @@ class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
-        instance = super(FloatingIPSerializer, self).create(validated_data)
-        instance.increase_backend_quotas_usage()
-        return instance
+        return super(FloatingIPSerializer, self).create(validated_data)
 
 
 class SecurityGroupRuleSerializer(serializers.ModelSerializer):
@@ -329,7 +327,9 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
         with transaction.atomic():
-            security_group = super(SecurityGroupSerializer, self).create(validated_data)
+            # quota usage has to be increased only after rules creation,
+            # so we cannot execute BaseResourceSerializer create method.
+            security_group = super(structure_serializers.BaseResourceSerializer, self).create(validated_data)
             for rule in rules:
                 security_group.rules.add(rule)
             security_group.increase_backend_quotas_usage()
@@ -540,9 +540,7 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
-        network = super(NetworkSerializer, self).create(validated_data)
-        network.increase_backend_quotas_usage()
-        return network
+        return super(NetworkSerializer, self).create(validated_data)
 
 
 class SubNetSerializer(structure_serializers.BaseResourceSerializer):
