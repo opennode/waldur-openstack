@@ -430,6 +430,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         return response.Response({'status': 'Password update has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
 
     change_password_serializer_class = serializers.TenantChangePasswordSerializer
+    change_password_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
     def pull_quotas(self, request, uuid=None):
         executors.TenantPullQuotasExecutor.execute(self.get_object())
