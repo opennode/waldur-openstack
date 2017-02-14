@@ -313,6 +313,8 @@ class SnapshotSchedule(BaseSchedule):
         OpenStackTenantServiceProjectLink, related_name='snapshot_schedules', on_delete=models.PROTECT)
     source_volume = models.ForeignKey(Volume, related_name='snapshot_schedules')
 
+    tracker = FieldTracker()
+
     def __str__(self):
         return 'SnapshotSchedule of %s. Active: %s' % (self.instance, self.is_active)
 

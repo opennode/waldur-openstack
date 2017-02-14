@@ -67,6 +67,51 @@ def log_action(sender, instance, created=False, **kwargs):
             resource, resource.tracker.previous('action'), resource.tracker.previous('action_details'))
 
 
+def log_snapshot_schedule_creation(sender, instance, created=False, **kwargs):
+    if not created:
+        return
+
+    snapshot_schedule = instance
+    log.event_logger.openstack_snapshot_schedule.info(
+        'Snapshot schedule "%s" has been created' % snapshot_schedule.name,
+        event_type='resource_snapshot_schedule_created',
+        event_context={'resource': snapshot_schedule.source_volume, 'snapshot_schedule': snapshot_schedule},
+    )
+
+
+def log_snapshot_schedule_action(sender, instance, created=False, **kwargs):
+    snapshot_schedule = instance
+    if created or not snapshot_schedule.tracker.has_changed('is_active'):
+        return
+
+    context = {'resource': snapshot_schedule.source_volume, 'snapshot_schedule': snapshot_schedule}
+    if snapshot_schedule.is_active:
+        log.event_logger.openstack_snapshot_schedule.info(
+            'Snapshot schedule "%s" has been activated' % snapshot_schedule.name,
+            event_type='resource_snapshot_schedule_activated',
+            event_context=context,
+        )
+    else:
+        if snapshot_schedule.error_message:
+            message = 'Snapshot schedule "%s" has been deactivated because of error' % snapshot_schedule.name
+        else:
+            message = 'Snapshot schedule "%s" has been deactivated' % snapshot_schedule.name
+        log.event_logger.openstack_snapshot_schedule.info(
+            message,
+            event_type='resource_snapshot_schedule_deactivated',
+            event_context=context,
+        )
+
+
+def log_snapshot_schedule_deletion(sender, instance, **kwargs):
+    snapshot_schedule = instance
+    log.event_logger.openstack_snapshot_schedule.info(
+        'Snapshot schedule "%s" has been deleted' % snapshot_schedule.name,
+        event_type='resource_snapshot_schedule_deleted',
+        event_context={'resource': snapshot_schedule.source_volume, 'snapshot_schedule': snapshot_schedule},
+    )
+
+
 def log_backup_schedule_creation(sender, instance, created=False, **kwargs):
     if not created:
         return
