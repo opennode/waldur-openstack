@@ -38,9 +38,9 @@ class Migration(migrations.Migration):
                 ('state', django_fsm.FSMIntegerField(default=5, choices=[(5, 'Creation Scheduled'), (6, 'Creating'), (1, 'Update Scheduled'), (2, 'Updating'), (7, 'Deletion Scheduled'), (8, 'Deleting'), (3, 'OK'), (4, 'Erred')])),
                 ('backend_id', models.CharField(max_length=255, blank=True)),
                 ('start_time', models.DateTimeField(null=True, blank=True)),
-                ('retention_time', models.PositiveIntegerField(help_text='Retention time in days, if 0 - backup will be kept forever')),
+                ('retention_time', models.PositiveIntegerField(help_text='Retention time in days, if 0 - resource will be kept forever')),
                 ('maximal_number_of_resources', models.PositiveSmallIntegerField()),
-                ('call_count', models.PositiveSmallIntegerField(default=0, help_text='How many times backup schedule was called.')),
+                ('call_count', models.PositiveSmallIntegerField(default=0, help_text='How many times a resource schedule was called.')),
                 ('service_project_link', models.ForeignKey(related_name='snapshot_schedules', on_delete=django.db.models.deletion.PROTECT, to='openstack_tenant.OpenStackTenantServiceProjectLink')),
                 ('source_volume', models.ForeignKey(related_name='snapshot_schedules', to='openstack_tenant.Volume')),
                 ('tags', taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags')),
@@ -59,6 +59,16 @@ class Migration(migrations.Migration):
             model_name='snapshot',
             name='kept_until',
             field=models.DateTimeField(help_text='Guaranteed time of snapshot retention. If null - keep forever.', null=True, blank=True),
+        ),
+        migrations.AlterField(
+            model_name='backupschedule',
+            name='call_count',
+            field=models.PositiveSmallIntegerField(default=0, help_text='How many times a resource schedule was called.'),
+        ),
+        migrations.AlterField(
+            model_name='backupschedule',
+            name='retention_time',
+            field=models.PositiveIntegerField(help_text='Retention time in days, if 0 - resource will be kept forever'),
         ),
         migrations.AddField(
             model_name='snapshot',

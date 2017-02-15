@@ -285,9 +285,9 @@ class BackupRestoration(core_models.UuidMixin, TimeStampedModel):
 
 class BaseSchedule(structure_models.NewResource, core_models.ScheduleMixin):
     retention_time = models.PositiveIntegerField(
-        help_text='Retention time in days, if 0 - backup will be kept forever')
+        help_text='Retention time in days, if 0 - resource will be kept forever')
     maximal_number_of_resources = models.PositiveSmallIntegerField()
-    call_count = models.PositiveSmallIntegerField(default=0, help_text="How many times backup schedule was called.")
+    call_count = models.PositiveSmallIntegerField(default=0, help_text="How many times a resource schedule was called.")
 
     class Meta(object):
         abstract = True
