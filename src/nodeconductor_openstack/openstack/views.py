@@ -421,6 +421,17 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     pull_security_groups_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
     @decorators.detail_route(methods=['post'])
+    def change_password(self, request, uuid=None):
+        serializer = self.get_serializer(instance=self.get_object(), data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        executors.TenantChangeUserPasswordExecutor.execute(self.get_object())
+        return response.Response({'status': 'Password update has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
+
+    change_password_serializer_class = serializers.TenantChangePasswordSerializer
+    change_password_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+
     def pull_quotas(self, request, uuid=None):
         executors.TenantPullQuotasExecutor.execute(self.get_object())
         return response.Response({'status': 'Quotas pull has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
