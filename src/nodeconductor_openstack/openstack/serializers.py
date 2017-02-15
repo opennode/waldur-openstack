@@ -611,7 +611,7 @@ class TenantChangePasswordSerializer(serializers.Serializer):
 
     def validate_user_password(self, user_password):
         if self.instance.user_password == user_password:
-            raise serializers.ValidationError({'user_password': 'New password cannot match the old password.'})
+            raise serializers.ValidationError('New password cannot match the old password.')
 
         return user_password
 
