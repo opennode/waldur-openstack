@@ -1,3 +1,4 @@
+from ddt import ddt, data
 import mock
 import urllib
 
@@ -10,12 +11,95 @@ from nodeconductor.structure.tests import factories as structure_factories
 from nodeconductor_openstack.openstack.tests.test_backend import BaseBackendTestCase
 
 from .. import models, views
-from . import factories
+from . import factories, fixtures
 
 
-class BaseInstanceDeletionTest(BaseBackendTestCase):
+@ddt
+class InstanceCreateTest(test.APITransactionTestCase):
     def setUp(self):
-        super(BaseInstanceDeletionTest, self).setUp()
+        self.openstack_tenant_fixture = fixtures.OpenStackTenantFixture()
+        self.openstack_settings = self.openstack_tenant_fixture.openstack_tenant_service_settings
+        self.openstack_spl = self.openstack_tenant_fixture.openstack_tenant_spl
+        self.image = factories.ImageFactory(settings=self.openstack_settings, min_disk=10240, min_ram=1024)
+        self.flavor = factories.FlavorFactory(settings=self.openstack_settings)
+
+        self.client.force_authenticate(user=self.openstack_tenant_fixture.owner)
+        self.url = factories.InstanceFactory.get_list_url()
+
+    def get_valid_data(self, **extra):
+        default = {
+            'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.openstack_spl),
+            'flavor': factories.FlavorFactory.get_url(self.flavor),
+            'image': factories.ImageFactory.get_url(self.image),
+            'name': 'Valid name',
+            'system_volume_size': self.image.min_disk,
+        }
+        default.update(extra)
+        return default
+
+    def test_quotas_update(self):
+        response = self.client.post(self.url, self.get_valid_data())
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        instance = models.Instance.objects.get(uuid=response.data['uuid'])
+        Quotas = self.openstack_settings.Quotas
+        self.assertEqual(self.openstack_settings.quotas.get(name=Quotas.ram).usage, instance.ram)
+        self.assertEqual(self.openstack_settings.quotas.get(name=Quotas.storage).usage, instance.disk)
+        self.assertEqual(self.openstack_settings.quotas.get(name=Quotas.vcpu).usage, instance.cores)
+        self.assertEqual(self.openstack_settings.quotas.get(name=Quotas.instances).usage, 1)
+
+    @data('instances')
+    def test_quota_validation(self, quota_name):
+        self.openstack_settings.quotas.filter(name=quota_name).update(limit=0)
+        response = self.client.post(self.url, self.get_valid_data())
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_user_can_provision_instance_with_internal_ip_only(self):
+        response = self.client.post(self.url, self.get_valid_data())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_user_can_provision_instance_with_manual_external_ip(self):
+        self.floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='DOWN')
+        response = self.client.post(self.url, self.get_valid_data(
+            floating_ip=factories.FloatingIPFactory.get_url(self.floating_ip),
+        ))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_user_can_not_provision_instance_if_external_ip_is_not_available(self):
+        self.floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='ACTIVE')
+
+        response = self.client.post(self.url, self.get_valid_data(
+            floating_ip=factories.FloatingIPFactory.get_url(self.floating_ip),
+        ))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['floating_ip'], ['Floating IP runtime_state must be DOWN.'])
+
+    def test_user_can_not_provision_instance_if_external_ip_belongs_to_another_service_project_link(self):
+        another_settings = factories.OpenStackTenantServiceSettingsFactory()
+        floating_ip = factories.FloatingIPFactory(settings=another_settings, runtime_state='DOWN')
+
+        response = self.client.post(self.url, self.get_valid_data(
+            floating_ip=factories.FloatingIPFactory.get_url(floating_ip),
+        ))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['floating_ip'], ['Floating IP must belong to the same service settings.'])
+
+    def test_user_can_not_provision_instance_if_tenant_quota_exceeded(self):
+        quota = self.openstack_settings.quotas.get(name='floating_ip_count')
+        quota.limit = quota.usage
+        quota.save()
+
+        response = self.client.post(self.url, self.get_valid_data(
+            allocate_floating_ip=True
+        ))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertEqual(response.data['allocate_floating_ip'],
+                         ['Can not allocate floating IP - quota has been filled.'])
+
+
+class InstanceDeleteTest(BaseBackendTestCase):
+    def setUp(self):
+        super(InstanceDeleteTest, self).setUp()
         self.instance = factories.InstanceFactory(
             state=models.Instance.States.OK,
             runtime_state=models.Instance.RuntimeStates.SHUTOFF,
@@ -26,7 +110,7 @@ class BaseInstanceDeletionTest(BaseBackendTestCase):
         views.InstanceViewSet.async_executor = False
 
     def tearDown(self):
-        super(BaseInstanceDeletionTest, self).tearDown()
+        super(InstanceDeleteTest, self).tearDown()
         views.InstanceViewSet.async_executor = True
 
     def mock_volumes(self, delete_data_volume=True):
@@ -66,13 +150,8 @@ class BaseInstanceDeletionTest(BaseBackendTestCase):
     def assert_quota_usage(self, quotas, name, value):
         self.assertEqual(quotas.get(name=name).usage, value)
 
-
-class InstanceDeletedWithVolumesTest(BaseInstanceDeletionTest):
-    def setUp(self):
-        super(InstanceDeletedWithVolumesTest, self).setUp()
+    def test_nova_methods_are_called_if_instance_is_deleted_with_volumes(self):
         self.mock_volumes(True)
-
-    def test_nova_methods_are_called(self):
         self.delete_instance()
 
         nova = self.mocked_nova()
@@ -82,13 +161,15 @@ class InstanceDeletedWithVolumesTest(BaseInstanceDeletionTest):
         self.assertFalse(nova.volumes.delete_server_volume.called)
 
     def test_database_models_deleted(self):
+        self.mock_volumes(True)
         self.delete_instance()
 
         self.assertFalse(models.Instance.objects.filter(id=self.instance.id).exists())
         for volume in self.instance.volumes.all():
             self.assertFalse(models.Volume.objects.filter(id=volume.id).exists())
 
-    def test_quotas_updated(self):
+    def test_quotas_updated_if_instance_is_deleted_with_volumes(self):
+        self.mock_volumes(True)
         self.delete_instance()
 
         self.instance.service_project_link.service.settings.refresh_from_db()
@@ -101,13 +182,8 @@ class InstanceDeletedWithVolumesTest(BaseInstanceDeletionTest):
         self.assert_quota_usage(quotas, 'volumes', 0)
         self.assert_quota_usage(quotas, 'storage', 0)
 
-
-class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
-    def setUp(self):
-        super(InstanceDeletedWithoutVolumesTest, self).setUp()
+    def test_backend_methods_are_called_if_instance_is_deleted_without_volumes(self):
         self.mock_volumes(False)
-
-    def test_backend_methods_are_called(self):
         self.delete_instance({
             'delete_volumes': False
         })
@@ -120,6 +196,7 @@ class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
         nova.servers.get.assert_called_once_with(self.instance.backend_id)
 
     def test_system_volume_is_deleted_but_data_volume_exists(self):
+        self.mock_volumes(False)
         self.delete_instance({
             'delete_volumes': False
         })
@@ -128,7 +205,8 @@ class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
         self.assertTrue(models.Volume.objects.filter(id=self.data_volume.id).exists())
         self.assertFalse(models.Volume.objects.filter(id=self.system_volume.id).exists())
 
-    def test_quotas_updated(self):
+    def test_quotas_updated_if_instance_is_deleted_without_volumes(self):
+        self.mock_volumes(False)
         self.delete_instance({
             'delete_volumes': False
         })
@@ -143,10 +221,7 @@ class InstanceDeletedWithoutVolumesTest(BaseInstanceDeletionTest):
         self.assert_quota_usage(settings.quotas, 'volumes', 1)
         self.assert_quota_usage(settings.quotas, 'storage', self.data_volume.size)
 
-
-class InstanceDeletedWithBackupsTest(test.APITransactionTestCase):
-
-    def setUp(self):
+    def test_instance_cannot_be_deleted_if_it_has_backups(self):
         self.instance = factories.InstanceFactory(
             state=models.Instance.States.OK,
             runtime_state=models.Instance.RuntimeStates.SHUTOFF,
@@ -155,7 +230,6 @@ class InstanceDeletedWithBackupsTest(test.APITransactionTestCase):
         staff = structure_factories.UserFactory(is_staff=True)
         self.client.force_authenticate(user=staff)
 
-    def test_instance_cannot_be_deleted_if_it_has_backups(self):
         factories.BackupFactory(instance=self.instance, state=models.Backup.States.OK)
         url = factories.InstanceFactory.get_url(self.instance)
 

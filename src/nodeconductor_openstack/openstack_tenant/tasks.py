@@ -10,7 +10,8 @@ from django.utils import timezone
 
 from nodeconductor.core import tasks as core_tasks, models as core_models, utils as core_utils
 from nodeconductor.quotas import exceptions as quotas_exceptions
-from nodeconductor.structure import SupportedServices, models as structure_models, ServiceBackendError
+from nodeconductor.structure import (models as structure_models, ServiceBackendError, tasks as structure_tasks,
+                                     SupportedServices)
 
 from nodeconductor_openstack.openstack_base.backend import update_pulled_fields
 
@@ -46,56 +47,6 @@ class PollRuntimeStateTask(core_tasks.Task):
                 '%s %s (PK: %s) runtime state become erred: %s' % (
                     instance.__class__.__name__, instance, instance.pk, erred_state))
         return instance
-
-
-class RetryUntilAvailableTask(core_tasks.Task):
-    max_retries = 300
-    default_retry_delay = 5
-
-    def pre_execute(self, instance):
-        if not self.is_available(instance):
-            self.retry()
-        super(RetryUntilAvailableTask, self).pre_execute(instance)
-
-    def is_available(self, instance):
-        return True
-
-
-class BaseThrottleProvisionTask(RetryUntilAvailableTask):
-    """
-    One OpenStack settings does not support provisioning of more than
-    4 instances together, also there are limitations for volumes and snapshots.
-    Before starting resource provisioning we need to count how many resources
-    are already in "creating" state and delay provisioning if there are too many of them.
-    """
-    DEFAULT_LIMIT = 4
-
-    def is_available(self, instance):
-        usage = self.get_usage(instance)
-        limit = self.get_limit(instance)
-        return usage <= limit
-
-    def get_usage(self, instance):
-        service_settings = instance.service_project_link.service.settings
-        model_class = instance._meta.model
-        return model_class.objects.filter(
-            state=core_models.StateMixin.States.CREATING,
-            service_project_link__service__settings=service_settings
-        ).count()
-
-    def get_limit(self, instance):
-        nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
-        limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
-        model_name = SupportedServices.get_name_for_model(instance)
-        return limit_per_type.get(model_name, self.DEFAULT_LIMIT)
-
-
-class ThrottleProvisionTask(BaseThrottleProvisionTask, core_tasks.BackendMethodTask):
-    pass
-
-
-class ThrottleProvisionStateTask(BaseThrottleProvisionTask, core_tasks.StateTransitionTask):
-    pass
 
 
 class SetInstanceErredTask(core_tasks.ErrorStateTransitionTask):
@@ -261,7 +212,12 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
     def _set_erred(self, resource):
         resource.set_erred()
         resource.runtime_state = ''
-        resource.error_message = 'Does not exist at backend.'
+        message = 'Does not exist at backend.'
+        if message not in resource.error_message:
+            if not resource.error_message:
+                resource.error_message = message
+            else:
+                resource.error_message = resource.error_message + ' (%s)' % message
         resource.save()
         logger.warning('%s %s (PK: %s) does not exist at backend.' % (
             resource.__class__.__name__, resource, resource.pk))
@@ -342,3 +298,20 @@ class SetErredStuckResources(core_tasks.BackgroundTask):
                 logger.warning('Switching resource %s to erred state, '
                                'because provisioning is timed out.',
                                core_utils.serialize_instance(resource))
+
+
+class LimitedPerTypeThrottleMixin(object):
+
+    def get_limit(self, resource):
+        nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
+        limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
+        model_name = SupportedServices.get_name_for_model(resource)
+        return limit_per_type.get(model_name, super(LimitedPerTypeThrottleMixin, self).get_limit(resource))
+
+
+class ThrottleProvisionTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionTask):
+    pass
+
+
+class ThrottleProvisionStateTask(LimitedPerTypeThrottleMixin, structure_tasks.ThrottleProvisionStateTask):
+    pass

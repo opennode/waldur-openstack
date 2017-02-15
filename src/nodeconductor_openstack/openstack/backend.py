@@ -17,12 +17,10 @@ from nodeconductor_openstack.openstack_base.backend import (
     OpenStackBackendError, BaseOpenStackBackend, update_pulled_fields)
 from . import models
 
-
 logger = logging.getLogger(__name__)
 
 
 class OpenStackBackend(BaseOpenStackBackend):
-
     DEFAULTS = {
         'tenant_name': 'admin',
         'is_admin': True,
@@ -39,23 +37,14 @@ class OpenStackBackend(BaseOpenStackBackend):
             return True
 
     def sync(self):
-        self._check_domain()
         self._pull_flavors()
         self._pull_images()
         self._pull_service_settings_quotas()
 
-    def _check_domain(self):
-        if not self.settings.domain:
-            return
-        try:
-            self._get_domain()
-        except keystone_exceptions.NotFound:
-            raise OpenStackBackendError('Domain with ID "%s" does not exist at backend.' % self.settings.domain)
-
     def _get_domain(self):
         """ Get current domain """
         keystone = self.keystone_admin_client
-        return keystone.domains.get(self.settings.domain or 'default')
+        return keystone.domains.find(name=self.settings.domain or 'Default')
 
     def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
         nova = self.nova_client
@@ -118,7 +107,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         return rule
 
     def _pull_flavors(self):
-        nova = self.nova_client
+        nova = self.nova_admin_client
         try:
             flavors = nova.flavors.findall(is_public=True)
         except nova_exceptions.ClientException as e:
@@ -203,7 +192,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             tenant.set_quota_usage(quota_name, usage, fail_silently=True)
 
     @log_backend_action('pull floating IPs for tenant')
-    def pull_tenant_floating_ips(self, tenant):
+    def pull_floating_ips(self, tenant):
         neutron = self.neutron_client
 
         nc_floating_ips = {ip.backend_id: ip for ip in tenant.floating_ips.all()}
@@ -240,15 +229,24 @@ class OpenStackBackend(BaseOpenStackBackend):
             for ip_id in nc_ids & backend_ids:
                 nc_ip = nc_floating_ips[ip_id]
                 backend_ip = backend_floating_ips[ip_id]
-                if nc_ip.runtime_state != backend_ip['status'] or nc_ip.address != backend_ip['floating_ip_address']\
-                        or nc_ip.backend_network_id != backend_ip['floating_network_id']:
-                    # If key is BOOKED by NodeConductor it can be still DOWN in OpenStack
-                    if not (nc_ip.runtime_state == 'BOOKED' and backend_ip['status'] == 'DOWN'):
-                        nc_ip.runtime_state = backend_ip['status']
-                    nc_ip.address = backend_ip['floating_ip_address']
-                    nc_ip.backend_network_id = backend_ip['floating_network_id']
-                    nc_ip.save()
-                    logger.info('Updated existing floating IP port %s in database', nc_ip.uuid)
+                if self._floating_ip_changed(nc_ip, backend_ip):
+                    self._update_floating_ip(nc_ip, backend_ip)
+
+    def _floating_ip_changed(self, floating_ip, backend_floating_ip):
+        return (floating_ip.runtime_state != backend_floating_ip['status'] or
+                floating_ip.address != backend_floating_ip['floating_ip_address'] or
+                floating_ip.backend_network_id != backend_floating_ip['floating_network_id'] or
+                floating_ip.state != StateMixin.States.OK)
+
+    def _update_floating_ip(self, floating_ip, backend_floating_ip):
+        floating_ip.runtime_state = backend_floating_ip['status']
+        floating_ip.address = backend_floating_ip['floating_ip_address']
+        floating_ip.name = backend_floating_ip['floating_ip_address']
+        floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
+        floating_ip.state = StateMixin.States.OK
+
+        floating_ip.save(update_fields=['runtime_state', 'address', 'name', 'backend_network_id', 'state'])
+        logger.info('Updated existing floating IP port %s in database', floating_ip.uuid)
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
@@ -429,6 +427,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             user = keystone.users.create(
                 name=tenant.user_username,
                 password=tenant.user_password,
+                domain=self._get_domain(),
             )
             try:
                 role = keystone.roles.find(name='Member')
@@ -439,6 +438,16 @@ class OpenStackBackend(BaseOpenStackBackend):
                 role=role.id,
                 project=tenant.backend_id,
             )
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+    @log_backend_action('change password for tenant user')
+    def change_tenant_user_password(self, tenant):
+        keystone = self.keystone_client
+
+        try:
+            keystone_user = keystone.users.find(name=tenant.user_username)
+            keystone.users.update(user=keystone_user, password=tenant.user_password)
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -796,6 +805,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             nova.security_groups.delete(security_group.backend_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
+        security_group.decrease_backend_quotas_usage()
 
     @log_backend_action()
     def update_security_group(self, security_group):
@@ -1091,16 +1101,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            floating_ip.runtime_state = backend_floating_ip['status']
-            floating_ip.address = backend_floating_ip['floating_ip_address']
-            floating_ip.name = backend_floating_ip['floating_ip_address']
-            floating_ip.backend_network_id = backend_floating_ip['floating_network_id']
-            floating_ip.save()
-
-    @log_backend_action('pull floating ip')
-    def pull_floating_ips(self, tenant):
-        for floating_ip in tenant.floating_ips.iterator():
-            self.pull_floating_ip(floating_ip)
+            if self._floating_ip_changed(floating_ip, backend_floating_ip):
+                self._update_floating_ip(floating_ip, backend_floating_ip)
 
     @log_backend_action('delete floating ip')
     def delete_floating_ip(self, floating_ip):
@@ -1214,13 +1216,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
 
     def _pull_service_settings_quotas(self):
-        if isinstance(self.settings.scope, models.Tenant):
-            tenant = self.settings.scope
-            self.pull_tenant_quotas(tenant)
-            self._copy_tenant_quota_to_settings(tenant)
-            return
         nova = self.nova_admin_client
-
         try:
             stats = nova.hypervisor_stats.statistics()
         except nova_exceptions.ClientException as e:
@@ -1245,16 +1241,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         storage = sum(self.gb2mb(v.size) for v in volumes + snapshots)
         return storage
-
-    def _copy_tenant_quota_to_settings(self, tenant):
-        quotas = tenant.quotas.values('name', 'limit', 'usage')
-        limits = {quota['name']: quota['limit'] for quota in quotas}
-        usages = {quota['name']: quota['usage'] for quota in quotas}
-
-        for resource in ('vcpu', 'ram', 'storage'):
-            quota_name = 'openstack_%s' % resource
-            self.settings.set_quota_limit(quota_name, limits[resource])
-            self.settings.set_quota_usage(quota_name, usages[resource])
 
     def get_stats(self):
         tenants = models.Tenant.objects.filter(service_project_link__service__settings=self.settings)

@@ -150,6 +150,19 @@ class Snapshot(structure_models.Storage):
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
 
 
+class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
+    snapshot = models.ForeignKey(Snapshot, related_name='restorations')
+    volume = models.OneToOneField(Volume, related_name='+')
+
+    class Permissions(object):
+        customer_path = 'snapshot__service_project_link__project__customer'
+        project_path = 'snapshot__service_project_link__project'
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-snapshot-restoration'
+
+
 class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMixin, structure_models.NewResource):
 
     class RuntimeStates(object):
@@ -209,9 +222,9 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
 
     def increase_backend_quotas_usage(self, validate=True):
         settings = self.service_project_link.service.settings
-        settings.add_quota_usage(settings.Quotas.instances, 1)
-        settings.add_quota_usage(settings.Quotas.ram, self.ram)
-        settings.add_quota_usage(settings.Quotas.vcpu, self.cores)
+        settings.add_quota_usage(settings.Quotas.instances, 1, validate=validate)
+        settings.add_quota_usage(settings.Quotas.ram, self.ram, validate=validate)
+        settings.add_quota_usage(settings.Quotas.vcpu, self.cores, validate=validate)
 
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings

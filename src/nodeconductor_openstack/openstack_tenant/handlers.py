@@ -135,7 +135,7 @@ def delete_floating_ip(sender, instance, **kwargs):
     if not settings:
         return
 
-    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
+    floating_ip = models.FloatingIP.objects.filter(settings=settings, backend_id=instance.backend_id).first()
     if floating_ip:
         floating_ip.delete()
 
@@ -259,3 +259,20 @@ def create_floating_ip(sender, instance, name, source, target, **kwargs):
         runtime_state=instance.runtime_state,
         backend_network_id=instance.backend_network_id,
     )
+
+
+def update_service_settings_password(sender, instance, created=False, **kwargs):
+    """
+    Updates service settings password on tenant user_password change.
+    It is possible to change a user password in tenant,
+    as service settings copies tenant user password on creation it has to be update on change.
+    """
+    if created:
+        return
+
+    tenant = instance
+    if tenant.tracker.has_changed('user_password'):
+        service_settings = structure_models.ServiceSettings.objects.filter(scope=tenant).first()
+        if service_settings:
+            service_settings.password = tenant.user_password
+            service_settings.save()

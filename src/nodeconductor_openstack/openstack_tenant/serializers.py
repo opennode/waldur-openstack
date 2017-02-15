@@ -239,6 +239,47 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
         return attrs
 
 
+class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
+    name = serializers.CharField(write_only=True, help_text='New volume name.')
+    description = serializers.CharField(required=False, help_text='New volume name. Leave blank to use snapshot name.')
+
+    class Meta(object):
+        model = models.SnapshotRestoration
+        fields = ('uuid', 'created', 'name', 'description',
+                  'volume', 'volume_name', 'volume_state', 'volume_runtime_state', 'volume_size', 'volume_device')
+        read_only_fields = ('uuid', 'created', 'volume')
+        related_paths = {
+            'volume': ('name', 'state', 'runtime_state', 'size', 'device')
+        }
+        extra_kwargs = dict(
+            volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
+            volume_state={'source': 'volume.human_readable_state'}
+        )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        snapshot = self.context['view'].get_object()
+        validated_data['snapshot'] = snapshot
+        description = validated_data.pop('description', None) or 'Restored from snapshot %s' % snapshot.name
+
+        volume = models.Volume(
+            source_snapshot=snapshot,
+            service_project_link=snapshot.service_project_link,
+            name=validated_data.pop('name'),
+            description=description,
+            size=snapshot.size,
+        )
+
+        if 'source_volume_image_metadata' in snapshot.metadata:
+            volume.image_metadata = snapshot.metadata['source_volume_image_metadata']
+
+        volume.save()
+        volume.increase_backend_quotas_usage()
+        validated_data['volume'] = volume
+
+        return super(SnapshotRestorationSerializer, self).create(validated_data)
+
+
 class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -252,11 +293,13 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
 
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
     action_details = core_serializers.JSONField(read_only=True)
+    restorations = SnapshotRestorationSerializer(many=True, read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Snapshot
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_volume', 'size', 'metadata', 'runtime_state', 'source_volume_name', 'action', 'action_details',
+            'restorations',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'size', 'source_volume', 'metadata', 'runtime_state', 'action',

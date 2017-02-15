@@ -17,7 +17,7 @@ from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
 from nodeconductor.structure.managers import filter_queryset_for_user
 
-from . import models
+from . import models, password_validation
 from .backend import OpenStackBackendError
 
 
@@ -31,7 +31,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
     SERVICE_ACCOUNT_FIELDS = {
         'backend_url': 'Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)',
         'username': 'Administrative user',
-        'domain': 'Domain ID. If not defined default domain will be used.',
+        'domain': 'Domain name. If not defined default domain will be used.',
         'password': '',
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
@@ -239,9 +239,7 @@ class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
-        instance = super(FloatingIPSerializer, self).create(validated_data)
-        instance.increase_backend_quotas_usage()
-        return instance
+        return super(FloatingIPSerializer, self).create(validated_data)
 
 
 class SecurityGroupRuleSerializer(serializers.ModelSerializer):
@@ -329,7 +327,9 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
         with transaction.atomic():
-            security_group = super(SecurityGroupSerializer, self).create(validated_data)
+            # quota usage has to be increased only after rules creation,
+            # so we cannot execute BaseResourceSerializer create method.
+            security_group = super(structure_serializers.BaseResourceSerializer, self).create(validated_data)
             for rule in rules:
                 security_group.rules.add(rule)
             security_group.increase_backend_quotas_usage()
@@ -536,6 +536,7 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
+    @transaction.atomic
     def create(self, validated_data):
         validated_data['tenant'] = tenant = self.context['view'].get_object()
         validated_data['service_project_link'] = tenant.service_project_link
@@ -600,3 +601,21 @@ def _generate_subnet_allocation_pool(cidr):
         'start': subnet_settings['ALLOCATION_POOL_START'].format(**format_data),
         'end': subnet_settings['ALLOCATION_POOL_END'].format(**format_data),
     }]
+
+
+class TenantChangePasswordSerializer(serializers.Serializer):
+    user_password = serializers.CharField(max_length=50,
+                                          allow_blank=True,
+                                          validators=[password_validation.validate_password],
+                                          help_text='New tenant user password.')
+
+    def validate_user_password(self, user_password):
+        if self.instance.user_password == user_password:
+            raise serializers.ValidationError('New password cannot match the old password.')
+
+        return user_password
+
+    def update(self, tenant, validated_data):
+        tenant.user_password = validated_data['user_password']
+        tenant.save(update_fields=['user_password'])
+        return tenant

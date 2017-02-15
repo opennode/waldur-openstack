@@ -89,32 +89,3 @@ class SetErredProvisioningResourcesTaskTest(TestCase):
 
         self.assertEqual(ok_vm.state, models.Instance.States.CREATING)
         self.assertEqual(ok_volume.state, models.Volume.States.CREATING)
-
-
-@ddt
-class ThrottleProvisionTaskTest(TestCase):
-
-    @data(
-        dict(size=tasks.ThrottleProvisionTask.DEFAULT_LIMIT + 1, retried=True),
-        dict(size=tasks.ThrottleProvisionTask.DEFAULT_LIMIT - 1, retried=False),
-    )
-    def test_if_limit_is_reached_provisioning_is_delayed(self, params):
-        link = factories.OpenStackTenantServiceProjectLinkFactory()
-        factories.InstanceFactory.create_batch(
-            size=params['size'],
-            state=models.Instance.States.CREATING,
-            service_project_link=link
-        )
-        vm = factories.InstanceFactory(
-            state=models.Instance.States.CREATION_SCHEDULED,
-            service_project_link=link
-        )
-        serialized_vm = core_utils.serialize_instance(vm)
-        mocked_retry = mock.Mock()
-        tasks.ThrottleProvisionTask.retry = mocked_retry
-        tasks.ThrottleProvisionTask().si(
-            serialized_vm,
-            'create_instance',
-            state_transition='begin_creating'
-        ).apply()
-        self.assertEqual(mocked_retry.called, params['retried'])
