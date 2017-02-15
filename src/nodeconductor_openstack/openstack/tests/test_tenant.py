@@ -284,7 +284,7 @@ class TenantChangePasswordTest(BaseTenantActionsTest):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
-    def test_use_can_set_an_empty_password(self):
+    def test_user_can_set_an_empty_password(self):
         self.client.force_authenticate(self.fixture.owner)
         response = self.client.post(self.url, {'user_password': ''})
 
