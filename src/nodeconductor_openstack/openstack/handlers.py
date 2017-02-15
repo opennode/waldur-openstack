@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
-from nodeconductor.structure import filters as structure_filters
+from nodeconductor.structure import filters as structure_filters, models as structure_models
 
 from .log import event_logger
 from .models import SecurityGroup, SecurityGroupRule, Tenant

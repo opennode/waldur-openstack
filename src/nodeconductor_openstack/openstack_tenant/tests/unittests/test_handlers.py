@@ -4,6 +4,7 @@ from django.test import TestCase
 
 from nodeconductor.core.models import StateMixin
 from nodeconductor_openstack.openstack.tests import factories as openstack_factories
+from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.tests import factories as structure_factories
 
 from .. import factories
@@ -133,3 +134,20 @@ class TestFloatingIPHandler(TestCase):
 
         openstack_floating_ip.delete()
         self.assertEqual(models.FloatingIP.objects.count(), 0)
+
+
+class TenantChangePasswordTest(TestCase):
+
+    def test_service_settings_password_updates_when_tenant_user_password_changes(self):
+        tenant = openstack_factories.TenantFactory()
+        service_settings = structure_models.ServiceSettings.objects.first()
+        service_settings.scope = tenant
+        service_settings.password = tenant.user_password
+        service_settings.save()
+
+        new_password = 'new_password'
+
+        tenant.user_password = new_password
+        tenant.save()
+        service_settings.refresh_from_db()
+        self.assertEqual(service_settings.password, new_password)
