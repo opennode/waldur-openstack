@@ -93,7 +93,7 @@ class ExecuteSnapshotScheduleTaskTest(TestCase):
         tasks.ScheduleSnapshots().run()
         self.assertEqual(self.not_active_schedule.snapshots.count(), 0)
 
-    def test_command_create_one_backup_snapshots_for_schedule_with_next_trigger_in_past(self):
+    def test_command_create_one_snapshot_for_schedule_with_next_trigger_in_past(self):
         tasks.ScheduleSnapshots().run()
         self.assertEqual(self.schedule_for_execution.snapshots.count(), 1)
 
