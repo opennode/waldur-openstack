@@ -276,6 +276,56 @@ class DeleteExpiredBackups(core_tasks.BackgroundTask):
             executors.BackupDeleteExecutor.execute(backup)
 
 
+class ScheduleSnapshots(core_tasks.BackgroundTask):
+    name = 'openstack_tenant.ScheduleSnapshots'
+
+    def is_equal(self, other_task, serialized_service_settings):
+        return self.name == other_task.get('name')
+
+    def run(self):
+        snapshot_schedules = models.SnapshotSchedule.objects.filter(is_active=True, next_trigger_at__lt=timezone.now())
+        for snapshot_schedule in snapshot_schedules:
+            kept_until = timezone.now() + \
+                timezone.timedelta(days=snapshot_schedule.retention_time) if snapshot_schedule.retention_time else None
+            serializer = serializers.SnapshotSerializer
+            try:
+                with transaction.atomic():
+                    snapshot_schedule.call_count += 1
+                    snapshot_schedule.save()
+                    snapshot = models.Snapshot.objects.create(
+                        name='Snapshot#%s of %s' % (snapshot_schedule.call_count, snapshot_schedule.source_volume.name),
+                        description='Scheduled snapshot of volume "%s"' % snapshot_schedule.source_volume,
+                        service_project_link=snapshot_schedule.source_volume.service_project_link,
+                        source_volume=snapshot_schedule.source_volume,
+                        snapshot_schedule=snapshot_schedule,
+                        size=snapshot_schedule.source_volume.size,
+                        # TODO [TM:2/15/17] add metadata
+                        # metadata=serializer.get_snapshot_metadata(snapshot_shedule.volume),
+                        kept_until=kept_until,
+                    )
+            except quotas_exceptions.QuotaValidationError as e:
+                message = 'Failed to schedule snapshot creation. Error: %s' % e
+                logger.exception('Snapshot schedule (PK: %s) execution failed. %s' % (snapshot_schedule.pk, message))
+                snapshot_schedule.is_active = False
+                snapshot_schedule.error_message = message
+                snapshot_schedule.save()
+            else:
+                from . import executors
+                executors.SnapshotCreateExecutor.execute(snapshot)
+
+
+class DeleteExpiredSnapshots(core_tasks.BackgroundTask):
+    name = 'openstack_tenant.DeleteExpiredSnapshots'
+
+    def is_equal(self, other_task, serialized_service_settings):
+        return self.name == other_task.get('name')
+
+    def run(self):
+        from . import executors
+        for snapshot in models.Snapshot.objects.filter(kept_until__lt=timezone.now(), state=models.Snapshot.States.OK):
+            executors.SnapshotDeleteExecutor.execute(snapshot)
+
+
 class SetErredStuckResources(core_tasks.BackgroundTask):
     name = 'openstack_tenant.SetErredStuckResources'
 
