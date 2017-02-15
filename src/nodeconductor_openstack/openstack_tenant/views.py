@@ -578,13 +578,13 @@ class BaseScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetacla
         schedule.is_active = True
         schedule.error_message = ''
         schedule.save()
-        return response.Response({'status': 'Backup schedule was activated'})
+        return response.Response({'status': 'A schedule was activated'})
 
     activate_validators = [_is_schedule_active]
 
     def _is_schedule_deactived(resource_schedule):
         if not resource_schedule.is_active:
-            raise core_exceptions.IncorrectStateException('Resource schedule is already deactivated.')
+            raise core_exceptions.IncorrectStateException('A schedule is already deactivated.')
 
     @decorators.detail_route(methods=['post'])
     def deactivate(self, request, uuid):
