@@ -856,11 +856,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
                 size=volume.size,
                 source_volume=volume,
                 description='Part of backup %s (UUID: %s)' % (backup.name, backup.uuid.hex),
-                metadata={
-                    'source_volume_name': volume.name,
-                    'source_volume_description': volume.description,
-                    'source_volume_image_metadata': volume.image_metadata,
-                },
+                metadata=SnapshotSerializer.get_snapshot_metadata(volume),
             )
             snapshot.increase_backend_quotas_usage()
             backup.snapshots.add(snapshot)
