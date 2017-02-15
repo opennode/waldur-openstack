@@ -95,3 +95,9 @@ class OpenStackTenantConfig(AppConfig):
             sender=FloatingIP,
             dispatch_uid='openstack_tenant.handlers.delete_floating_ip',
         )
+
+        signals.post_save.connect(
+            handlers.update_service_settings_password,
+            sender=Tenant,
+            dispatch_uid='openstack.handlers.update_service_settings_password',
+        )

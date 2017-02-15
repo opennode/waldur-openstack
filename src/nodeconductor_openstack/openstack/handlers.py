@@ -110,20 +110,3 @@ def log_tenant_quota_update(sender, instance, created=False, **kwargs):
             'tenant': tenant,
             'limit': float(quota.limit),  # Prevent passing integer
         })
-
-
-def update_service_settings_password(sender, instance, created=False, **kwargs):
-    if created:
-        return
-
-    tenant = instance
-    if tenant.tracker.has_changed('user_password'):
-        event_logger.openstack_tenant.info(
-            '{tenant_name} user_password has changed. Service settings password is going to be updated.',
-            event_type='openstack_tenant_user_password_changed',
-            event_context={
-                'tenant': tenant,
-            })
-        service_settings = structure_models.ServiceSettings.objects.filter(scope=tenant).first()
-        service_settings.password = tenant.user_password
-        service_settings.save()
