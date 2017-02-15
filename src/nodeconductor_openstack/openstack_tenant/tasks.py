@@ -299,8 +299,7 @@ class ScheduleSnapshots(core_tasks.BackgroundTask):
                         source_volume=snapshot_schedule.source_volume,
                         snapshot_schedule=snapshot_schedule,
                         size=snapshot_schedule.source_volume.size,
-                        # TODO [TM:2/15/17] add metadata
-                        # metadata=serializer.get_snapshot_metadata(snapshot_shedule.volume),
+                        metadata=serializer.get_snapshot_metadata(snapshot_schedule.source_volume),
                         kept_until=kept_until,
                     )
             except quotas_exceptions.QuotaValidationError as e:

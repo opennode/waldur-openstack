@@ -333,8 +333,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             'name': snapshot.name,
             'description': snapshot.description,
             'force': force,
+            'metadata': snapshot.metadata,
         }
-        # TODO: set backend snapshot metadata if it is defined in NC.
         cinder = self.cinder_client
         try:
             backend_snapshot = cinder.volume_snapshots.create(snapshot.source_volume.backend_id, **kwargs)

@@ -121,14 +121,29 @@ class VolumeSnapshotTestCase(test.APITransactionTestCase):
         self.fixture = fixtures.OpenStackTenantFixture()
         self.volume = self.fixture.openstack_volume
         self.url = factories.VolumeFactory.get_url(self.volume, action='snapshot')
-
-    def test_user_can_create_volume_snapshot(self):
         self.volume.state = models.Volume.States.OK
         self.volume.runtime_state = 'available'
         self.volume.save()
+
+        self.client.force_authenticate(self.fixture.owner)
+
+    def test_user_can_create_volume_snapshot(self):
+        payload = {'name': '%s snapshot' % self.volume.name}
+
+        response = self.client.post(self.url, data=payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_snapshot_metadata_is_populated(self):
 
         self.client.force_authenticate(self.fixture.owner)
         payload = {'name': '%s snapshot' % self.volume.name}
 
         response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        snapshot = models.Snapshot.objects.filter(name=payload['name']).first()
+        self.assertIsNotNone(snapshot)
+        self.assertIn('source_volume_name', snapshot.metadata)
+        self.assertEqual(snapshot.metadata['source_volume_name'], self.volume.name)
+        self.assertEqual(snapshot.metadata['source_volume_description'], self.volume.description)
+        self.assertEqual(snapshot.metadata['source_volume_image_metadata'], self.volume.image_metadata)
+
