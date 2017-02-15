@@ -605,6 +605,7 @@ def _generate_subnet_allocation_pool(cidr):
 
 class TenantChangePasswordSerializer(serializers.Serializer):
     user_password = serializers.CharField(max_length=50,
+                                          allow_blank=True,
                                           validators=[password_validation.validate_password],
                                           help_text='New tenant user password.')
 
