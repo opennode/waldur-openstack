@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
-from nodeconductor.structure import filters as structure_filters
+from nodeconductor.structure import filters as structure_filters, models as structure_models
 
 from .log import event_logger
 from .models import SecurityGroup, SecurityGroupRule, Tenant
@@ -110,3 +110,20 @@ def log_tenant_quota_update(sender, instance, created=False, **kwargs):
             'tenant': tenant,
             'limit': float(quota.limit),  # Prevent passing integer
         })
+
+
+def update_service_settings_password(sender, instance, created=False, **kwargs):
+    if created:
+        return
+
+    tenant = instance
+    if tenant.tracker.has_changed('user_password'):
+        event_logger.openstack_tenant.info(
+            '{tenant_name} user_password has changed. Service settings password is going to be updated.',
+            event_type='openstack_tenant_user_password_changed',
+            event_context={
+                'tenant': tenant,
+            })
+        service_settings = structure_models.ServiceSettings.objects.filter(scope=tenant).first()
+        service_settings.password = tenant.user_password
+        service_settings.save()

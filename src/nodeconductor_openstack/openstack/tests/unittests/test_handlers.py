@@ -52,3 +52,20 @@ class SshKeysHandlersTest(TestCase):
         serialized_tenant = core_utils.serialize_instance(self.tenant)
         mocked_task_call.assert_called_once_with(
             serialized_tenant, 'remove_ssh_key_from_tenant', self.ssh_key.name, self.ssh_key.fingerprint)
+
+
+class TenantChangePasswordTest(TestCase):
+
+    def test_service_settings_password_updates_when_tenant_user_password_changes(self):
+        tenant = factories.TenantFactory()
+        service_settings = structure_models.ServiceSettings.objects.first()
+        service_settings.scope = tenant
+        service_settings.password = tenant.user_password
+        service_settings.save()
+
+        new_password = 'new_password'
+
+        tenant.user_password = new_password
+        tenant.save()
+        service_settings.refresh_from_db()
+        self.assertEqual(service_settings.password, new_password)
