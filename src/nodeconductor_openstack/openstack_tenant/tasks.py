@@ -245,7 +245,7 @@ class BaseScheduleTask(core_tasks.BackendMethodTask):
                     schedule.save()
                     resource = self._create_resource(schedule, kept_until=kept_until)
             except quotas_exceptions.QuotaValidationError as e:
-                message = 'Failed to schedule resource creation. Error: %s' % e
+                message = 'Failed to schedule "%s" creation. Error: %s' % (self.model.__name__, e)
                 logger.exception(
                     'Resource schedule (PK: %s), (Name: %s) execution failed. %s' % (schedule.pk,
                                                                                      schedule.name,
