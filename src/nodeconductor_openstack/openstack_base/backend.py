@@ -50,7 +50,7 @@ class OpenStackBackendError(ServiceBackendError):
         for i, arg in enumerate(args):
             try:
                 pickle.loads(pickle.dumps(arg))
-            except:
+            except (pickle.PickleError, TypeError):
                 args[i] = six.text_type(arg)
 
         super(OpenStackBackendError, self).__init__(*args, **kwargs)
