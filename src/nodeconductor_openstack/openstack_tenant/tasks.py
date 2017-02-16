@@ -228,39 +228,36 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
 
 
 class BaseScheduleTask(core_tasks.BackendMethodTask):
-    serializer = NotImplemented
+    model = NotImplemented
 
     def is_equal(self, other_task, serialized_service_settings):
         return self.name == other_task.get('name')
 
     def run(self):
-        scheduled_resources = self._get_scheduled_resources(next_trigger_at=timezone.now())
-        for resource_schedule in scheduled_resources:
-            if resource_schedule.retention_time:
-                kept_until = timezone.now() + timezone.timedelta(days=resource_schedule.retention_time)
+        schedules = self.model.objects.filter(is_active=True, next_trigger_at__lt=timezone.now())
+        for schedule in schedules:
+            if schedule.retention_time:
+                kept_until = timezone.now() + timezone.timedelta(days=schedule.retention_time)
 
             try:
                 with transaction.atomic():
-                    resource_schedule.call_count += 1
-                    resource_schedule.save()
-                    resource = self._create_resource(resource_schedule, kept_until=kept_until)
+                    schedule.call_count += 1
+                    schedule.save()
+                    resource = self._create_resource(schedule, kept_until=kept_until)
             except quotas_exceptions.QuotaValidationError as e:
                 message = 'Failed to schedule resource creation. Error: %s' % e
                 logger.exception(
-                    'Resource schedule (PK: %s), (Name: %s) execution failed. %s' % (resource_schedule.pk,
-                                                                                     resource_schedule.name,
+                    'Resource schedule (PK: %s), (Name: %s) execution failed. %s' % (schedule.pk,
+                                                                                     schedule.name,
                                                                                      message))
-                resource_schedule.is_active = False
-                resource_schedule.error_message = message
-                resource_schedule.save()
+                schedule.is_active = False
+                schedule.error_message = message
+                schedule.save()
             else:
                 executor = self._get_create_executor()
                 executor.execute(resource)
 
-    def _get_scheduled_resources(self, next_trigger_at, is_active=True):
-        raise NotImplementedError()
-
-    def _create_resource(self, resource_schedule, kept_until):
+    def _create_resource(self, schedule, kept_until):
         raise NotImplementedError()
 
     def _get_create_executor(self):
@@ -268,22 +265,19 @@ class BaseScheduleTask(core_tasks.BackendMethodTask):
 
 class ScheduleBackups(BaseScheduleTask):
     name = 'openstack_tenant.ScheduleBackups'
-    serializer = serializers.BackupSerializer
+    model = models.BackupSchedule
 
-    def _get_scheduled_resources(self, next_trigger_at, is_active=True):
-        return models.BackupSchedule.objects.filter(is_active=is_active, next_trigger_at__lt=next_trigger_at)
-
-    def _create_resource(self, resource_schedule, kept_until):
+    def _create_resource(self, schedule, kept_until):
         backup = models.Backup.objects.create(
-            name='Backup#%s of %s' % (resource_schedule.call_count, resource_schedule.instance.name),
-            description='Scheduled backup of instance "%s"' % resource_schedule.instance,
-            service_project_link=resource_schedule.instance.service_project_link,
-            instance=resource_schedule.instance,
-            backup_schedule=resource_schedule,
-            metadata=self.serializer.get_backup_metadata(resource_schedule.instance),
+            name='Backup#%s of %s' % (schedule.call_count, schedule.instance.name),
+            description='Scheduled backup of instance "%s"' % schedule.instance,
+            service_project_link=schedule.instance.service_project_link,
+            instance=schedule.instance,
+            backup_schedule=schedule,
+            metadata=serializers.BackupSerializer.get_backup_metadata(schedule.instance),
             kept_until=kept_until,
         )
-        self.serializer.create_backup_snapshots(backup)
+        serializers.BackupSerializer.create_backup_snapshots(backup)
         return backup
 
     def _get_create_executor(self):
@@ -305,20 +299,17 @@ class DeleteExpiredBackups(core_tasks.BackgroundTask):
 
 class ScheduleSnapshots(BaseScheduleTask):
     name = 'openstack_tenant.ScheduleSnapshots'
-    serializer = serializers.SnapshotSerializer
+    model = models.SnapshotSchedule
 
-    def _get_scheduled_resources(self, next_trigger_at, is_active=True):
-        return models.SnapshotSchedule.objects.filter(is_active=is_active, next_trigger_at__lt=next_trigger_at)
-
-    def _create_resource(self, resource_schedule, kept_until):
+    def _create_resource(self, schedule, kept_until):
         snapshot = models.Snapshot.objects.create(
-            name='Snapshot#%s of %s' % (resource_schedule.call_count, resource_schedule.source_volume.name),
-            description='Scheduled snapshot of volume "%s"' % resource_schedule.source_volume,
-            service_project_link=resource_schedule.source_volume.service_project_link,
-            source_volume=resource_schedule.source_volume,
-            snapshot_schedule=resource_schedule,
-            size=resource_schedule.source_volume.size,
-            metadata=self.serializer.get_snapshot_metadata(resource_schedule.source_volume),
+            name='Snapshot#%s of %s' % (schedule.call_count, schedule.source_volume.name),
+            description='Scheduled snapshot of volume "%s"' % schedule.source_volume,
+            service_project_link=schedule.source_volume.service_project_link,
+            source_volume=schedule.source_volume,
+            snapshot_schedule=schedule,
+            size=schedule.source_volume.size,
+            metadata=serializers.SnapshotSerializer.get_snapshot_metadata(schedule.source_volume),
             kept_until=kept_until,
         )
         snapshot.increase_backend_quotas_usage()
