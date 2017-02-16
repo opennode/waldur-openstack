@@ -46,7 +46,7 @@ class DeleteExpiredSnapshotsTaskTest(TestCase):
         ], any_order=True)
 
 
-class ExecuteBackupScheduleTaskTest(TestCase):
+class BackupScheduleTaskTest(TestCase):
 
     def setUp(self):
         self.not_active_schedule = factories.BackupScheduleFactory(is_active=False)
@@ -75,7 +75,7 @@ class ExecuteBackupScheduleTaskTest(TestCase):
         self.assertEqual(self.future_schedule.backups.count(), 0)
 
 
-class ExecuteSnapshotScheduleTaskTest(TestCase):
+class SnapshotScheduleTaskTest(TestCase):
 
     def setUp(self):
         self.not_active_schedule = factories.SnapshotScheduleFactory(is_active=False)
