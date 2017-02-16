@@ -533,8 +533,7 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     restore_serializer_class = serializers.BackupRestorationSerializer
 
 
-class BaseScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                               structure_views.ResourceViewSet)):
+class BaseScheduleViewSet(structure_views.ResourceViewSet):
     disabled_actions = ['create']
 
     # method has to be overridden in order to avoid triggering of UpdateExecutor
@@ -600,13 +599,13 @@ class BaseScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetacla
     deactivate_validators = [_is_schedule_deactived]
 
 
-class BackupScheduleViewSet(BaseScheduleViewSet):
+class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, BaseScheduleViewSet)):
     queryset = models.BackupSchedule.objects.all()
     serializer_class = serializers.BackupScheduleSerializer
     filter_class = filters.BackupScheduleFilter
 
 
-class SnapshotScheduleViewSet(BaseScheduleViewSet):
+class SnapshotScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, BaseScheduleViewSet)):
     queryset = models.SnapshotSchedule.objects.all()
     serializer_class = serializers.SnapshotScheduleSerializer
     filter_class = filters.SnapshotScheduleFilter
