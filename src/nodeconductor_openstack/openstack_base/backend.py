@@ -1,5 +1,7 @@
 import datetime
 import hashlib
+import pickle
+import six
 import logging
 
 from django.core.cache import cache
@@ -32,7 +34,26 @@ logger = logging.getLogger(__name__)
 
 
 class OpenStackBackendError(ServiceBackendError):
-    pass
+    def __init__(self, *args, **kwargs):
+        if not args:
+            super(OpenStackBackendError, self).__init__(*args, **kwargs)
+
+        # OpenStack client exceptions, such as cinder_exceptions.ClientException
+        # are not serializable by Celery, because they use custom arguments *args
+        # and define __init__ method, but don't call Exception.__init__ method
+        # http://docs.celeryproject.org/en/latest/userguide/tasks.html#creating-pickleable-exceptions
+        # That's why when Celery worker tries to deserialize OpenStack client exception,
+        # it uses empty invalid *args. It leads to unrecoverable error and worker dies.
+        # When all workers are dead, all tasks are stuck in pending state forever.
+        # In order to fix this issue we serialize exception to text type explicitly.
+        args = list(args)
+        for i, arg in enumerate(args):
+            try:
+                pickle.loads(pickle.dumps(arg))
+            except:
+                args[i] = six.text_type(arg)
+
+        super(OpenStackBackendError, self).__init__(*args, **kwargs)
 
 
 class OpenStackSessionExpired(OpenStackBackendError):
