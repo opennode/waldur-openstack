@@ -316,7 +316,7 @@ class SnapshotSchedule(BaseSchedule):
     tracker = FieldTracker()
 
     def __str__(self):
-        return 'SnapshotSchedule of %s. Active: %s' % (self.instance, self.is_active)
+        return 'SnapshotSchedule of %s. Active: %s' % (self.source_volume, self.is_active)
 
     @classmethod
     def get_url_name(cls):
