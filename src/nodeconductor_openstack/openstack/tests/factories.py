@@ -173,7 +173,6 @@ class TenantFactory(factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
     state = models.Tenant.States.OK
     external_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
-    internal_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
 
     user_username = factory.Sequence(lambda n: 'tenant user%d' % n)
     user_password = core_utils.pwgen()

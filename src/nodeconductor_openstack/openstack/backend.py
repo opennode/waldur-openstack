@@ -1064,6 +1064,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         subnet = models.SubNet(
             name=backend_subnet['name'],
+            description=backend_subnet['description'],
             allocation_pools=backend_subnet['allocation_pools'],
             cidr=backend_subnet['cidr'],
             ip_version=backend_subnet.get('ip_version'),
@@ -1082,16 +1083,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         if subnet.modified < import_time:
             update_fields = ('name', 'cidr', 'allocation_pools', 'ip_version', 'gateway_ip', 'enable_dhcp')
             update_pulled_fields(subnet, imported_subnet, update_fields)
-
-    def _check_tenant_network(self, tenant):
-        neutron = self.neutron_client
-        # verify if the internal network to connect to exists
-        try:
-            neutron.show_network(tenant.internal_network_id)
-        except neutron_exceptions.NeutronClientException as e:
-            logger.exception('Internal network with id of %s was not found',
-                             tenant.internal_network_id)
-            six.reraise(OpenStackBackendError, e)
 
     @log_backend_action('pull floating ip')
     def pull_floating_ip(self, floating_ip):
@@ -1118,7 +1109,6 @@ class OpenStackBackend(BaseOpenStackBackend):
             logger.debug("Floating IP %s is already gone from tenant %s", backend_id, tenant_backend_id)
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
-
 
     @log_backend_action('create floating ip')
     def create_floating_ip(self, floating_ip):
@@ -1189,7 +1179,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         try:
             if not external:
                 ports = neutron.list_ports(device_id=router['id'], tenant_id=tenant_id)['ports']
-                if not ports:
+                if subnet_id in [port['fixed_ips'][0]['subnet_id'] for port in ports]:
                     neutron.add_interface_router(router['id'], {'subnet_id': subnet_id})
                     logger.info('Internal subnet %s was connected to the router %s.', subnet_id, router_name)
                 else:

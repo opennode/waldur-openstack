@@ -274,6 +274,14 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if instance.backups.exists():
             raise core_exceptions.IncorrectStateException('Cannot delete instance that has backups.')
 
+    def _is_shutoff_and_ok_or_erred(instance):
+        if instance.state == models.Instance.States.ERRED:
+            return
+        if (instance.state == models.Instance.States.OK and
+                instance.runtime_state == models.Instance.RuntimeStates.SHUTOFF):
+            return
+        raise core_exceptions.IncorrectStateException('Instance should be shutoff and OK or erred.')
+
     def destroy(self, request, uuid=None):
         """
         Deletion of an instance is done through sending a **DELETE** request to the instance URI.
@@ -311,14 +319,12 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             resource,
             force=force,
             delete_volumes=delete_volumes,
-            async=self.async_executor
+            async=self.async_executor,
         )
 
         return response.Response({'status': 'destroy was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
-    destroy_validators = [core_validators.StateValidator(models.Instance.States.OK, models.Instance.States.ERRED),
-                          core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF),
-                          _has_backups]
+    destroy_validators = [_is_shutoff_and_ok_or_erred, _has_backups]
     destroy_serializer_class = serializers.InstanceDeleteSerializer
 
     def _instance_has_external_ips(instance):
