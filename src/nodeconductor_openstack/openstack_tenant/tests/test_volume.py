@@ -135,7 +135,6 @@ class VolumeSnapshotTestCase(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_snapshot_metadata_is_populated(self):
-
         self.client.force_authenticate(self.fixture.owner)
         payload = {'name': '%s snapshot' % self.volume.name}
 
