@@ -171,7 +171,6 @@ class TenantFactory(factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
     state = models.Tenant.States.OK
     external_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
-    internal_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
 
     @classmethod
     def get_url(cls, tenant=None, action=None):

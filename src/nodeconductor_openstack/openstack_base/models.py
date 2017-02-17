@@ -73,3 +73,13 @@ class BaseSecurityGroupRule(models.Model):
     def __str__(self):
         return '%s (%s): %s (%s -> %s)' % \
                (self.security_group, self.protocol, self.cidr, self.from_port, self.to_port)
+
+
+class Port(models.Model):
+    # TODO: Use dedicated field: https://github.com/django-macaddress/django-macaddress
+    mac_address = models.CharField(max_length=32, blank=True)
+    ip4_address = models.GenericIPAddressField(null=True, blank=True, protocol='IPv4')
+    ip6_address = models.GenericIPAddressField(null=True, blank=True, protocol='IPv6')
+
+    class Meta(object):
+        abstract = True

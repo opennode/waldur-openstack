@@ -292,3 +292,26 @@ class BackupSchedule(structure_models.NewResource,
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-backup-schedule'
+
+
+class Network(core_models.DescribableMixin, structure_models.ServiceProperty):
+    is_external = models.BooleanField(default=False)
+    type = models.CharField(max_length=50, blank=True)
+    segmentation_id = models.IntegerField(null=True)
+
+
+class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
+    network = models.ForeignKey(Network, related_name='subnets')
+    cidr = models.CharField(max_length=32, blank=True)
+    gateway_ip = models.GenericIPAddressField(protocol='IPv4', null=True)
+    allocation_pools = JSONField(default={})
+    ip_version = models.SmallIntegerField(default=4)
+    enable_dhcp = models.BooleanField(default=True)
+    dns_nameservers = JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')
+
+
+class InternalIP(openstack_base_models.Port):
+    # Name "internal_ips" is reserved by virtual machine mixin and corresponds to list of internal IPs.
+    # So another related name should be used.
+    instance = models.ForeignKey(Instance, related_name='internal_ips_set')
+    subnet = models.ForeignKey(SubNet, related_name='internal_ips')

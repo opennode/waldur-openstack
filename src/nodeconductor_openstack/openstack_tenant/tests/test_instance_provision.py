@@ -1,7 +1,5 @@
 from rest_framework import status, test
 
-from nodeconductor.structure.models import ServiceSettings
-
 from . import factories, fixtures
 
 
