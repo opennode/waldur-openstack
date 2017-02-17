@@ -23,7 +23,7 @@ class TenantBackgroundPullTask(structure_tasks.BackgroundPullTask):
         try:
             backend = tenant.get_backend()
             backend.pull_tenant_security_groups(tenant)
-            backend.pull_tenant_floating_ips(tenant)
+            backend.pull_floating_ips(tenant)
             backend.pull_tenant_quotas(tenant)
         except ServiceBackendError as e:
             error_message = six.text_type(e)

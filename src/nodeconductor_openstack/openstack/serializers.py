@@ -17,7 +17,7 @@ from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
 from nodeconductor.structure.managers import filter_queryset_for_user
 
-from . import models
+from . import models, password_validation
 from .backend import OpenStackBackendError
 
 
@@ -604,3 +604,21 @@ def _generate_subnet_allocation_pool(cidr):
         'start': subnet_settings['ALLOCATION_POOL_START'].format(**format_data),
         'end': subnet_settings['ALLOCATION_POOL_END'].format(**format_data),
     }]
+
+
+class TenantChangePasswordSerializer(serializers.Serializer):
+    user_password = serializers.CharField(max_length=50,
+                                          allow_blank=True,
+                                          validators=[password_validation.validate_password],
+                                          help_text='New tenant user password.')
+
+    def validate_user_password(self, user_password):
+        if self.instance.user_password == user_password:
+            raise serializers.ValidationError('New password cannot match the old password.')
+
+        return user_password
+
+    def update(self, tenant, validated_data):
+        tenant.user_password = validated_data['user_password']
+        tenant.save(update_fields=['user_password'])
+        return tenant

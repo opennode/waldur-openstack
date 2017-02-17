@@ -5,7 +5,9 @@ import factory
 from random import randint
 from django.core.urlresolvers import reverse
 
+from nodeconductor.core import utils as core_utils
 from nodeconductor.structure.tests import factories as structure_factories
+
 from .. import models
 
 
@@ -171,6 +173,9 @@ class TenantFactory(factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
     state = models.Tenant.States.OK
     external_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
+
+    user_username = factory.Sequence(lambda n: 'tenant user%d' % n)
+    user_password = core_utils.pwgen()
 
     @classmethod
     def get_url(cls, tenant=None, action=None):
