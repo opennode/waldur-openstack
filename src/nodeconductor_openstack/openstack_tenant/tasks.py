@@ -212,7 +212,12 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
     def _set_erred(self, resource):
         resource.set_erred()
         resource.runtime_state = ''
-        resource.error_message = 'Does not exist at backend.'
+        message = 'Does not exist at backend.'
+        if message not in resource.error_message:
+            if not resource.error_message:
+                resource.error_message = message
+            else:
+                resource.error_message = resource.error_message + ' (%s)' % message
         resource.save()
         logger.warning('%s %s (PK: %s) does not exist at backend.' % (
             resource.__class__.__name__, resource, resource.pk))
