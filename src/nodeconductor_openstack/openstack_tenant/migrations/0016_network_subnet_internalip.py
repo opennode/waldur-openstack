@@ -16,6 +16,19 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
+            name='InternalIP',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('mac_address', models.CharField(max_length=32, blank=True)),
+                ('ip4_address', models.GenericIPAddressField(null=True, protocol=b'IPv4', blank=True)),
+                ('ip6_address', models.GenericIPAddressField(null=True, protocol=b'IPv6', blank=True)),
+                ('instance', models.ForeignKey(related_name='internal_ips_set', to='openstack_tenant.Instance')),
+            ],
+            options={
+                'abstract': False,
+            },
+        ),
+        migrations.CreateModel(
             name='Network',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
@@ -52,5 +65,10 @@ class Migration(migrations.Migration):
             options={
                 'abstract': False,
             },
+        ),
+        migrations.AddField(
+            model_name='internalip',
+            name='subnet',
+            field=models.ForeignKey(related_name='internal_ips', to='openstack_tenant.SubNet'),
         ),
     ]
