@@ -68,3 +68,11 @@ class OpenStackTenantFixture(openstack_fixtures.OpenStackFixture):
             state=models.Instance.States.OK,
             instance=self.openstack_instance,
         )
+
+    @cached_property
+    def openstack_snapshot_schedule(self):
+        return factories.SnapshotScheduleFactory(
+            service_project_link=self.openstack_tenant_spl,
+            state=models.Volume.States.OK,
+            source_volume=self.openstack_volume,
+        )
