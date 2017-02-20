@@ -231,14 +231,14 @@ class BackupScheduleFactory(factory.DjangoModelFactory):
     schedule = '*/5 * * * *'
 
     @classmethod
-    def get_url(self, schedule, action=None):
+    def get_url(cls, schedule, action=None):
         if schedule is None:
             schedule = BackupScheduleFactory()
         url = 'http://testserver' + reverse('openstacktenant-backup-schedule-detail', kwargs={'uuid': schedule.uuid})
         return url if action is None else url + action + '/'
 
     @classmethod
-    def get_list_url(self):
+    def get_list_url(cls):
         return 'http://testserver' + reverse('openstacktenant-backup-schedule-list')
 
 
@@ -305,12 +305,12 @@ class SnapshotScheduleFactory(factory.DjangoModelFactory):
     schedule = '*/5 * * * *'
 
     @classmethod
-    def get_url(self, schedule, action=None):
+    def get_url(cls, schedule, action=None):
         if schedule is None:
             schedule = SnapshotScheduleFactory()
         url = 'http://testserver' + reverse('openstacktenant-snapshot-schedule-detail', kwargs={'uuid': schedule.uuid})
         return url if action is None else url + action + '/'
 
     @classmethod
-    def get_list_url(self):
+    def get_list_url(cls):
         return 'http://testserver' + reverse('openstacktenant-snapshot-schedule-list')
