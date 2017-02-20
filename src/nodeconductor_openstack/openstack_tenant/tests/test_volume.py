@@ -140,8 +140,7 @@ class VolumeSnapshotTestCase(test.APITransactionTestCase):
 
         response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        snapshot = models.Snapshot.objects.filter(name=payload['name']).first()
-        self.assertIsNotNone(snapshot)
+        snapshot = models.Snapshot.objects.get(uuid=response.data['uuid'])
         self.assertIn('source_volume_name', snapshot.metadata)
         self.assertEqual(snapshot.metadata['source_volume_name'], self.volume.name)
         self.assertEqual(snapshot.metadata['source_volume_description'], self.volume.description)
