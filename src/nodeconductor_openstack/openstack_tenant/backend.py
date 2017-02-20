@@ -3,6 +3,7 @@ import logging
 import time
 
 from django.db import transaction
+from django.db.models import Count
 from django.utils import six, timezone, dateparse
 
 from ceilometerclient import exc as ceilometer_exceptions
@@ -35,16 +36,14 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
     def external_network_id(self):
         return self.settings.options['external_network_id']
 
-    @property
-    def internal_network_id(self):
-        return self.settings.options['internal_network_id']
-
     def sync(self):
         self._pull_flavors()
         self._pull_images()
         self._pull_floating_ips()
         self._pull_security_groups()
         self._pull_quotas()
+        self._pull_networks()
+        self._pull_subnets()
 
     def _pull_flavors(self):
         nova = self.nova_client
@@ -151,12 +150,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 })
         security_group.rules.filter(backend_id__in=cur_rules.keys()).delete()
 
-    def _pull_quotas(self):
-        for quota_name, limit in self.get_tenant_quotas_limits(self.tenant_id).items():
-            self.settings.set_quota_limit(quota_name, limit)
-        for quota_name, usage in self.get_tenant_quotas_usage(self.tenant_id).items():
-            self.settings.set_quota_usage(quota_name, usage, fail_silently=True)
-
     def _normalize_security_group_rule(self, rule):
         if rule['ip_protocol'] is None:
             rule['ip_protocol'] = ''
@@ -165,6 +158,72 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             rule['ip_range']['cidr'] = '0.0.0.0/0'
 
         return rule
+
+    def _pull_quotas(self):
+        for quota_name, limit in self.get_tenant_quotas_limits(self.tenant_id).items():
+            self.settings.set_quota_limit(quota_name, limit)
+        for quota_name, usage in self.get_tenant_quotas_usage(self.tenant_id).items():
+            self.settings.set_quota_usage(quota_name, usage, fail_silently=True)
+
+    def _pull_networks(self):
+        neutron = self.neutron_client
+        try:
+            networks = neutron.list_networks(tenant_id=self.tenant_id)['networks']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        with transaction.atomic():
+            cur_networks = self._get_current_properties(models.Network)
+            for backend_network in networks:
+                cur_networks.pop(backend_network['id'], None)
+                defaults = {
+                    'name': backend_network['name'],
+                    'description': backend_network['description'],
+                }
+                if backend_network.get('provider:network_type'):
+                    defaults['type'] = backend_network['provider:network_type']
+                if backend_network.get('provider:segmentation_id'):
+                    defaults['segmentation_id'] = backend_network['provider:segmentation_id']
+                models.Network.objects.update_or_create(
+                    settings=self.settings,
+                    backend_id=backend_network['id'],
+                    defaults=defaults)
+
+            models.Network.objects.filter(backend_id__in=cur_networks.keys()).delete()
+
+    def _pull_subnets(self):
+        neutron = self.neutron_client
+        try:
+            subnets = neutron.list_subnets(tenant_id=self.tenant_id)['subnets']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        with transaction.atomic():
+            cur_subnets = self._get_current_properties(models.SubNet)
+            for backend_subnet in subnets:
+                cur_subnets.pop(backend_subnet['id'], None)
+                try:
+                    network = models.Network.objects.get(
+                        settings=self.settings, backend_id=backend_subnet['network_id'])
+                except models.Network.DoesNotExist:
+                    raise OpenStackBackendError(
+                        'Cannot pull subnet for network with id "%s". Network is not pulled yet.')
+                defaults = {
+                    'name': backend_subnet['name'],
+                    'description': backend_subnet['description'],
+                    'allocation_pools': backend_subnet['allocation_pools'],
+                    'cidr': backend_subnet['cidr'],
+                    'ip_version': backend_subnet.get('ip_version'),
+                    'gateway_ip': backend_subnet.get('gateway_ip'),
+                    'enable_dhcp': backend_subnet.get('enable_dhcp', False),
+                    'network': network,
+                }
+                models.SubNet.objects.update_or_create(
+                    settings=self.settings,
+                    backend_id=backend_subnet['id'],
+                    defaults=defaults)
+
+            models.SubNet.objects.filter(backend_id__in=cur_subnets.keys()).delete()
 
     def _get_current_properties(self, model):
         return {p.backend_id: p for p in model.objects.filter(settings=self.settings)}
@@ -439,6 +498,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
     def create_instance(self, instance, backend_flavor_id=None,
                         allocate_floating_ip=False, public_key=None, floating_ip_uuid=None):
         nova = self.nova_client
+        neutron = self.neutron_client
 
         floating_ip = None
         if floating_ip_uuid:
@@ -470,6 +530,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     'Current installation can create only instance with 1 system volume and 1 data volume.')
 
             security_group_ids = instance.security_groups.values_list('backend_id', flat=True)
+            networks = models.Network.objects.filter(settings=self.settings).annotate(Count('subnets'))
+            network_ids = [{'net-id': network.backend_id} for network in networks if network.subnets__count]
 
             server_create_parameters = dict(
                 name=instance.name,
@@ -492,9 +554,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                         'delete_on_termination': True,
                     },
                 ],
-                nics=[
-                    {'net-id': self.internal_network_id}
-                ],
+                nics=network_ids,
                 key_name=backend_public_key.name if backend_public_key is not None else None,
                 security_groups=security_group_ids,
             )
@@ -518,14 +578,29 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
             logger.debug("About to infer internal ip addresses of instance %s", instance.uuid)
             try:
-                server = nova.servers.get(server.id)
-                fixed_address = server.addresses.values()[0][0]['addr']
+                ports = neutron.list_ports(device_id=instance.backend_id)['ports']
             except (nova_exceptions.ClientException, KeyError, IndexError):
                 logger.exception(
                     "Failed to infer internal ip addresses of instance %s", instance.uuid)
             else:
-                instance.internal_ips = fixed_address
-                instance.save()
+                for port in ports:
+                    fixed_ip = port['fixed_ips'][0]
+                    subnet_backend_id = fixed_ip['subnet_id']
+                    try:
+                        subnet = models.SubNet.objects.get(settings=self.settings, backend_id=subnet_backend_id)
+                    except models.SubNet.DoesNotExist:
+                        # subnet was not pulled yet. Floating IP will be pulled with subnet later.
+                        continue
+                    instance.internal_ips_set.create(
+                        subnet=subnet,
+                        mac_address=port['mac_address'],
+                        ip4_address=fixed_ip['ip_address'],
+                    )
+                # XXX: Initialize instance "internal_ips" field for backward compatibility.
+                #      Should be remove in WAL-336
+                if instance.internal_ips_set.exists():
+                    instance.internal_ips = instance.internal_ips_set.first().ip4_address
+                    instance.save()
                 logger.info(
                     "Successfully inferred internal ip addresses of instance %s", instance.uuid)
 
@@ -594,7 +669,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             nova.servers.add_floating_ip(
                 server=instance.backend_id,
                 address=floating_ip.address,
-                fixed_address=instance.internal_ips
+                # XXX: Hotfix. We should allow user to define what internal IP should be used for instance.
+                fixed_address=instance.internal_ips_set.first().ip4_address,
             )
         except nova_exceptions.ClientException as e:
             floating_ip.runtime_state = 'DOWN'
