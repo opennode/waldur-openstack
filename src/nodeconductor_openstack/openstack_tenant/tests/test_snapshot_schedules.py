@@ -1,12 +1,5 @@
-import datetime
-
-import mock
-from croniter import croniter
 from ddt import ddt, data
-from django.conf import settings
-from nodeconductor.core.tests import helpers
-from nodeconductor.structure.tests import factories as structure_factories
-from pytz import timezone
+
 from rest_framework import status
 from rest_framework import test
 
@@ -72,24 +65,25 @@ class SnapshotScheduleRetrieveTest(BaseSnapshotScheduleTest):
         self.url = factories.SnapshotScheduleFactory.get_list_url()
 
     @data('owner', 'global_support', 'admin', 'manager', 'staff')
-    def user_has_permissions_to_list_snapshot_schedules(self, user):
+    def test_user_can_see_snapshots_if_he_has_permissions(self, user):
         self.fixture.openstack_snapshot_schedule
         self.client.force_authenticate(getattr(self.fixture, user))
 
         response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, status=status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['uuid'], self.fixture.openstack_snapshot_schedule.uuid.hex)
 
     @data('user')
-    def user_has_no_permissions_to_list_snapshot_schedules(self, user):
+    def test_user_can_not_see_snapshots_if_he_has_no_permissions(self, user):
         self.fixture.openstack_snapshot_schedule
         self.client.force_authenticate(getattr(self.fixture, user))
 
         response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, status=status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 0)
 
 
 @ddt
@@ -100,9 +94,9 @@ class SnapshotScheduleDeleteTest(BaseSnapshotScheduleTest):
         self.url = factories.SnapshotScheduleFactory.get_url(self.fixture.openstack_snapshot_schedule)
 
     @data('owner', 'admin', 'staff')
-    def user_can_delete_snapshot(self, user):
+    def test_user_can_delete_snapshot(self, user):
         self.client.force_authenticate(getattr(self.fixture, user))
 
         response = self.client.delete(self.url)
-        self.assertEqual(response.status_code, status=status.HTTP_204_NO_CONTENT)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(models.SnapshotSchedule.objects.filter(pk=self.fixture.openstack_snapshot_schedule.pk).exists())
