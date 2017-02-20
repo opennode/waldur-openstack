@@ -344,4 +344,3 @@ class InternalIP(openstack_base_models.Port):
     # So another related name should be used.
     instance = models.ForeignKey(Instance, related_name='internal_ips_set')
     subnet = models.ForeignKey(SubNet, related_name='internal_ips')
-
