@@ -232,10 +232,10 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
             resource.__class__.__name__, resource, resource.pk))
 
 
-class BaseScheduleTask(core_tasks.BackendMethodTask):
+class BaseScheduleTask(core_tasks.BackgroundTask):
     model = NotImplemented
 
-    def is_equal(self, other_task, serialized_service_settings):
+    def is_equal(self, other_task):
         return self.name == other_task.get('name')
 
     def run(self):
@@ -249,6 +249,7 @@ class BaseScheduleTask(core_tasks.BackendMethodTask):
                     schedule.call_count += 1
                     schedule.save()
                     resource = self._create_resource(schedule, kept_until=kept_until)
+                    # TODO [TM:2/20/17] fix kept until.
             except quotas_exceptions.QuotaValidationError as e:
                 message = 'Failed to schedule "%s" creation. Error: %s' % (self.model.__name__, e)
                 logger.exception(
@@ -267,6 +268,7 @@ class BaseScheduleTask(core_tasks.BackendMethodTask):
 
     def _get_create_executor(self):
         raise NotImplementedError()
+
 
 class ScheduleBackups(BaseScheduleTask):
     name = 'openstack_tenant.ScheduleBackups'
@@ -293,7 +295,7 @@ class ScheduleBackups(BaseScheduleTask):
 class DeleteExpiredBackups(core_tasks.BackgroundTask):
     name = 'openstack_tenant.DeleteExpiredBackups'
 
-    def is_equal(self, other_task, serialized_service_settings):
+    def is_equal(self, other_task):
         return self.name == other_task.get('name')
 
     def run(self):
@@ -328,7 +330,7 @@ class ScheduleSnapshots(BaseScheduleTask):
 class DeleteExpiredSnapshots(core_tasks.BackgroundTask):
     name = 'openstack_tenant.DeleteExpiredSnapshots'
 
-    def is_equal(self, other_task, serialized_service_settings):
+    def is_equal(self, other_task):
         return self.name == other_task.get('name')
 
     def run(self):
@@ -340,7 +342,7 @@ class DeleteExpiredSnapshots(core_tasks.BackgroundTask):
 class SetErredStuckResources(core_tasks.BackgroundTask):
     name = 'openstack_tenant.SetErredStuckResources'
 
-    def is_equal(self, other_task, serialized_service_settings):
+    def is_equal(self, other_task):
         return self.name == other_task.get('name')
 
     def run(self):
