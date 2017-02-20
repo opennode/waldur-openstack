@@ -60,3 +60,19 @@ class OpenStackTenantFixture(openstack_fixtures.OpenStackFixture):
             runtime_state=models.Volume.RuntimeStates.OFFLINE,
             source_volume=self.openstack_volume,
         )
+
+    @cached_property
+    def openstack_backup_schedule(self):
+        return factories.BackupScheduleFactory(
+            service_project_link=self.openstack_tenant_spl,
+            state=models.Instance.States.OK,
+            instance=self.openstack_instance,
+        )
+
+    @cached_property
+    def openstack_snapshot_schedule(self):
+        return factories.SnapshotScheduleFactory(
+            service_project_link=self.openstack_tenant_spl,
+            state=models.Volume.States.OK,
+            source_volume=self.openstack_volume,
+        )

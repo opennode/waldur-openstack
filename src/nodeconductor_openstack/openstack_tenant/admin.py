@@ -90,7 +90,7 @@ class BackupAdmin(admin.ModelAdmin):
     project.short_description = 'Project'
 
 
-class BackupScheduleForm(forms.ModelForm):
+class BaseScheduleForm(forms.ModelForm):
     def clean_timezone(self):
         tz = self.cleaned_data['timezone']
         if tz not in pytz.all_timezones:
@@ -99,11 +99,19 @@ class BackupScheduleForm(forms.ModelForm):
         return self.cleaned_data['timezone']
 
 
-class BackupScheduleAdmin(admin.ModelAdmin):
-    form = BackupScheduleForm
+class BaseScheduleAdmin(admin.ModelAdmin):
+    form = BaseScheduleForm
     readonly_fields = ('next_trigger_at',)
     list_filter = ('is_active',)
-    list_display = ('uuid', 'next_trigger_at', 'is_active', 'instance', 'timezone')
+    list_display = ('uuid', 'next_trigger_at', 'is_active', 'timezone')
+
+
+class BackupScheduleAdmin(BaseScheduleAdmin):
+    list_display = BaseScheduleAdmin.list_display + ('instance',)
+
+
+class SnapshotScheduleAdmin(BaseScheduleAdmin):
+    list_display = BaseScheduleAdmin.list_display + ('source_volume',)
 
 
 admin.site.register(models.OpenStackTenantService, structure_admin.ServiceAdmin)
@@ -117,3 +125,4 @@ admin.site.register(models.Snapshot, SnapshotAdmin)
 admin.site.register(models.Instance, InstanceAdmin)
 admin.site.register(models.Backup, BackupAdmin)
 admin.site.register(models.BackupSchedule, BackupScheduleAdmin)
+admin.site.register(models.SnapshotSchedule, SnapshotScheduleAdmin)

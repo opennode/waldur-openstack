@@ -173,7 +173,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     extend_validators = [_is_volume_bootable,
                          _is_volume_instance_shutoff,
-                         core_validators.StateValidator(models.Instance.States.OK)]
+                         core_validators.StateValidator(models.Volume.States.OK)]
     extend_serializer_class = serializers.VolumeExtendSerializer
 
     @decorators.detail_route(methods=['post'])
@@ -189,6 +189,16 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     snapshot_serializer_class = serializers.SnapshotSerializer
 
     @decorators.detail_route(methods=['post'])
+    def create_snapshot_schedule(self, request, uuid=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    create_snapshot_schedule_validators = [core_validators.StateValidator(models.Volume.States.OK)]
+    create_snapshot_schedule_serializer_class = serializers.SnapshotScheduleSerializer
+
+    @decorators.detail_route(methods=['post'])
     def attach(self, request, uuid=None):
         """ Attach volume to instance """
         volume = self.get_object()
@@ -200,7 +210,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response({'status': 'attach was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     attach_validators = [core_validators.RuntimeStateValidator('available'),
-                         core_validators.StateValidator(models.Instance.States.OK)]
+                         core_validators.StateValidator(models.Volume.States.OK)]
     attach_serializer_class = serializers.VolumeAttachSerializer
 
     @decorators.detail_route(methods=['post'])
@@ -212,7 +222,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     detach_validators = [_is_volume_bootable,
                          core_validators.RuntimeStateValidator('in-use'),
-                         core_validators.StateValidator(models.Instance.States.OK)]
+                         core_validators.StateValidator(models.Volume.States.OK)]
 
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
@@ -529,11 +539,7 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     restore_serializer_class = serializers.BackupRestorationSerializer
 
 
-class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                               structure_views.ResourceViewSet)):
-    queryset = models.BackupSchedule.objects.all()
-    serializer_class = serializers.BackupScheduleSerializer
-    filter_class = filters.BackupScheduleFilter
+class BaseScheduleViewSet(structure_views.ResourceViewSet):
     disabled_actions = ['create']
 
     # method has to be overridden in order to avoid triggering of UpdateExecutor
@@ -544,51 +550,51 @@ class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetac
     # method has to be overridden in order to avoid triggering of DeleteExecutor
     # which is a default action for all ResourceViewSet(s)
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.delete()
+        resource = self.get_object()
+        resource.delete()
         return response.Response(status=status.HTTP_204_NO_CONTENT)
 
     def list(self, request, *args, **kwargs):
         """
         For schedule to work, it should be activated - it's flag is_active set to true. If it's not, it won't be used
-        for triggering the next backups. Schedule will be deactivated if backup fails.
+        for triggering the next operations. Schedule will be deactivated if operation fails.
 
-        - **retention time** is a duration in days during which backup is preserved.
-        - **maximal_number_of_backups** is a maximal number of active backups connected to this schedule.
-        - **schedule** is a backup schedule defined in a cron format.
-        - **timezone** is used for calculating next run of the backup (optional).
+        - **retention time** is a duration in days during which resource is preserved.
+        - **maximal_number_of_resources** is a maximal number of active resources connected to this schedule.
+        - **schedule** is a resource schedule defined in a cron format.
+        - **timezone** is used for calculating next run of the resource schedule (optional).
 
         A schedule can be it two states: active or not. Non-active states are not used for scheduling the new tasks.
-        Only users with write access to backup schedule source can activate or deactivate schedule.
+        Only users with write access to schedule resource can activate or deactivate a schedule.
         """
-        return super(BackupScheduleViewSet, self).list(self, request, *args, **kwargs)
+        return super(BaseScheduleViewSet, self).list(self, request, *args, **kwargs)
 
-    def _is_backup_schedule_active(backup_schedule):
-        if backup_schedule.is_active:
-            raise core_exceptions.IncorrectStateException('Backup schedule is already activated.')
+    def _is_schedule_active(resource_schedule):
+        if resource_schedule.is_active:
+            raise core_exceptions.IncorrectStateException('Resource schedule is already activated.')
 
     @decorators.detail_route(methods=['post'])
     def activate(self, request, uuid):
         """
-        Activate a backup schedule. Note that
+        Activate a resource schedule. Note that
         if a schedule is already active, this will result in **409 CONFLICT** code.
         """
         schedule = self.get_object()
         schedule.is_active = True
         schedule.error_message = ''
         schedule.save()
-        return response.Response({'status': 'Backup schedule was activated'})
+        return response.Response({'status': 'A schedule was activated'})
 
-    activate_validators = [_is_backup_schedule_active]
+    activate_validators = [_is_schedule_active]
 
-    def _is_backup_schedule_deactived(backup_schedule):
-        if not backup_schedule.is_active:
-            raise core_exceptions.IncorrectStateException('Backup schedule is already deactivated.')
+    def _is_schedule_deactived(resource_schedule):
+        if not resource_schedule.is_active:
+            raise core_exceptions.IncorrectStateException('A schedule is already deactivated.')
 
     @decorators.detail_route(methods=['post'])
     def deactivate(self, request, uuid):
         """
-        Deactivate a backup schedule. Note that
+        Deactivate a resource schedule. Note that
         if a schedule was already deactivated, this will result in **409 CONFLICT** code.
         """
         schedule = self.get_object()
@@ -596,4 +602,16 @@ class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetac
         schedule.save()
         return response.Response({'status': 'Backup schedule was deactivated'})
 
-    deactivate_validators = [_is_backup_schedule_deactived]
+    deactivate_validators = [_is_schedule_deactived]
+
+
+class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, BaseScheduleViewSet)):
+    queryset = models.BackupSchedule.objects.all()
+    serializer_class = serializers.BackupScheduleSerializer
+    filter_class = filters.BackupScheduleFilter
+
+
+class SnapshotScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, BaseScheduleViewSet)):
+    queryset = models.SnapshotSchedule.objects.all()
+    serializer_class = serializers.SnapshotScheduleSerializer
+    filter_class = filters.SnapshotScheduleFilter

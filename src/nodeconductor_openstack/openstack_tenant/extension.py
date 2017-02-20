@@ -40,6 +40,16 @@ class OpenStackTenantExtension(NodeConductorExtension):
                 'schedule': timedelta(minutes=10),
                 'args': (),
             },
+            'openstacktenant-schedule-snapshots': {
+                'task': 'openstack_tenant.ScheduleSnapshots',
+                'schedule': timedelta(minutes=10),
+                'args': (),
+            },
+            'openstacktenant-delete-expired-snapshots': {
+                'task': 'openstack_tenant.DeleteExpiredSnapshots',
+                'schedule': timedelta(minutes=10),
+                'args': (),
+            },
             'openstacktenant-set-erred-stuck-resources': {
                 'task': 'openstack_tenant.SetErredStuckResources',
                 'schedule': timedelta(minutes=10),

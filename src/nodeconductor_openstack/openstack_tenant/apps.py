@@ -60,6 +60,24 @@ class OpenStackTenantConfig(AppConfig):
             dispatch_uid='openstack_tenant.handlers.log_backup_schedule_deletion',
         )
 
+        signals.post_save.connect(
+            handlers.log_snapshot_schedule_creation,
+            sender=models.SnapshotSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_snapshot_schedule_creation',
+        )
+
+        signals.post_save.connect(
+            handlers.log_snapshot_schedule_action,
+            sender=models.SnapshotSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_snapshot_schedule_action',
+        )
+
+        signals.pre_delete.connect(
+            handlers.log_snapshot_schedule_deletion,
+            sender=models.SnapshotSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_snapshot_schedule_deletion',
+        )
+
         fsm_signals.post_transition.connect(
             handlers.create_floating_ip,
             sender=FloatingIP,
