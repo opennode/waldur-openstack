@@ -313,11 +313,11 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         validated_data['source_volume'] = source_volume = self.context['view'].get_object()
         validated_data['service_project_link'] = source_volume.service_project_link
         validated_data['size'] = source_volume.size
-        validated_data['metadata'] = SnapshotSerializer.get_snapshot_metadata(source_volume)
+        validated_data['metadata'] = self.get_snapshot_metadata(source_volume)
         return super(SnapshotSerializer, self).create(validated_data)
 
-    @classmethod
-    def get_snapshot_metadata(self, volume):
+    @staticmethod
+    def get_snapshot_metadata(volume):
         return {
             'source_volume_name': volume.name,
             'source_volume_description': volume.description,
