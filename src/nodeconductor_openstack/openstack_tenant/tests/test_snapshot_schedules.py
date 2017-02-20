@@ -76,7 +76,7 @@ class SnapshotScheduleRetrieveTest(BaseSnapshotScheduleTest):
         self.assertEqual(response.data[0]['uuid'], self.fixture.openstack_snapshot_schedule.uuid.hex)
 
     @data('user')
-    def test_user_can_not_see_snapshots_if_he_has_no_permissions(self, user):
+    def test_user_can_not_see_snapshots_if_he_has_no_project_level_permissions(self, user):
         self.fixture.openstack_snapshot_schedule
         self.client.force_authenticate(getattr(self.fixture, user))
 
