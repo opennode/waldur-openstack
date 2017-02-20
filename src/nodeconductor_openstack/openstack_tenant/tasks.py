@@ -241,6 +241,7 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
     def run(self):
         schedules = self.model.objects.filter(is_active=True, next_trigger_at__lt=timezone.now())
         for schedule in schedules:
+            kept_until = None
             if schedule.retention_time:
                 kept_until = timezone.now() + timezone.timedelta(days=schedule.retention_time)
 
@@ -249,7 +250,6 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
                     schedule.call_count += 1
                     schedule.save()
                     resource = self._create_resource(schedule, kept_until=kept_until)
-                    # TODO [TM:2/20/17] fix kept until.
             except quotas_exceptions.QuotaValidationError as e:
                 message = 'Failed to schedule "%s" creation. Error: %s' % (self.model.__name__, e)
                 logger.exception(
