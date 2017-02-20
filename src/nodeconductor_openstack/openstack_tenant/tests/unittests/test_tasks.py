@@ -77,28 +77,29 @@ class BackupScheduleTaskTest(TestCase):
 
 class SnapshotScheduleTaskTest(TestCase):
 
-    def setUp(self):
+    def test_command_does_not_create_snapshots_created_for_not_active_schedules(self):
         self.not_active_schedule = factories.SnapshotScheduleFactory(is_active=False)
 
-        volume = factories.VolumeFactory(state=models.Volume.States.OK)
-        self.schedule_for_execution = factories.SnapshotScheduleFactory(source_volume=volume)
-        self.schedule_for_execution.next_trigger_at = timezone.now() - timedelta(minutes=10)
-        self.schedule_for_execution.save()
-
-        self.future_schedule = factories.SnapshotScheduleFactory(source_volume=volume)
-        self.future_schedule.next_trigger_at = timezone.now() + timedelta(minutes=2)
-        self.future_schedule.save()
-
-    def test_command_does_not_create_snapshots_created_for_not_active_schedules(self):
         tasks.ScheduleSnapshots().run()
+
         self.assertEqual(self.not_active_schedule.snapshots.count(), 0)
 
     def test_command_create_one_snapshot_for_schedule_with_next_trigger_in_past(self):
+        self.schedule_for_execution = factories.SnapshotScheduleFactory()
+        self.schedule_for_execution.next_trigger_at = timezone.now() - timedelta(minutes=10)
+        self.schedule_for_execution.save()
+
         tasks.ScheduleSnapshots().run()
+
         self.assertEqual(self.schedule_for_execution.snapshots.count(), 1)
 
     def test_command_does_not_create_snapshots_created_for_schedule_with_next_trigger_in_future(self):
+        self.future_schedule = factories.SnapshotScheduleFactory()
+        self.future_schedule.next_trigger_at = timezone.now() + timedelta(minutes=2)
+        self.future_schedule.save()
+
         tasks.ScheduleSnapshots().run()
+
         self.assertEqual(self.future_schedule.snapshots.count(), 0)
 
 
