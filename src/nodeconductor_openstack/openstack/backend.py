@@ -1179,7 +1179,9 @@ class OpenStackBackend(BaseOpenStackBackend):
         try:
             if not external:
                 ports = neutron.list_ports(device_id=router['id'], tenant_id=tenant_id)['ports']
-                if subnet_id in [port['fixed_ips'][0]['subnet_id'] for port in ports]:
+                if not ports:
+                # XXX: Ilja: revert to old behaviour as new check breaks setup of router legs
+                # if subnet_id in [port['fixed_ips'][0]['subnet_id'] for port in ports]:
                     neutron.add_interface_router(router['id'], {'subnet_id': subnet_id})
                     logger.info('Internal subnet %s was connected to the router %s.', subnet_id, router_name)
                 else:
