@@ -271,9 +271,6 @@ class BackupRestoration(core_models.UuidMixin, TimeStampedModel):
         customer_path = 'backup__service_project_link__project__customer'
         project_path = 'backup__service_project_link__project'
 
-    def get_backend(self):
-        return self.backup.get_backend()
-
 
 class BaseSchedule(structure_models.NewResource, core_models.ScheduleMixin):
     retention_time = models.PositiveIntegerField(
