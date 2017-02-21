@@ -233,6 +233,7 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     delete_executor = executors.SnapshotDeleteExecutor
     pull_executor = executors.SnapshotPullExecutor
     filter_class = filters.SnapshotFilter
+    disabled_actions = ['create']
 
     @decorators.detail_route(methods=['post'])
     def restore(self, request, uuid=None):
