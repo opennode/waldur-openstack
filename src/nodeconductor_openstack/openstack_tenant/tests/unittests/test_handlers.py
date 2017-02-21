@@ -158,7 +158,7 @@ class NetworkHandlerTest(TestCase):
         self.tenant = openstack_factories.TenantFactory()
         self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
 
-    def test_network_is_created_when_openstack_network_is_created_and_transitioned_to_the_right_state(self):
+    def test_network_is_created_when_openstack_network_is_created_and_transitioned_to_the_OK_state(self):
         openstack_network = openstack_factories.NetworkFactory(tenant=self.tenant)
         self.assertEqual(models.Network.objects.count(), 0)
 
@@ -216,7 +216,7 @@ class SubNetHandlerTest(TestCase):
         self.tenant = openstack_factories.TenantFactory()
         self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
 
-    def test_subnet_is_created_when_openstack_subnet_is_created_and_transitioned_to_the_right_state(self):
+    def test_subnet_is_created_when_openstack_subnet_is_created_and_transitioned_to_the_OK_state(self):
         openstack_subnet = openstack_factories.SubNetFactory(network__tenant=self.tenant)
         factories.NetworkFactory(settings=self.service_settings)
         self.assertEqual(models.SubNet.objects.count(), 0)
