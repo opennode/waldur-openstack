@@ -299,7 +299,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Snapshot
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_volume', 'size', 'metadata', 'runtime_state', 'source_volume_name', 'action', 'action_details',
-            'restorations',
+            'restorations', 'kept_until',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'size', 'source_volume', 'metadata', 'runtime_state', 'action',
