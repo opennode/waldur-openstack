@@ -819,7 +819,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             'kept_until', 'metadata', 'instance', 'instance_name', 'restorations',
             'backup_schedule', 'backup_schedule_uuid')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'instance', 'service_project_link')
+            'instance', 'service_project_link', 'backup_schedule')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
