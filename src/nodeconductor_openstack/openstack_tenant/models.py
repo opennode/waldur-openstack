@@ -168,10 +168,6 @@ class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
         customer_path = 'snapshot__service_project_link__project__customer'
         project_path = 'snapshot__service_project_link__project'
 
-    @classmethod
-    def get_url_name(cls):
-        return 'openstacktenant-snapshot-restoration'
-
 
 class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMixin, structure_models.NewResource):
 
@@ -277,10 +273,6 @@ class BackupRestoration(core_models.UuidMixin, TimeStampedModel):
 
     def get_backend(self):
         return self.backup.get_backend()
-
-    @classmethod
-    def get_url_name(cls):
-        return 'openstacktenant-backup-restoration'
 
 
 class BaseSchedule(structure_models.NewResource, core_models.ScheduleMixin):
