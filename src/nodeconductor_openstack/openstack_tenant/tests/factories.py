@@ -325,3 +325,13 @@ class NetworkFactory(factory.DjangoModelFactory):
     is_external = False
     type = factory.Sequence(lambda n: 'network type%s' % n)
     segmentation_id = 8
+
+
+class SubNetFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.SubNet
+
+    name = factory.Sequence(lambda n: 'network%s' % n)
+    settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
+    network = factory.SubFactory(NetworkFactory)
+

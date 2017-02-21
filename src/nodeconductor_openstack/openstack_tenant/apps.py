@@ -137,5 +137,21 @@ class OpenStackTenantConfig(AppConfig):
             sender=Network,
             dispatch_uid='openstack_tenant.handlers.delete_network',
         )
-        
-        # TODO [TM:2/21/17] copy subnets
+
+        fsm_signals.post_transition.connect(
+            handlers.create_subnet,
+            sender=SubNet,
+            dispatch_uid='openstack_tenant.handlers.create_subnet',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.update_subnet,
+            sender=SubNet,
+            dispatch_uid='openstack_tenant.handlers.update_subnet',
+        )
+
+        signals.post_delete.connect(
+            handlers.delete_subnet,
+            sender=SubNet,
+            dispatch_uid='openstack_tenant.handlers.delete_subnet',
+        )

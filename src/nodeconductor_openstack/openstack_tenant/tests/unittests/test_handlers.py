@@ -172,7 +172,7 @@ class NetworkHandlerTest(TestCase):
             target=StateMixin.States.OK,
         )
 
-        self.assertTrue(models.Network.objects.filter(name=openstack_network.name).exists())
+        self.assertTrue(models.Network.objects.filter(backend_id=openstack_network.backend_id).exists())
 
     def test_network_is_updated_when_openstack_network_is_updated(self):
         expected_name = "network #1"
@@ -207,3 +207,64 @@ class NetworkHandlerTest(TestCase):
 
         openstack_network.delete()
         self.assertEqual(models.Network.objects.count(), 0)
+
+
+
+class SubNetHandlerTest(TestCase):
+
+    def setUp(self):
+        self.tenant = openstack_factories.TenantFactory()
+        self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
+
+    def test_subnet_is_created_when_openstack_subnet_is_created_and_transitioned_to_the_right_state(self):
+        openstack_subnet = openstack_factories.SubNetFactory(network__tenant=self.tenant)
+        factories.NetworkFactory(settings=self.service_settings)
+        self.assertEqual(models.SubNet.objects.count(), 0)
+
+        openstack_subnet.state = StateMixin.States.OK
+        openstack_subnet.save()
+        handlers.create_subnet(
+            sender=None,
+            name='',
+            instance=openstack_subnet,
+            source=StateMixin.States.CREATING,
+            target=StateMixin.States.OK,
+        )
+
+        self.assertTrue(models.Network.objects.filter(backend_id=openstack_subnet.backend_id).exists())
+
+    def test_subnet_is_updated_when_openstack_subnet_is_updated(self):
+        expected_name = "subnet #1"
+
+        openstack_subnet = openstack_factories.SubNetFactory(
+            network__tenant=self.tenant,
+            name=expected_name,
+        )
+        subnet = factories.SubNetFactory(
+            settings=self.service_settings,
+            backend_id=openstack_subnet.backend_id,
+        )
+
+        handlers.update_subnet(
+            sender=None,
+            name='',
+            instance=openstack_subnet,
+            source=StateMixin.States.UPDATING,
+            target=StateMixin.States.OK,
+        )
+
+        subnet.refresh_from_db()
+        self.assertTrue(openstack_subnet.name in subnet.name)
+        self.assertEqual(openstack_subnet.cidr, subnet.cidr)
+        self.assertEqual(openstack_subnet.gateway_ip, subnet.gateway_ip)
+        self.assertEqual(openstack_subnet.allocation_pools, subnet.allocation_pools)
+        self.assertEqual(openstack_subnet.ip_version, subnet.ip_version)
+        self.assertEqual(openstack_subnet.enable_dhcp, subnet.enable_dhcp)
+        self.assertEqual(openstack_subnet.dns_nameservers, subnet.dns_nameservers)
+
+    def test_subnet_is_deleted_when_openstack_subnet_is_deleted(self):
+        openstack_subnet = openstack_factories.SubNetFactory(network__tenant=self.tenant)
+        factories.SubNetFactory(settings=self.service_settings, backend_id=openstack_subnet.backend_id)
+
+        openstack_subnet.delete()
+        self.assertEqual(models.SubNet.objects.count(), 0)

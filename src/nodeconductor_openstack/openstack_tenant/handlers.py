@@ -387,3 +387,81 @@ def delete_network(sender, instance, **kwargs):
     network = models.Network.objects.filter(settings=settings, backend_id=instance.backend_id).first()
     if network:
         network.delete()
+
+
+def create_subnet(sender, instance, name, source, target, **kwargs):
+    """
+    Creates subnet on openstack subnet transition from 'CREATING' state to 'OK'.
+    :param instance: openstack.models.SubNet instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
+    if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.network.tenant).first()
+    if not settings:
+        return
+
+    network = models.Network.objects.get(backend_id=instance.network.backend_id)
+
+    models.SubNet.objects.create(
+        backend_id=instance.backend_id,
+        settings=settings,
+        name=instance.name,
+        cidr=instance.cidr,
+        allocation_pools=instance.allocation_pools,
+        ip_version=instance.ip_version,
+        enable_dhcp=instance.enable_dhcp,
+        dns_nameservers=instance.dns_nameservers,
+        network=network,
+    )
+
+
+def update_subnet(sender, instance, name, source, target, **kwargs):
+    """
+    Updates subnet on openstack subnet transition from 'UPDATING' state to 'OK'.
+    :param instance: openstack.models.SubNet instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
+    if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.network.tenant).first()
+    if not settings:
+        return
+
+    subnet = models.SubNet.objects.get(settings=settings, backend_id=instance.backend_id)
+
+    if subnet:
+        network = models.Network.objects.get(backend_id=instance.network.backend_id)
+
+        subnet.network = network
+
+        subnet.cidr = instance.cidr
+        subnet.allocation_pools = instance.allocation_pools
+        subnet.ip_version = instance.ip_version
+        subnet.enable_dhcp = instance.enable_dhcp
+        subnet.dns_nameservers = instance.dns_nameservers
+
+        subnet.name = instance.name
+        subnet.backend_id = instance.backend_id
+
+        subnet.save()
+
+
+def delete_subnet(sender, instance, **kwargs):
+    """
+    Deletes subnet on openstack subnet deletion
+    :param instance: openstack.models.SubNet instance
+    """
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.network.tenant).first()
+    if not settings:
+        return
+
+    subnet = models.SubNet.objects.filter(settings=settings, backend_id=instance.backend_id).first()
+    if subnet:
+        subnet.delete()
