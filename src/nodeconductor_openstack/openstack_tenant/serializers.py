@@ -294,18 +294,20 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
     action_details = core_serializers.JSONField(read_only=True)
     restorations = SnapshotRestorationSerializer(many=True, read_only=True)
+    snapshot_schedule_uuid = serializers.ReadOnlyField(source='snapshot_schedule.uuid')
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.Snapshot
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_volume', 'size', 'metadata', 'runtime_state', 'source_volume_name', 'action', 'action_details',
-            'restorations',
+            'restorations', 'kept_until', 'snapshot_schedule', 'snapshot_schedule_uuid'
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'size', 'source_volume', 'metadata', 'runtime_state', 'action',
+            'size', 'source_volume', 'metadata', 'runtime_state', 'action', 'snapshot_schedule',
         )
         extra_kwargs = dict(
             source_volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
+            snapshot_schedule={'lookup_field': 'uuid', 'view_name': 'openstacktenant-snapshot-schedule-detail'},
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
@@ -817,7 +819,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             'kept_until', 'metadata', 'instance', 'instance_name', 'restorations',
             'backup_schedule', 'backup_schedule_uuid')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'instance', 'service_project_link')
+            'instance', 'service_project_link', 'backup_schedule')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
             'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
