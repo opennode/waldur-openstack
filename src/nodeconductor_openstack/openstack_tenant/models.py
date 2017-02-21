@@ -312,12 +312,21 @@ class SnapshotSchedule(BaseSchedule):
         return 'openstacktenant-snapshot-schedule'
 
 
+@python_2_unicode_compatible
 class Network(core_models.DescribableMixin, structure_models.ServiceProperty):
     is_external = models.BooleanField(default=False)
     type = models.CharField(max_length=50, blank=True)
     segmentation_id = models.IntegerField(null=True)
 
+    def __str__(self):
+        return '%s' % self.type
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-network'
+
+
+@python_2_unicode_compatible
 class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     network = models.ForeignKey(Network, related_name='subnets')
     cidr = models.CharField(max_length=32, blank=True)
@@ -326,6 +335,13 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
     dns_nameservers = JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')
+
+    def __str__(self):
+        return '%s| %s' % (self.network, self.gateway_ip)
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-subnet'
 
 
 class InternalIP(openstack_base_models.Port):
