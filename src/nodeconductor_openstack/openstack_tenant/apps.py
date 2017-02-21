@@ -21,7 +21,7 @@ class OpenStackTenantConfig(AppConfig):
         # Initialize service settings quotas based on tenant.
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
-        from nodeconductor_openstack.openstack.models import Tenant, SecurityGroup, FloatingIP
+        from nodeconductor_openstack.openstack.models import Tenant, SecurityGroup, FloatingIP, Network, SubNet
         for quota in Tenant.get_quotas_fields():
             ServiceSettings.add_quota_field(
                 name=quota.name,
@@ -119,3 +119,23 @@ class OpenStackTenantConfig(AppConfig):
             sender=Tenant,
             dispatch_uid='openstack.handlers.update_service_settings_password',
         )
+
+        fsm_signals.post_transition.connect(
+            handlers.create_network,
+            sender=Network,
+            dispatch_uid='openstack_tenant.handlers.create_network',
+        )
+
+        fsm_signals.post_transition.connect(
+            handlers.update_network,
+            sender=Network,
+            dispatch_uid='openstack_tenant.handlers.update_network',
+        )
+
+        signals.post_delete.connect(
+            handlers.delete_network,
+            sender=Network,
+            dispatch_uid='openstack_tenant.handlers.delete_network',
+        )
+        
+        # TODO [TM:2/21/17] copy subnets

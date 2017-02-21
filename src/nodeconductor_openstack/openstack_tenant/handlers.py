@@ -321,3 +321,69 @@ def update_service_settings_password(sender, instance, created=False, **kwargs):
         if service_settings:
             service_settings.password = tenant.user_password
             service_settings.save()
+
+
+def create_network(sender, instance, name, source, target, **kwargs):
+    """
+    Creates network on openstack network transition from 'CREATING' state to 'OK'.
+    :param instance: openstack.models.Network instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
+    if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    models.Network.objects.create(
+        backend_id=instance.backend_id,
+        settings=settings,
+        name=instance.name,
+        is_external=instance.is_external,
+        type=instance.type,
+        segmentation_id=instance.segmentation_id,
+    )
+
+
+def update_network(sender, instance, name, source, target, **kwargs):
+    """
+    Updates network on openstack network transition from 'UPDATING' state to 'OK'.
+    :param instance: openstack.models.Network instance
+    :param source: transition from state
+    :param target: transition to state
+    :return:
+    """
+    if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
+        return
+
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    network = models.Network.objects.get(settings=settings, backend_id=instance.backend_id)
+
+    if network:
+        network.is_external = instance.is_external
+        network.segmentation_id = instance.segmentation_id
+        network.type = instance.type
+        network.name = instance.name
+        network.backend_id = instance.backend_id
+
+        network.save()
+
+
+def delete_network(sender, instance, **kwargs):
+    """
+    Deletes network on openstack network deletion
+    :param instance: openstack.models.Network instance
+    """
+    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    if not settings:
+        return
+
+    network = models.Network.objects.filter(settings=settings, backend_id=instance.backend_id).first()
+    if network:
+        network.delete()

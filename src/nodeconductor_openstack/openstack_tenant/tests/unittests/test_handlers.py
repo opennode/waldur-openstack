@@ -11,7 +11,7 @@ from .. import factories
 from ... import models, handlers
 
 
-class TestSecurityGroupHandler(TestCase):
+class SecurityGroupHandlerTest(TestCase):
     def setUp(self):
         self.tenant = openstack_factories.TenantFactory()
         self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
@@ -81,7 +81,7 @@ class TestSecurityGroupHandler(TestCase):
         self.assertEqual(models.SecurityGroup.objects.count(), 0)
 
 
-class TestFloatingIPHandler(TestCase):
+class FloatingIPHandlerTest(TestCase):
     def setUp(self):
         self.tenant = openstack_factories.TenantFactory()
         self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
@@ -151,3 +151,59 @@ class TenantChangePasswordTest(TestCase):
         tenant.save()
         service_settings.refresh_from_db()
         self.assertEqual(service_settings.password, new_password)
+
+
+class NetworkHandlerTest(TestCase):
+    def setUp(self):
+        self.tenant = openstack_factories.TenantFactory()
+        self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
+
+    def test_network_is_created_when_openstack_network_is_created_and_transitioned_to_the_right_state(self):
+        openstack_network = openstack_factories.NetworkFactory(tenant=self.tenant)
+        self.assertEqual(models.Network.objects.count(), 0)
+
+        openstack_network.state = StateMixin.States.OK
+        openstack_network.save()
+        handlers.create_network(
+            sender=None,
+            name='',
+            instance=openstack_network,
+            source=StateMixin.States.CREATING,
+            target=StateMixin.States.OK,
+        )
+
+        self.assertTrue(models.Network.objects.filter(name=openstack_network.name).exists())
+
+    def test_network_is_updated_when_openstack_network_is_updated(self):
+        expected_name = "network #1"
+
+        openstack_network = openstack_factories.NetworkFactory(
+            tenant=self.tenant,
+            name=expected_name,
+        )
+        network = factories.NetworkFactory(
+            settings=self.service_settings,
+            backend_id=openstack_network.backend_id,
+        )
+
+        handlers.update_network(
+            sender=None,
+            name='',
+            instance=openstack_network,
+            source=StateMixin.States.UPDATING,
+            target=StateMixin.States.OK,
+        )
+
+        network.refresh_from_db()
+        self.assertTrue(openstack_network.name in network.name)
+        self.assertEqual(openstack_network.is_external, network.is_external)
+        self.assertEqual(openstack_network.type, network.type)
+        self.assertEqual(openstack_network.segmentation_id, network.segmentation_id)
+        self.assertEqual(openstack_network.backend_id, network.backend_id)
+
+    def test_network_is_deleted_when_openstack_network_is_deleted(self):
+        openstack_network = openstack_factories.NetworkFactory(tenant=self.tenant)
+        factories.NetworkFactory(settings=self.service_settings, backend_id=openstack_network.backend_id)
+
+        openstack_network.delete()
+        self.assertEqual(models.Network.objects.count(), 0)
