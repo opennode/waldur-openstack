@@ -366,8 +366,6 @@ def update_network(sender, instance, name, source, target, **kwargs):
     network.segmentation_id = instance.segmentation_id
     network.type = instance.type
     network.name = instance.name
-    network.backend_id = instance.backend_id
-
     network.save()
 
 
@@ -440,10 +438,7 @@ def update_subnet(sender, instance, name, source, target, **kwargs):
     subnet.ip_version = instance.ip_version
     subnet.enable_dhcp = instance.enable_dhcp
     subnet.dns_nameservers = instance.dns_nameservers
-
     subnet.name = instance.name
-    subnet.backend_id = instance.backend_id
-
     subnet.save()
 
 
