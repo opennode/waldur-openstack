@@ -166,9 +166,8 @@ def delete_security_group(sender, instance, **kwargs):
     if not settings:
         return
 
-    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
-    if security_group:
-        security_group.delete()
+    security_group = models.SecurityGroup.objects.get(settings=settings, backend_id=instance.backend_id)
+    security_group.delete()
 
 
 def delete_floating_ip(sender, instance, **kwargs):
@@ -180,9 +179,8 @@ def delete_floating_ip(sender, instance, **kwargs):
     if not settings:
         return
 
-    floating_ip = models.FloatingIP.objects.filter(settings=settings, backend_id=instance.backend_id).first()
-    if floating_ip:
-        floating_ip.delete()
+    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
+    floating_ip.delete()
 
 
 def update_security_group(sender, instance, name, source, target, **kwargs):
@@ -272,13 +270,12 @@ def update_floating_ip(sender, instance, name, source, target, **kwargs):
 
     floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
 
-    if floating_ip:
-        floating_ip.name = instance.name
-        floating_ip.address = instance.address
-        floating_ip.runtime_state = instance.runtime_state
-        floating_ip.backend_network_id = instance.backend_network_id
+    floating_ip.name = instance.name
+    floating_ip.address = instance.address
+    floating_ip.runtime_state = instance.runtime_state
+    floating_ip.backend_network_id = instance.backend_network_id
 
-        floating_ip.save()
+    floating_ip.save()
 
 
 def create_floating_ip(sender, instance, name, source, target, **kwargs):
@@ -365,14 +362,13 @@ def update_network(sender, instance, name, source, target, **kwargs):
 
     network = models.Network.objects.get(settings=settings, backend_id=instance.backend_id)
 
-    if network:
-        network.is_external = instance.is_external
-        network.segmentation_id = instance.segmentation_id
-        network.type = instance.type
-        network.name = instance.name
-        network.backend_id = instance.backend_id
+    network.is_external = instance.is_external
+    network.segmentation_id = instance.segmentation_id
+    network.type = instance.type
+    network.name = instance.name
+    network.backend_id = instance.backend_id
 
-        network.save()
+    network.save()
 
 
 def delete_network(sender, instance, **kwargs):
@@ -384,9 +380,8 @@ def delete_network(sender, instance, **kwargs):
     if not settings:
         return
 
-    network = models.Network.objects.filter(settings=settings, backend_id=instance.backend_id).first()
-    if network:
-        network.delete()
+    network = models.Network.objects.get(settings=settings, backend_id=instance.backend_id)
+    network.delete()
 
 
 def create_subnet(sender, instance, name, source, target, **kwargs):
@@ -436,21 +431,20 @@ def update_subnet(sender, instance, name, source, target, **kwargs):
 
     subnet = models.SubNet.objects.get(settings=settings, backend_id=instance.backend_id)
 
-    if subnet:
-        network = models.Network.objects.get(backend_id=instance.network.backend_id)
+    network = models.Network.objects.get(backend_id=instance.network.backend_id)
 
-        subnet.network = network
+    subnet.network = network
 
-        subnet.cidr = instance.cidr
-        subnet.allocation_pools = instance.allocation_pools
-        subnet.ip_version = instance.ip_version
-        subnet.enable_dhcp = instance.enable_dhcp
-        subnet.dns_nameservers = instance.dns_nameservers
+    subnet.cidr = instance.cidr
+    subnet.allocation_pools = instance.allocation_pools
+    subnet.ip_version = instance.ip_version
+    subnet.enable_dhcp = instance.enable_dhcp
+    subnet.dns_nameservers = instance.dns_nameservers
 
-        subnet.name = instance.name
-        subnet.backend_id = instance.backend_id
+    subnet.name = instance.name
+    subnet.backend_id = instance.backend_id
 
-        subnet.save()
+    subnet.save()
 
 
 def delete_subnet(sender, instance, **kwargs):
@@ -462,6 +456,5 @@ def delete_subnet(sender, instance, **kwargs):
     if not settings:
         return
 
-    subnet = models.SubNet.objects.filter(settings=settings, backend_id=instance.backend_id).first()
-    if subnet:
-        subnet.delete()
+    subnet = models.SubNet.objects.get(settings=settings, backend_id=instance.backend_id)
+    subnet.delete()
