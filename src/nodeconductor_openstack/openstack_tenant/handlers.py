@@ -162,11 +162,12 @@ def delete_security_group(sender, instance, **kwargs):
     Deletes security group on openstack security group deletion
     :param instance: openstack.models.SecurityGroup instance
     """
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    openstack_security_group = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_security_group.tenant).first()
     if not settings:
         return
 
-    security_group = models.SecurityGroup.objects.get(settings=settings, backend_id=instance.backend_id)
+    security_group = models.SecurityGroup.objects.get(settings=settings, backend_id=openstack_security_group.backend_id)
     security_group.delete()
 
 
@@ -175,11 +176,13 @@ def delete_floating_ip(sender, instance, **kwargs):
     Deletes floating ip on openstack floating ip deletion
     :param instance: openstack.models.FloatingIP instance
     """
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+
+    openstack_floating_ip = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_floating_ip.tenant).first()
     if not settings:
         return
 
-    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
+    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=openstack_floating_ip.backend_id)
     floating_ip.delete()
 
 
@@ -194,14 +197,15 @@ def update_security_group(sender, instance, name, source, target, **kwargs):
     if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
         return
 
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    openstack_security_group = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_security_group.tenant).first()
     if not settings:
         return
 
-    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
+    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=openstack_security_group.backend_id).first()
     if security_group:
-        security_group.name = instance.name
-        security_group.description = instance.description
+        security_group.name = openstack_security_group.name
+        security_group.description = openstack_security_group.description
         security_group.save()
 
         security_group.rules.all().delete()
@@ -213,7 +217,7 @@ def update_security_group(sender, instance, name, source, target, **kwargs):
             cidr=rule.cidr,
             backend_id=rule.backend_id,
             security_group=security_group,
-        ) for rule in instance.rules.iterator()]
+        ) for rule in openstack_security_group.rules.iterator()]
 
         security_group.rules.bulk_create(group_rules)
 
@@ -229,18 +233,19 @@ def create_security_group(sender, instance, name, source, target, **kwargs):
     if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
         return
 
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    openstack_security_group = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_security_group.tenant).first()
     if not settings:
         return
 
     security_group = models.SecurityGroup.objects.create(
-        description=instance.description,
-        name=instance.name,
-        backend_id=instance.backend_id,
+        description=openstack_security_group.description,
+        name=openstack_security_group.name,
+        backend_id=openstack_security_group.backend_id,
         settings=settings,
     )
 
-    if instance.rules.count() > 0:
+    if openstack_security_group.rules.count() > 0:
         group_rules = [models.SecurityGroupRule(
             protocol=rule.protocol,
             from_port=rule.from_port,
@@ -248,7 +253,7 @@ def create_security_group(sender, instance, name, source, target, **kwargs):
             cidr=rule.cidr,
             backend_id=rule.backend_id,
             security_group=security_group,
-        ) for rule in instance.rules.iterator()]
+        ) for rule in openstack_security_group.rules.iterator()]
 
         security_group.rules.bulk_create(group_rules)
 
@@ -264,16 +269,17 @@ def update_floating_ip(sender, instance, name, source, target, **kwargs):
     if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
         return
 
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    openstack_floating_ip = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_floating_ip.tenant).first()
     if not settings:
         return
 
-    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
+    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=openstack_floating_ip.backend_id)
 
-    floating_ip.name = instance.name
-    floating_ip.address = instance.address
-    floating_ip.runtime_state = instance.runtime_state
-    floating_ip.backend_network_id = instance.backend_network_id
+    floating_ip.name = openstack_floating_ip.name
+    floating_ip.address = openstack_floating_ip.address
+    floating_ip.runtime_state = openstack_floating_ip.runtime_state
+    floating_ip.backend_network_id = openstack_floating_ip.backend_network_id
 
     floating_ip.save()
 
@@ -289,17 +295,18 @@ def create_floating_ip(sender, instance, name, source, target, **kwargs):
     if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
         return
 
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    openstack_floating_ip = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_floating_ip.tenant).first()
     if not settings:
         return
 
     models.FloatingIP.objects.create(
-        name=instance.name,
-        backend_id=instance.backend_id,
+        name=openstack_floating_ip.name,
+        backend_id=openstack_floating_ip.backend_id,
         settings=settings,
-        address=instance.address,
-        runtime_state=instance.runtime_state,
-        backend_network_id=instance.backend_network_id,
+        address=openstack_floating_ip.address,
+        runtime_state=openstack_floating_ip.runtime_state,
+        backend_network_id=openstack_floating_ip.backend_network_id,
     )
 
 
@@ -331,17 +338,18 @@ def create_network(sender, instance, name, source, target, **kwargs):
     if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
         return
 
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    openstack_network = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_network.tenant).first()
     if not settings:
         return
 
     models.Network.objects.create(
-        backend_id=instance.backend_id,
+        backend_id=openstack_network.backend_id,
         settings=settings,
-        name=instance.name,
-        is_external=instance.is_external,
-        type=instance.type,
-        segmentation_id=instance.segmentation_id,
+        name=openstack_network.name,
+        is_external=openstack_network.is_external,
+        type=openstack_network.type,
+        segmentation_id=openstack_network.segmentation_id,
     )
 
 
@@ -356,16 +364,17 @@ def update_network(sender, instance, name, source, target, **kwargs):
     if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
         return
 
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+    openstack_network = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_network.tenant).first()
     if not settings:
         return
 
-    network = models.Network.objects.get(settings=settings, backend_id=instance.backend_id)
+    network = models.Network.objects.get(settings=settings, backend_id=openstack_network.backend_id)
 
-    network.is_external = instance.is_external
-    network.segmentation_id = instance.segmentation_id
-    network.type = instance.type
-    network.name = instance.name
+    network.is_external = openstack_network.is_external
+    network.segmentation_id = openstack_network.segmentation_id
+    network.type = openstack_network.type
+    network.name = openstack_network.name
     network.save()
 
 
@@ -374,11 +383,13 @@ def delete_network(sender, instance, **kwargs):
     Deletes network on openstack network deletion
     :param instance: openstack.models.Network instance
     """
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
+
+    openstack_network = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_network.tenant).first()
     if not settings:
         return
 
-    network = models.Network.objects.get(settings=settings, backend_id=instance.backend_id)
+    network = models.Network.objects.get(settings=settings, backend_id=openstack_network.backend_id)
     network.delete()
 
 
@@ -393,21 +404,22 @@ def create_subnet(sender, instance, name, source, target, **kwargs):
     if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
         return
 
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.network.tenant).first()
+    openstack_subnet = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_subnet.network.tenant).first()
     if not settings:
         return
 
-    network = models.Network.objects.get(backend_id=instance.network.backend_id)
+    network = models.Network.objects.get(backend_id=openstack_subnet.network.backend_id)
 
     models.SubNet.objects.create(
-        backend_id=instance.backend_id,
+        backend_id=openstack_subnet.backend_id,
         settings=settings,
-        name=instance.name,
-        cidr=instance.cidr,
-        allocation_pools=instance.allocation_pools,
-        ip_version=instance.ip_version,
-        enable_dhcp=instance.enable_dhcp,
-        dns_nameservers=instance.dns_nameservers,
+        name=openstack_subnet.name,
+        cidr=openstack_subnet.cidr,
+        allocation_pools=openstack_subnet.allocation_pools,
+        ip_version=openstack_subnet.ip_version,
+        enable_dhcp=openstack_subnet.enable_dhcp,
+        dns_nameservers=openstack_subnet.dns_nameservers,
         network=network,
     )
 
@@ -423,22 +435,23 @@ def update_subnet(sender, instance, name, source, target, **kwargs):
     if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
         return
 
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.network.tenant).first()
+    openstack_subnet = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_subnet.network.tenant).first()
     if not settings:
         return
 
-    subnet = models.SubNet.objects.get(settings=settings, backend_id=instance.backend_id)
+    subnet = models.SubNet.objects.get(settings=settings, backend_id=openstack_subnet.backend_id)
 
-    network = models.Network.objects.get(backend_id=instance.network.backend_id)
+    network = models.Network.objects.get(backend_id=openstack_subnet.network.backend_id)
 
     subnet.network = network
 
-    subnet.cidr = instance.cidr
-    subnet.allocation_pools = instance.allocation_pools
-    subnet.ip_version = instance.ip_version
-    subnet.enable_dhcp = instance.enable_dhcp
-    subnet.dns_nameservers = instance.dns_nameservers
-    subnet.name = instance.name
+    subnet.cidr = openstack_subnet.cidr
+    subnet.allocation_pools = openstack_subnet.allocation_pools
+    subnet.ip_version = openstack_subnet.ip_version
+    subnet.enable_dhcp = openstack_subnet.enable_dhcp
+    subnet.dns_nameservers = openstack_subnet.dns_nameservers
+    subnet.name = openstack_subnet.name
     subnet.save()
 
 
@@ -447,9 +460,11 @@ def delete_subnet(sender, instance, **kwargs):
     Deletes subnet on openstack subnet deletion
     :param instance: openstack.models.SubNet instance
     """
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.network.tenant).first()
+
+    openstack_subnet = instance
+    settings = structure_models.ServiceSettings.objects.filter(scope=openstack_subnet.network.tenant).first()
     if not settings:
         return
 
-    subnet = models.SubNet.objects.get(settings=settings, backend_id=instance.backend_id)
+    subnet = models.SubNet.objects.get(settings=settings, backend_id=openstack_subnet.backend_id)
     subnet.delete()
