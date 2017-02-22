@@ -37,7 +37,7 @@ class SubNetFilter(structure_filters.ServicePropertySettingsFilter):
 
     class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
         model = models.SubNet
-        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('ip_version', 'enable_dhcp')
+        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('network', 'ip_version', 'enable_dhcp')
 
 
 class FloatingIPFilter(structure_filters.ServicePropertySettingsFilter):
