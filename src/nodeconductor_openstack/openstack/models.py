@@ -195,14 +195,13 @@ class Tenant(structure_models.PrivateCloud):
     def get_backend(self):
         return self.service_project_link.service.get_backend(tenant_id=self.backend_id)
 
-    def create_service(self, name):
+    def create_service(self):
         """
         Create non-admin service from this tenant.
         """
         admin_settings = self.service_project_link.service.settings
         customer = self.service_project_link.project.customer
         new_settings = structure_models.ServiceSettings.objects.create(
-            name=name,
             scope=self,
             customer=customer,
             type=admin_settings.type,

@@ -33,7 +33,6 @@ class OpenStackTenantServiceFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.OpenStackTenantService
 
-    name = factory.SelfAttribute('settings.name')
     settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
     customer = factory.SelfAttribute('settings.customer')
 

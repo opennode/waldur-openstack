@@ -261,11 +261,10 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        name = serializer.validated_data['name']
 
         tenant = self.get_object()
 
-        service = tenant.create_service(name)
+        service = tenant.create_service()
         structure_executors.ServiceSettingsCreateExecutor.execute(service.settings, async=self.async_executor)
 
         serializer = serializers.ServiceSerializer(service, context={'request': request})
@@ -273,7 +272,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     create_service_permissions = [structure_permissions.is_owner]
     create_service_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
-    create_service_serializer_class = serializers.ServiceNameSerializer
+    create_service_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def set_quotas(self, request, uuid=None):

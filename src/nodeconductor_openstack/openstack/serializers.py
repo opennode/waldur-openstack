@@ -93,10 +93,6 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
             })
 
 
-class ServiceNameSerializer(serializers.Serializer):
-    name = serializers.CharField(required=True)
-
-
 class FlavorSerializer(structure_serializers.BasePropertySerializer):
 
     class Meta(object):
@@ -147,7 +143,7 @@ class NestedServiceProjectLinkSerializer(structure_serializers.PermissionFieldFi
                                          core_serializers.AugmentedSerializerMixin,
                                          core_serializers.HyperlinkedRelatedModelSerializer):
 
-    service_name = serializers.CharField(source='service.settings.name')
+    service_name = serializers.ReadOnlyField(source='service.settings.name')
 
     class Meta(object):
         model = models.OpenStackServiceProjectLink
