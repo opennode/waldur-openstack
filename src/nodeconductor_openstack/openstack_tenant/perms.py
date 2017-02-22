@@ -37,4 +37,5 @@ PERMISSION_LOGICS = (
     ('openstack_tenant.Instance', structure_perms.resource_permission_logic),
     ('openstack_tenant.Backup', structure_perms.resource_permission_logic),
     ('openstack_tenant.BackupSchedule', structure_perms.resource_permission_logic),
+    ('openstack_tenant.SnapshotSchedule', structure_perms.resource_permission_logic),
 )

@@ -15,3 +15,5 @@ def register_in(router):
     router.register(r'openstacktenant-backups', views.BackupViewSet, base_name='openstacktenant-backup')
     router.register(r'openstacktenant-backup-schedules', views.BackupScheduleViewSet,
                     base_name='openstacktenant-backup-schedule')
+    router.register(r'openstacktenant-snapshot-schedules', views.SnapshotScheduleViewSet,
+                    base_name='openstacktenant-snapshot-schedule')

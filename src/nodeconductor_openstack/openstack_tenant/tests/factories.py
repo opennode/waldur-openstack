@@ -226,18 +226,18 @@ class BackupScheduleFactory(factory.DjangoModelFactory):
     service_project_link = factory.SelfAttribute('instance.service_project_link')
     retention_time = 10
     is_active = True
-    maximal_number_of_backups = 3
+    maximal_number_of_resources = 3
     schedule = '*/5 * * * *'
 
     @classmethod
-    def get_url(self, schedule, action=None):
+    def get_url(cls, schedule, action=None):
         if schedule is None:
             schedule = BackupScheduleFactory()
         url = 'http://testserver' + reverse('openstacktenant-backup-schedule-detail', kwargs={'uuid': schedule.uuid})
         return url if action is None else url + action + '/'
 
     @classmethod
-    def get_list_url(self):
+    def get_list_url(cls):
         return 'http://testserver' + reverse('openstacktenant-backup-schedule-list')
 
 
@@ -289,3 +289,27 @@ class SnapshotRestorationFactory(factory.DjangoModelFactory):
 
     snapshot = factory.SubFactory(SnapshotFactory)
     volume = factory.SubFactory(VolumeFactory)
+
+
+class SnapshotScheduleFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.SnapshotSchedule
+
+    source_volume = factory.SubFactory(VolumeFactory)
+    state = models.SnapshotSchedule.States.OK
+    service_project_link = factory.SelfAttribute('source_volume.service_project_link')
+    retention_time = 10
+    is_active = True
+    maximal_number_of_resources = 3
+    schedule = '*/5 * * * *'
+
+    @classmethod
+    def get_url(cls, schedule, action=None):
+        if schedule is None:
+            schedule = SnapshotScheduleFactory()
+        url = 'http://testserver' + reverse('openstacktenant-snapshot-schedule-detail', kwargs={'uuid': schedule.uuid})
+        return url if action is None else url + action + '/'
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstacktenant-snapshot-schedule-list')

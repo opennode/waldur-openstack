@@ -76,6 +76,20 @@ class BackupScheduleEventLogger(EventLogger):
         event_groups = {'resources': event_types}
 
 
+class SnapshotScheduleEventLogger(EventLogger):
+    resource = models.Volume
+    snapshot_schedule = models.SnapshotSchedule
+
+    class Meta:
+        event_types = (
+            'resource_snapshot_schedule_created',
+            'resource_snapshot_schedule_deleted',
+            'resource_snapshot_schedule_activated',
+            'resource_snapshot_schedule_deactivated',
+        )
+        event_groups = {'resources': event_types}
+
+
 class BackupEventLogger(EventLogger):
     resource = models.Instance
 
@@ -98,4 +112,5 @@ class BackupEventLogger(EventLogger):
 
 event_logger.register('openstack_resource_action', ResourceActionEventLogger)
 event_logger.register('openstack_backup_schedule', BackupScheduleEventLogger)
+event_logger.register('openstack_snapshot_schedule', SnapshotScheduleEventLogger)
 event_logger.register('openstack_backup', BackupEventLogger)

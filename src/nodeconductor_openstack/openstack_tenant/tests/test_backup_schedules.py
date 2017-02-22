@@ -1,224 +1,157 @@
 from __future__ import unicode_literals
 
-import datetime
-import mock
+from ddt import data, ddt
 
-from croniter import croniter
-from pytz import timezone
-
-from django.conf import settings
 from rest_framework import status
 from rest_framework import test
 
-from nodeconductor.core.tests import helpers
-from nodeconductor.structure.tests import factories as structure_factories
+from nodeconductor_openstack.openstack_tenant import models
 
-from .. import models
 from . import factories, fixtures
 
 
-backup_schedule_url = lambda *a, **kw: factories.BackupScheduleFactory.get_url(*a, **kw)
-
-
-class BackupScheduleUsageTest(test.APISimpleTestCase):
+class BaseBackupScheduleTest(test.APITransactionTestCase):
 
     def setUp(self):
-        self.user = structure_factories.UserFactory.create(is_staff=True)
-        self.client.force_authenticate(user=self.user)
-        backupable = factories.InstanceFactory(state=models.Instance.States.OK)
-        self.create_url = factories.InstanceFactory.get_url(backupable, action='create_backup_schedule')
-        self.backup_schedule_data = {
-            'name': 'test schedule',
-            'retention_time': 3,
-            'schedule': '*/5 * * * *',
-            'maximal_number_of_backups': 3,
-        }
+        self.fixture = fixtures.OpenStackTenantFixture()
 
-    def test_staff_can_create_backup_schedule(self):
-        response = self.client.post(self.create_url, self.backup_schedule_data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['retention_time'], self.backup_schedule_data['retention_time'])
-        self.assertEqual(
-            response.data['maximal_number_of_backups'], self.backup_schedule_data['maximal_number_of_backups'])
-        self.assertEqual(response.data['schedule'], self.backup_schedule_data['schedule'])
-        backup_schedule = models.BackupSchedule.objects.first()
 
-    def test_backup_schedule_default_state_is_OK(self):
-        response = self.client.post(self.create_url, self.backup_schedule_data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        backup_schedule = models.BackupSchedule.objects.first()
-        self.assertIsNotNone(backup_schedule)
-        self.assertEqual(backup_schedule.state, backup_schedule.States.OK)
+@ddt
+class BackupScheduleRetrieveTest(BaseBackupScheduleTest):
 
-    def test_backup_schedule_can_not_be_created_with_wrong_schedule(self):
-        # wrong schedule:
-        self.backup_schedule_data['schedule'] = 'wrong schedule'
-        response = self.client.post(self.create_url, self.backup_schedule_data)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('schedule', response.content)
+    def setUp(self):
+        super(BackupScheduleRetrieveTest, self).setUp()
+        self.backup_schedule = self.fixture.openstack_backup_schedule
+        self.url = factories.BackupScheduleFactory.get_list_url()
 
-    def test_backup_schedule_creation_with_correct_timezone(self):
-        backupable = factories.InstanceFactory(state=models.Instance.States.OK)
-        create_url = factories.InstanceFactory.get_url(backupable, action='create_backup_schedule')
-        backup_schedule_data = {
-            'name': 'test schedule',
-            'retention_time': 3,
-            'schedule': '*/5 * * * *',
-            'timezone': 'Europe/London',
-            'maximal_number_of_backups': 3,
-        }
-        response = self.client.post(create_url, backup_schedule_data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['timezone'], 'Europe/London')
+    @data('owner', 'manager', 'admin', 'staff', 'global_support')
+    def test_user_has_access_to_backup_schedules(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
 
-    def test_backup_schedule_creation_with_incorrect_timezone(self):
-        backupable = factories.InstanceFactory(state=models.Instance.States.OK)
-        create_url = factories.InstanceFactory.get_url(backupable, action='create_backup_schedule')
-
-        backup_schedule_data = {
-            'name': 'test schedule',
-            'retention_time': 3,
-            'schedule': '*/5 * * * *',
-            'timezone': 'incorrect',
-            'maximal_number_of_backups': 3,
-        }
-        response = self.client.post(create_url, backup_schedule_data)
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('timezone', response.data)
-
-    def test_backup_schedule_creation_with_default_timezone(self):
-        backupable = factories.InstanceFactory(state=models.Instance.States.OK)
-        create_url = factories.InstanceFactory.get_url(backupable, action='create_backup_schedule')
-        backup_schedule_data = {
-            'name': 'test schedule',
-            'retention_time': 3,
-            'schedule': '*/5 * * * *',
-            'maximal_number_of_backups': 3,
-        }
-        response = self.client.post(create_url, backup_schedule_data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['timezone'], settings.TIME_ZONE)
-
-    def test_weekly_backup_schedule_next_trigger_at_is_correct(self):
-        schedule = factories.BackupScheduleFactory(schedule='0 2 * * 4')
-
-        cron = croniter('0 2 * * 4', datetime.datetime.now(tz=timezone(settings.TIME_ZONE)))
-        next_backup = schedule.next_trigger_at
-        self.assertEqual(next_backup, cron.get_next(datetime.datetime))
-        self.assertEqual(next_backup.weekday(), 3, 'Must be Thursday')
-
-        for k, v in {'hour': 2, 'minute': 0, 'second': 0}.items():
-            self.assertEqual(getattr(next_backup, k), v, 'Must be 2:00am')
-
-    def test_daily_backup_schedule_next_trigger_at_is_correct(self):
-        schedule = '0 2 * * *'
-
-        today = datetime.datetime.now(tz=timezone(settings.TIME_ZONE))
-        expected = croniter(schedule, today).get_next(datetime.datetime)
-
-        with mock.patch('nodeconductor.core.models.django_timezone') as mock_django_timezone:
-            mock_django_timezone.now.return_value = today
-            self.assertEqual(
-                expected,
-                factories.BackupScheduleFactory(schedule=schedule).next_trigger_at)
-
-    def test_schedule_activation_and_deactivation(self):
-        schedule = factories.BackupScheduleFactory(is_active=False)
-        # activate
-        response = self.client.post(backup_schedule_url(schedule, action='activate'))
+        response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(models.BackupSchedule.objects.get(pk=schedule.pk).is_active)
-        # deactivate
-        response = self.client.post(backup_schedule_url(schedule, action='deactivate'))
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['uuid'], self.backup_schedule.uuid.hex)
+
+    @data('user')
+    def test_user_can_not_see_backup_schedules_if_he_has_no_project_level_permissions(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertFalse(models.BackupSchedule.objects.get(pk=schedule.pk).is_active)
+        self.assertEqual(len(response.data), 0)
+
+
+@ddt
+class BackupScheduleDeleteTest(BaseBackupScheduleTest):
+
+    def setUp(self):
+        super(BackupScheduleDeleteTest, self).setUp()
+        self.schedule = factories.BackupScheduleFactory(instance=self.fixture.openstack_instance)
+        self.url = factories.BackupScheduleFactory.get_url(self.schedule)
+
+    @data('owner', 'admin', 'manager', 'staff')
+    def test_user_can_delete_backup_schedule(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.delete(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(models.BackupSchedule.objects.filter(pk=self.schedule.pk).exists())
+
+    @data('user')
+    def test_user_can_not_delete_backup_schedule(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.delete(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+@ddt
+class BackupScheduleActivateTest(BaseBackupScheduleTest):
+
+    def setUp(self):
+        super(BackupScheduleActivateTest, self).setUp()
+        self.client.force_authenticate(self.fixture.owner)
+        self.schedule = self.fixture.openstack_backup_schedule
 
     def test_backup_schedule_do_not_start_activation_of_active_schedule(self):
-        schedule = factories.BackupScheduleFactory(is_active=True)
-        response = self.client.post(backup_schedule_url(schedule, action='activate'))
+        url = factories.BackupScheduleFactory.get_url(self.schedule, action='activate')
+
+        response = self.client.post(url)
+
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
-    def test_backup_schedule_do_not_start_deactivation_of_not_active_schedule(self):
-        schedule = factories.BackupScheduleFactory(is_active=False)
-        response = self.client.post(backup_schedule_url(schedule, action='deactivate'))
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+    def test_backup_schedule_can_be_activated(self):
+        self.schedule.is_active = False
+        self.schedule.save()
+        url = factories.BackupScheduleFactory.get_url(self.schedule, action='activate')
+
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.schedule.refresh_from_db()
+        self.assertTrue(self.schedule.is_active)
+
+    @data('global_support')
+    def test_user_cannot_activate_backup_schedule_if_he_is_not_owner(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+        url = factories.BackupScheduleFactory.get_url(self.schedule, action='activate')
+
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
-class BackupScheduleListPermissionsTest(helpers.ListPermissionsTest):
-
-    def get_url(self):
-        return factories.BackupScheduleFactory.get_list_url()
-
-    def get_users_and_expected_results(self):
-        instance = factories.InstanceFactory()
-        schedule = factories.BackupScheduleFactory(instance=instance)
-
-        user_with_view_permission = structure_factories.UserFactory.create(is_staff=True, is_superuser=True)
-        user_without_view_permission = structure_factories.UserFactory.create()
-
-        return [
-            {
-                'user': user_with_view_permission,
-                'expected_results': [
-                    {'url': backup_schedule_url(schedule)}
-                ]
-            },
-            {
-                'user': user_without_view_permission,
-                'expected_results': []
-            },
-        ]
-
-
-class BackupSchedulePermissionsTest(helpers.PermissionsTest):
+@ddt
+class BackupScheduleDeactivateTest(BaseBackupScheduleTest):
 
     def setUp(self):
-        super(BackupSchedulePermissionsTest, self).setUp()
-        self.fixture = fixtures.OpenStackTenantFixture()
-        self.schedule = factories.BackupScheduleFactory(instance=self.fixture.openstack_instance)
+        super(BackupScheduleDeactivateTest, self).setUp()
+        self.schedule = self.fixture.openstack_backup_schedule
 
-    def get_users_with_permission(self, url, method):
-        return [self.fixture.staff, self.fixture.admin, self.fixture.owner]
-
-    def get_users_without_permissions(self, url, method):
-        return [self.fixture.user]
-
-    def get_urls_configs(self):
-        yield {'url': backup_schedule_url(self.schedule), 'method': 'GET'}
-        yield {'url': backup_schedule_url(self.schedule, action='deactivate'), 'method': 'POST'}
-        yield {'url': backup_schedule_url(self.schedule, action='activate'), 'method': 'POST'}
-        yield {'url': backup_schedule_url(self.schedule), 'method': 'PATCH', 'data': {'retention_time': 5}}
-        create_url = factories.InstanceFactory.get_url(self.fixture.openstack_instance, action='create_backup_schedule')
-        backup_schedule_data = {
-            'name': 'test schedule',
-            'retention_time': 3,
-            'schedule': '*/5 * * * *',
-            'maximal_number_of_backups': 3,
-        }
-        yield {'url': create_url, 'method': 'POST', 'data': backup_schedule_data}
-
-    # XXX: Current permissions tests helper does not work well with deletion, so we need to test deletion explicitly
-    def test_staff_can_delete_schedule(self):
-        self.client.force_authenticate(self.fixture.staff)
-
-        url = backup_schedule_url(self.schedule)
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-    def test_admin_can_delete_schedule(self):
-        self.client.force_authenticate(self.fixture.staff)
-
-        url = backup_schedule_url(self.schedule)
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-    def test_owner_can_delete_schedule(self):
+    def test_backup_schedule_do_not_start_deactivation_of_not_active_schedule(self):
         self.client.force_authenticate(self.fixture.owner)
+        self.schedule.is_active = False
+        self.schedule.save()
+        url = factories.BackupScheduleFactory.get_url(self.schedule, action='deactivate')
 
-        url = backup_schedule_url(self.schedule)
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        response = self.client.post(url)
 
-    def test_anonymous_user_can_not_access_backup_schedule(self):
-        response = self.client.get(factories.BackupScheduleFactory.get_list_url())
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+
+    def test_backup_schedule_can_be_deactivated(self):
+        self.client.force_authenticate(self.fixture.owner)
+        url = factories.BackupScheduleFactory.get_url(self.schedule, action='deactivate')
+
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.schedule.refresh_from_db()
+        self.assertFalse(self.schedule.is_active)
+
+    def test_schedule_can_be_deactivated_after_it_was_activated(self):
+        self.client.force_authenticate(self.fixture.owner)
+        self.schedule.is_active = False
+        self.schedule.save()
+
+        activate_url = factories.BackupScheduleFactory.get_url(self.schedule, action='activate')
+        deactivate_url = factories.BackupScheduleFactory.get_url(self.schedule, action='deactivate')
+
+        response = self.client.post(activate_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(models.BackupSchedule.objects.get(pk=self.schedule.pk).is_active)
+
+        response = self.client.post(deactivate_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(models.BackupSchedule.objects.get(pk=self.schedule.pk).is_active)
+
+    @data('global_support')
+    def test_user_cannot_deactivate_backup_schedule_if_he_is_not_owner(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+        url = factories.BackupScheduleFactory.get_url(self.schedule, action='deactivate')
+
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
