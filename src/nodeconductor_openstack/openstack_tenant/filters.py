@@ -34,10 +34,12 @@ class NetworkFilter(structure_filters.ServicePropertySettingsFilter):
 
 
 class SubNetFilter(structure_filters.ServicePropertySettingsFilter):
+    network = core_filters.URLFilter(view_name='openstacktenant-network-detail', name='network__uuid')
+    network_uuid = django_filters.UUIDFilter(name='network__uuid')
 
     class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
         model = models.SubNet
-        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('network', 'ip_version', 'enable_dhcp')
+        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('ip_version', 'enable_dhcp')
 
 
 class FloatingIPFilter(structure_filters.ServicePropertySettingsFilter):
