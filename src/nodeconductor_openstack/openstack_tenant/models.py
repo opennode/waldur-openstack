@@ -76,7 +76,7 @@ class FloatingIP(structure_models.ServiceProperty):
     address = models.GenericIPAddressField(protocol='IPv4')
     runtime_state = models.CharField(max_length=30)
     backend_network_id = models.CharField(max_length=255, editable=False)
-    is_booked = models.BooleanField(default=False, help_text='Defines is FloatingIP booked by NodeConductor.')
+    is_booked = models.BooleanField(default=False, help_text='Marks if floating IP has been booked for provisioning.')
 
     def __str__(self):
         return '%s:%s | %s' % (self.address, self.runtime_state, self.settings)
