@@ -6,6 +6,7 @@ import urlparse
 
 from django.conf import settings
 from django.core import validators
+from django.contrib.auth import password_validation
 from django.db import transaction
 from django.template.defaultfilters import slugify
 from netaddr import IPNetwork
@@ -17,7 +18,7 @@ from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers
 from nodeconductor.structure.managers import filter_queryset_for_user
 
-from . import models, password_validation
+from . import models
 from .backend import OpenStackBackendError
 
 
@@ -331,7 +332,7 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
             # so we cannot execute BaseResourceSerializer create method.
             security_group = super(structure_serializers.BaseResourceSerializer, self).create(validated_data)
             for rule in rules:
-                security_group.rules.add(rule)
+                security_group.rules.add(rule, bulk=False)
             security_group.increase_backend_quotas_usage()
         return security_group
 
