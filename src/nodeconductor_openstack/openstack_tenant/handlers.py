@@ -177,7 +177,7 @@ def update_service_settings_password(sender, instance, created=False, **kwargs):
             service_settings.save()
 
 
-class ResourcePropertyHandler(object):
+class BaseSynchronizationHandler(object):
     """
     This class provides signal handlers for synchronization of OpenStack properties
     when parent OpenStack resource are created, updated or deleted.
@@ -258,13 +258,13 @@ class ResourcePropertyHandler(object):
         service_property.delete()
 
 
-class FloatingIPHandler(ResourcePropertyHandler):
+class FloatingIPHandler(BaseSynchronizationHandler):
     property_model = models.FloatingIP
     resource_model = openstack_models.FloatingIP
     fields = ('address', 'backend_network_id', 'runtime_state')
 
 
-class SecurityGroupHandler(ResourcePropertyHandler):
+class SecurityGroupHandler(BaseSynchronizationHandler):
     property_model = models.SecurityGroup
     resource_model = openstack_models.SecurityGroup
     fields = ('description',)
@@ -294,13 +294,13 @@ class SecurityGroupHandler(ResourcePropertyHandler):
         return service_property
 
 
-class NetworkHandler(ResourcePropertyHandler):
+class NetworkHandler(BaseSynchronizationHandler):
     property_model = models.Network
     resource_model = openstack_models.Network
     fields = ('is_external', 'segmentation_id', 'type')
 
 
-class SubNetHandler(ResourcePropertyHandler):
+class SubNetHandler(BaseSynchronizationHandler):
     property_model = models.SubNet
     resource_model = openstack_models.SubNet
     fields = ('allocation_pools', 'cidr', 'dns_nameservers', 'enable_dhcp', 'ip_version')

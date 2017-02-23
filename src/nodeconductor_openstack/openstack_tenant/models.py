@@ -319,7 +319,7 @@ class Network(core_models.DescribableMixin, structure_models.ServiceProperty):
     segmentation_id = models.IntegerField(null=True)
 
     def __str__(self):
-        return '%s' % self.type
+        return self.type
 
     @classmethod
     def get_url_name(cls):
@@ -337,7 +337,7 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     dns_nameservers = JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')
 
     def __str__(self):
-        return '%s| %s' % (self.network, self.gateway_ip)
+        return '%s | %s' % (self.network, self.gateway_ip)
 
     @classmethod
     def get_url_name(cls):
