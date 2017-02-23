@@ -314,3 +314,23 @@ class SnapshotScheduleFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstacktenant-snapshot-schedule-list')
+
+
+class NetworkFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.Network
+
+    name = factory.Sequence(lambda n: 'network%s' % n)
+    settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
+    is_external = False
+    type = factory.Sequence(lambda n: 'network type%s' % n)
+    segmentation_id = 8
+
+
+class SubNetFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.SubNet
+
+    name = factory.Sequence(lambda n: 'network%s' % n)
+    settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
+    network = factory.SubFactory(NetworkFactory)

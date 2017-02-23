@@ -74,6 +74,30 @@ class FlavorSerializer(structure_serializers.BasePropertySerializer):
         }
 
 
+class NetworkSerializer(structure_serializers.BasePropertySerializer):
+    class Meta(structure_serializers.BasePropertySerializer.Meta):
+        model = models.Network
+        fields = ('uuid', 'name',
+                  'type', 'is_external', 'segmentation_id', 'subnets')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+            'settings': {'lookup_field': 'uuid'},
+            'subnets': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-subnet-detail'}
+        }
+
+
+class SubNetSerializer(structure_serializers.BasePropertySerializer):
+    class Meta(structure_serializers.BasePropertySerializer.Meta):
+        model = models.SubNet
+        fields = ('uuid', 'name',
+                  'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp', 'dns_nameservers', 'network')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+            'settings': {'lookup_field': 'uuid'},
+            'network': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-network-detail'},
+        }
+
+
 class FloatingIPSerializer(structure_serializers.BasePropertySerializer):
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.FloatingIP
