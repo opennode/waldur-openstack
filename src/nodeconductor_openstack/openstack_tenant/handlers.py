@@ -223,7 +223,7 @@ class BaseSynchronizationHandler(object):
         params = self.map_resource_to_dict(resource)
         for key, value in params.items():
             setattr(service_property, key, value)
-            service_property.name = resource.name
+        service_property.name = resource.name
         service_property.save()
         return service_property
 
