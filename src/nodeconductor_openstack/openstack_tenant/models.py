@@ -202,8 +202,19 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
     action_details = JSONField(default={})
+    external_ip = models.OneToOneField(FloatingIP, blank=True, null=True,
+                                       related_name='instance',
+                                       on_delete=models.SET_NULL)
 
     tracker = FieldTracker()
+
+    @property
+    def external_ips(self):
+        return [self.external_ip.address] if self.external_ip else []
+
+    @property
+    def internal_ips(self):
+        return self.internal_ips_set.values_list('ip4_address', flat=True)
 
     @property
     def size(self):

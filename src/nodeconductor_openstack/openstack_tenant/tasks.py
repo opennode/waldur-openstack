@@ -209,6 +209,10 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
                         instance.security_groups.clear()
                         instance.security_groups.add(*backend_instance._security_groups)
 
+                    if set(instance.internal_ips_set.all()) != set(backend_instance._internal_ips_set):
+                        instance.internal_ips_set.clear()
+                        instance.internal_ips_set.add(*backend_instance._internal_ips_set)
+
     def _set_erred(self, resource):
         resource.set_erred()
         resource.runtime_state = ''

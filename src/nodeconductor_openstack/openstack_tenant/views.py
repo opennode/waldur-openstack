@@ -266,6 +266,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     serializer_class = serializers.InstanceSerializer
     filter_class = filters.InstanceFilter
     pull_executor = executors.InstancePullExecutor
+    pull_serializer_class = rf_serializers.Serializer
 
     update_executor = executors.InstanceUpdateExecutor
     update_validators = partial_update_validators = [core_validators.StateValidator(models.Instance.States.OK)]
@@ -382,16 +383,13 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     assign_floating_ip_serializer_class = serializers.AssignFloatingIpSerializer
 
     def _instance_has_no_floating_ip(instance):
-        if not models.FloatingIP.objects.filter(settings=instance.service_project_link.service.settings,
-                                                address=instance.external_ips).exists():
+        if not instance.external_ip:
             raise core_exceptions.IncorrectStateException('External ips is not assosiated with floating ip.')
 
     @decorators.detail_route(methods=['post'])
     def unassign_floating_ip(self, request, uuid=None):
         instance = self.get_object()
-        floating_ip = models.FloatingIP.objects.get(settings=instance.service_project_link.service.settings,
-                                                    address=instance.external_ips)
-        executors.InstanceUnassignFloatingIpExecutor.execute(instance, floating_ip=floating_ip)
+        executors.InstanceUnassignFloatingIpExecutor.execute(instance, floating_ip=instance.external_ip)
         return response.Response({'status': 'unassign_floating_ip was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     unassign_floating_ip.title = 'Unassign floating IP'
