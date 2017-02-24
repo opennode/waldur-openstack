@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('openstack_tenant', '0015_snapshotrestoration'),
+        ('openstack_tenant', '0017_snapshot_schedule'),
     ]
 
     operations = [
