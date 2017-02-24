@@ -93,6 +93,10 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
             })
 
 
+class ServiceNameSerializer(serializers.Serializer):
+    name = serializers.CharField(required=True)
+
+
 class FlavorSerializer(structure_serializers.BasePropertySerializer):
 
     class Meta(object):

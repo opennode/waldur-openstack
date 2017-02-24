@@ -121,12 +121,14 @@ class TenantCreateServiceTest(BaseTenantActionsTest):
     @patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute')
     def test_can_create_service(self, user, mocked_execute):
         self.client.force_authenticate(getattr(self.fixture, user))
-        response = self.client.post(self.url)
+        service_settings_name = 'Valid service settings name'
+        response = self.client.post(self.url,  {'name': service_settings_name})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(mocked_execute.called)
 
         self.assertTrue(OpenStackService.objects.filter(
             customer=self.tenant.customer,
+            settings__name=service_settings_name,
             settings__backend_url=self.settings.backend_url,
             settings__username=self.tenant.user_username,
             settings__password=self.tenant.user_password
@@ -288,6 +290,7 @@ class TenantChangePasswordTest(BaseTenantActionsTest):
         response = self.client.post(self.url, {'user_password': ''})
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+
 
 @ddt
 class SecurityGroupCreateTest(BaseTenantActionsTest):

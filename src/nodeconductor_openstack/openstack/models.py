@@ -198,13 +198,14 @@ class Tenant(structure_models.PrivateCloud):
     def get_log_fields(self):
         return super(Tenant, self).get_log_fields() + ('extra_configuration',)
 
-    def create_service(self):
+    def create_service(self, name):
         """
         Create non-admin service from this tenant.
         """
         admin_settings = self.service_project_link.service.settings
         customer = self.service_project_link.project.customer
         new_settings = structure_models.ServiceSettings.objects.create(
+            name=name,
             scope=self,
             customer=customer,
             type=admin_settings.type,

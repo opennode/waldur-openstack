@@ -150,6 +150,7 @@ class GetServiceTest(BaseServiceTest):
 
 
 class CreateServiceTest(BaseServiceTest):
+
     @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
     def test_user_can_add_service_to_the_customer_he_owns(self, mocked_backend):
         mocked_backend().check_admin_tenant.return_value = True
@@ -202,7 +203,7 @@ class CreateServiceTest(BaseServiceTest):
 
     def _get_owned_payload(self):
         return {
-            'name': 'owned object name',
+            'name': 'service_settings name',
             'customer': structure_factories.CustomerFactory.get_url(self.customers['owned']),
             'backend_url': 'http://example.com',
             'username': 'user',
@@ -211,10 +212,11 @@ class CreateServiceTest(BaseServiceTest):
             'is_admin': 'True',
         }
 
-    def _get_valid_payload(self, resource):
+    def _get_valid_payload(self, service):
         return {
-            'settings': structure_factories.ServiceSettingsFactory.get_url(resource.settings),
-            'customer': structure_factories.CustomerFactory.get_url(resource.customer),
+            'name': service.settings.name,
+            'settings': structure_factories.ServiceSettingsFactory.get_url(service.settings),
+            'customer': structure_factories.CustomerFactory.get_url(service.customer),
         }
 
 
