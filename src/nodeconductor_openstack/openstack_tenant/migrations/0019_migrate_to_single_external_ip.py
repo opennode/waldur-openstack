@@ -22,7 +22,7 @@ def copy_external_ips(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('openstack_tenant', '0017_snapshot_schedule'),
+        ('openstack_tenant', '0018_remove_openstacktenantservice_name'),
     ]
 
     operations = [
