@@ -956,7 +956,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        if instance.external_ip.update(runtime_state='DOWN'):
+        if instance.external_ip and instance.external_ip.update(runtime_state='DOWN'):
             logger.info('Successfully released floating ip %s from instance %s',
                         instance.external_ip, instance.uuid)
         instance.decrease_backend_quotas_usage()
