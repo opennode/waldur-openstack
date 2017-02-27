@@ -200,6 +200,9 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
         for instance in instances:
             try:
                 backend_instance = backend_instances_map[instance.backend_id]
+                if backend_instance._internal_ips_set:
+                    backend_ip4_addresses = [ip.ip4_address for ip in backend_instance._internal_ips_set]
+                    internal_ips_to_delete = instance.internal_ips_set.filter(ip4_address__in=backend_ip4_addresses)
             except KeyError:
                 self._set_erred(instance)
             else:
@@ -209,8 +212,8 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
                         instance.security_groups.clear()
                         instance.security_groups.add(*backend_instance._security_groups)
 
-                    if set(instance.internal_ips_set.all()) != set(backend_instance._internal_ips_set):
-                        instance.internal_ips_set.clear()
+                    if backend_instance._internal_ips_set:
+                        instance.internal_ips_set.filter(pk__in=internal_ips_to_delete).delete()
                         instance.internal_ips_set.add(*backend_instance._internal_ips_set)
 
     def _set_erred(self, resource):

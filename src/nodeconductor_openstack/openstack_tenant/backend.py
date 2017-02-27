@@ -853,15 +853,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         instance._security_groups = models.SecurityGroup.objects.filter(
             name__in=backend_security_groups_names, settings=self.settings)
 
-        internal_ips = []
-        for ip in external_backend_ips:
-            try:
-                internal_ip = models.InternalIP.objects.get(ip4_address=ip)
-                internal_ips.append(internal_ip)
-            except models.InternalIP.DoesNotExist:
-                continue
-
-        instance._internal_ips_set = internal_ips
+        instance._internal_ips_set = self.import_internal_ips(backend_instance.id)
         return instance
 
     def get_instances(self):
