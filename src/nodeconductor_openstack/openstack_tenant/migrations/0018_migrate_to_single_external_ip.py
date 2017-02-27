@@ -26,7 +26,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(copy_external_ips),
         migrations.RemoveField(
             model_name='instance',
             name='internal_ips',
@@ -36,4 +35,5 @@ class Migration(migrations.Migration):
             name='external_ip',
             field=models.OneToOneField(related_name='instance', to='openstack_tenant.FloatingIP', blank=True, null=True, on_delete=models.SET_NULL),
         ),
+        migrations.RunPython(copy_external_ips),
     ]
