@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 class OpenStackTenantBackend(BaseOpenStackBackend):
     VOLUME_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'device')
     SNAPSHOT_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
-    INSTANCE_UPDATE_FIELDS = ('name', 'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk', 'internal_ips',
-                              'external_ips', 'runtime_state', 'error_message')
+    INSTANCE_UPDATE_FIELDS = ('name', 'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk',
+                              'external_ip', 'runtime_state', 'error_message')
 
     def __init__(self, settings):
         super(OpenStackTenantBackend, self).__init__(settings, settings.options['tenant_id'])
@@ -576,33 +576,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     instance.uuid)
                 raise OpenStackBackendError("Timed out waiting for instance %s to provision" % instance.uuid)
 
-            logger.debug("About to infer internal ip addresses of instance %s", instance.uuid)
-            try:
-                ports = neutron.list_ports(device_id=instance.backend_id)['ports']
-            except (nova_exceptions.ClientException, KeyError, IndexError):
-                logger.exception(
-                    "Failed to infer internal ip addresses of instance %s", instance.uuid)
-            else:
-                for port in ports:
-                    fixed_ip = port['fixed_ips'][0]
-                    subnet_backend_id = fixed_ip['subnet_id']
-                    try:
-                        subnet = models.SubNet.objects.get(settings=self.settings, backend_id=subnet_backend_id)
-                    except models.SubNet.DoesNotExist:
-                        # subnet was not pulled yet. Floating IP will be pulled with subnet later.
-                        continue
-                    instance.internal_ips_set.create(
-                        subnet=subnet,
-                        mac_address=port['mac_address'],
-                        ip4_address=fixed_ip['ip_address'],
-                    )
-                # XXX: Initialize instance "internal_ips" field for backward compatibility.
-                #      Should be remove in WAL-336
-                if instance.internal_ips_set.exists():
-                    instance.internal_ips = instance.internal_ips_set.first().ip4_address
-                    instance.save()
-                logger.info(
-                    "Successfully inferred internal ip addresses of instance %s", instance.uuid)
+            internal_ips = self.import_internal_ips(instance.backend_id)
+            instance.internal_ips_set.add(*internal_ips)
 
             if floating_ip:
                 self.assign_floating_ip_to_instance(instance, floating_ip.uuid)
@@ -628,6 +603,37 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
         else:
             logger.info("Successfully provisioned instance %s", instance.uuid)
+
+    def import_internal_ips(self, instance_backend_id):
+        neutron = self.neutron_client
+
+        internal_ips_set = []
+        logger.debug('About to infer internal ip addresses of instance backend_id: %s', instance_backend_id)
+        try:
+            ports = neutron.list_ports(device_id=instance_backend_id)['ports']
+        except (nova_exceptions.ClientException, KeyError, IndexError):
+            logger.exception(
+                'Failed to infer internal ip addresses of instance backend_id %s', instance_backend_id)
+        else:
+            for port in ports:
+                fixed_ip = port['fixed_ips'][0]
+                subnet_backend_id = fixed_ip['subnet_id']
+                try:
+                    subnet = models.SubNet.objects.get(settings=self.settings, backend_id=subnet_backend_id)
+                except models.SubNet.DoesNotExist:
+                    # subnet was not pulled yet. Floating IP will be pulled with subnet later.
+                    continue
+
+                internal_ip = models.InternalIP(
+                    subnet=subnet,
+                    mac_address=port['mac_address'],
+                    ip4_address=fixed_ip['ip_address'],
+                )
+                internal_ips_set.append(internal_ip)
+            logger.info(
+                'Successfully inferred internal ip addresses of instance backend_id %s', instance_backend_id)
+
+        return internal_ips_set
 
     def _get_or_create_floating_ip(self):
         # TODO: check availability and quota
@@ -679,19 +685,20 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         else:
             floating_ip.runtime_state = 'ACTIVE'
             floating_ip.save(update_fields=['runtime_state'])
-            instance.external_ips = floating_ip.address
-            instance.save(update_fields=['external_ips'])
+            instance.external_ip = floating_ip
+            instance.save(update_fields=['external_ip'])
 
     @log_backend_action()
     def unassign_floating_ip(self, instance):
         nova = self.nova_client
 
         try:
-            nova.servers.remove_floating_ip(server=instance.backend_id, address=instance.external_ips)
+            address = instance.external_ip.address
+            nova.servers.remove_floating_ip(server=instance.backend_id, address=address)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         else:
-            instance.external_ips = ''
+            instance.external_ip = None
             instance.save()
 
     @log_backend_action()
@@ -759,6 +766,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             backend_instance = nova.servers.get(backend_instance_id)
             flavor = nova.flavors.get(backend_instance.flavor['id'])
             attached_volume_ids = [v.volumeId for v in nova.volumes.get_server_volumes(backend_instance_id)]
+            internal_ips = self.import_internal_ips(backend_instance_id)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -773,7 +781,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 except models.Volume.DoesNotExist:
                     volumes.append(self.import_volume(backend_volume_id, save=save))
 
-            # security groups should exist in NodeConductor.
+            # security groups should exist in Waldur.
             security_groups_names = [sg['name'] for sg in getattr(backend_instance, 'security_groups', [])]
             security_groups = models.SecurityGroup.objects.filter(
                 settings=self.settings, name__in=security_groups_names)
@@ -794,19 +802,22 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 instance.save()
                 instance.volumes.add(*volumes)
                 instance.security_groups.add(*security_groups)
+                instance.internal_ips.add(*internal_ips)
 
         return instance
 
     def _backend_instance_to_instance(self, backend_instance, backend_flavor):
         # TODO: add security groups and volume definition
         # parse IPs
-        ips = {}
+        internal_backend_ips = []
+        external_backend_ips = []
+
         for net_conf in backend_instance.addresses.values():
             for ip in net_conf:
                 if ip['OS-EXT-IPS:type'] == 'fixed':
-                    ips['internal'] = ip['addr']
+                    internal_backend_ips.append(ip['addr'])
                 if ip['OS-EXT-IPS:type'] == 'floating':
-                    ips['external'] = ip['addr']
+                    external_backend_ips.append(ip['addr'])
 
         # parse launch time
         try:
@@ -818,6 +829,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             # but in future it might do.
             if timezone.is_naive(d):
                 launch_time = timezone.make_aware(d, timezone.utc)
+
+        external = external_backend_ips[0] if external_backend_ips else None
+        floating_ip = models.FloatingIP.objects.get(settings=self.settings, address=external) if external else None
 
         instance = models.Instance(
             name=backend_instance.name or backend_instance.id,
@@ -832,13 +846,14 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             cores=backend_flavor.vcpus,
             ram=backend_flavor.ram,
 
-            internal_ips=ips.get('internal', ''),
-            external_ips=ips.get('external', ''),
+            external_ip=floating_ip,
             backend_id=backend_instance.id,
         )
         backend_security_groups_names = [sg['name'] for sg in backend_instance.security_groups]
         instance._security_groups = models.SecurityGroup.objects.filter(
             name__in=backend_security_groups_names, settings=self.settings)
+
+        instance._internal_ips_set = self.import_internal_ips(backend_instance.id)
         return instance
 
     def get_instances(self):
@@ -941,11 +956,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        floating_ips = models.FloatingIP.objects.filter(
-            settings=instance.service_project_link.service.settings, address=instance.external_ips)
-        if floating_ips.update(runtime_state='DOWN'):
+        if instance.external_ip and instance.external_ip.update(runtime_state='DOWN'):
             logger.info('Successfully released floating ip %s from instance %s',
-                        instance.external_ips, instance.uuid)
+                        instance.external_ip, instance.uuid)
         instance.decrease_backend_quotas_usage()
 
     @log_backend_action('check is instance deleted')
