@@ -227,7 +227,7 @@ class BackupScheduleFactory(factory.DjangoModelFactory):
     retention_time = 10
     is_active = True
     maximal_number_of_resources = 3
-    schedule = '*/5 * * * *'
+    schedule = '0 * * * *'
 
     @classmethod
     def get_url(cls, schedule, action=None):
@@ -301,7 +301,7 @@ class SnapshotScheduleFactory(factory.DjangoModelFactory):
     retention_time = 10
     is_active = True
     maximal_number_of_resources = 3
-    schedule = '*/5 * * * *'
+    schedule = '0 * * * *'
 
     @classmethod
     def get_url(cls, schedule, action=None):

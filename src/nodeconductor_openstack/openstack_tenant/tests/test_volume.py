@@ -157,7 +157,7 @@ class VolumeCreateSnapshotScheduleTest(test.APITransactionTestCase):
         self.snapshot_schedule_data = {
             'name': 'test schedule',
             'retention_time': 3,
-            'schedule': '*/5 * * * *',
+            'schedule': '0 * * * *',
             'maximal_number_of_resources': 3,
         }
 
@@ -173,6 +173,16 @@ class VolumeCreateSnapshotScheduleTest(test.APITransactionTestCase):
             response.data['maximal_number_of_resources'], self.snapshot_schedule_data['maximal_number_of_resources'])
         self.assertEqual(response.data['schedule'], self.snapshot_schedule_data['schedule'])
 
+    def test_snapshot_schedule_cannot_be_created_if_schedule_is_less_than_1_hours(self):
+        self.client.force_authenticate(self.fixture.owner)
+        payload = self.snapshot_schedule_data
+        payload['schedule'] = '*/5 * * * *'
+
+        response = self.client.post(self.url, self.snapshot_schedule_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('schedule', response.data)
+
     def test_snapshot_schedule_default_state_is_OK(self):
         self.client.force_authenticate(self.fixture.owner)
 
@@ -185,6 +195,7 @@ class VolumeCreateSnapshotScheduleTest(test.APITransactionTestCase):
 
     def test_snapshot_schedule_can_not_be_created_with_wrong_schedule(self):
         self.client.force_authenticate(self.fixture.owner)
+
         # wrong schedule:
         self.snapshot_schedule_data['schedule'] = 'wrong schedule'
 

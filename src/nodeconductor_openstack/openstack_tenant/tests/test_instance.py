@@ -250,7 +250,7 @@ class InstanceCreateBackupSchedule(test.APITransactionTestCase):
         self.backup_schedule_data = {
             'name': 'test schedule',
             'retention_time': 3,
-            'schedule': '*/5 * * * *',
+            'schedule': '0 * * * *',
             'maximal_number_of_resources': 3,
         }
 
@@ -282,7 +282,7 @@ class InstanceCreateBackupSchedule(test.APITransactionTestCase):
         backup_schedule_data = {
             'name': 'test schedule',
             'retention_time': 3,
-            'schedule': '*/5 * * * *',
+            'schedule': '0 * * * *',
             'timezone': 'Europe/London',
             'maximal_number_of_resources': 3,
         }
@@ -297,7 +297,7 @@ class InstanceCreateBackupSchedule(test.APITransactionTestCase):
         backup_schedule_data = {
             'name': 'test schedule',
             'retention_time': 3,
-            'schedule': '*/5 * * * *',
+            'schedule': '0 * * * *',
             'timezone': 'incorrect',
             'maximal_number_of_resources': 3,
         }
@@ -311,7 +311,7 @@ class InstanceCreateBackupSchedule(test.APITransactionTestCase):
         backup_schedule_data = {
             'name': 'test schedule',
             'retention_time': 3,
-            'schedule': '*/5 * * * *',
+            'schedule': '0 * * * *',
             'maximal_number_of_resources': 3,
         }
         response = self.client.post(create_url, backup_schedule_data)
