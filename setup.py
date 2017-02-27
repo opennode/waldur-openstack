@@ -2,7 +2,7 @@
 from setuptools import setup, find_packages
 
 
-test_requires = [
+tests_requires = [
     'ddt>=1.0.0'
 ]
 
@@ -12,7 +12,7 @@ dev_requires = [
 
 install_requires = [
     'iptools>=0.6.1',
-    'nodeconductor>0.122.0',
+    'nodeconductor>0.124.0',
     'python-ceilometerclient>=2.3.0',
     'python-cinderclient>=1.6.0',
     'python-glanceclient>=2.0.0',
@@ -36,7 +36,7 @@ setup(
     zip_safe=False,
     extras_require={
         'dev': dev_requires,
-        'test': test_requires,
+        'tests': tests_requires,
     },
     entry_points={
         'nodeconductor_extensions': (

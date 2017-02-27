@@ -19,7 +19,6 @@ class OpenStackServiceFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.OpenStackService
 
-    name = factory.Sequence(lambda n: 'service%s' % n)
     settings = factory.SubFactory(OpenStackServiceSettingsFactory)
     customer = factory.SubFactory(structure_factories.CustomerFactory)
 
@@ -155,13 +154,13 @@ class FloatingIPFactory(TenantMixin, factory.DjangoModelFactory):
     address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
 
     @classmethod
-    def get_url(self, instance=None):
+    def get_url(cls, instance=None):
         if instance is None:
             instance = FloatingIPFactory()
         return 'http://testserver' + reverse('openstack-fip-detail', kwargs={'uuid': instance.uuid})
 
     @classmethod
-    def get_list_url(self):
+    def get_list_url(cls):
         return 'http://testserver' + reverse('openstack-fip-list')
 
 
@@ -194,6 +193,7 @@ class NetworkFactory(factory.DjangoModelFactory):
         model = models.Network
 
     name = factory.Sequence(lambda n: 'network%s' % n)
+    backend_id = factory.Sequence(lambda n: 'backend_id%s' % n)
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
     tenant = factory.SubFactory(TenantFactory)
     state = models.Network.States.OK

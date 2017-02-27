@@ -8,7 +8,7 @@ from . import factories
 from .. import models
 
 
-class StatsTest(test.APISimpleTestCase):
+class StatsTest(test.APITransactionTestCase):
 
     def setUp(self):
         self.staff = structure_factories.UserFactory(is_staff=True)

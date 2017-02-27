@@ -26,7 +26,6 @@ class OpenStackTenantFixture(openstack_fixtures.OpenStackFixture):
     @cached_property
     def openstack_tenant_service(self):
         return factories.OpenStackTenantServiceFactory(
-            name=self.tenant.name,
             customer=self.customer,
             settings=self.openstack_tenant_service_settings
         )

@@ -27,7 +27,7 @@ def _instance_data(user, instance=None):
     }
 
 
-class InstanceSecurityGroupsTest(test.APISimpleTestCase):
+class InstanceSecurityGroupsTest(test.APITransactionTestCase):
 
     def setUp(self):
         self.fixture = fixtures.OpenStackTenantFixture()
