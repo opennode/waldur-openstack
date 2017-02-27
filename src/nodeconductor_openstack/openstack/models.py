@@ -220,7 +220,6 @@ class Tenant(structure_models.PrivateCloud):
             }
         )
         return OpenStackService.objects.create(
-            name=name,
             settings=new_settings,
             customer=customer
         )

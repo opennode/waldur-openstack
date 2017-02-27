@@ -19,7 +19,6 @@ class OpenStackServiceFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.OpenStackService
 
-    name = factory.Sequence(lambda n: 'service%s' % n)
     settings = factory.SubFactory(OpenStackServiceSettingsFactory)
     customer = factory.SubFactory(structure_factories.CustomerFactory)
 

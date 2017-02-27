@@ -148,6 +148,8 @@ class NestedServiceProjectLinkSerializer(structure_serializers.PermissionFieldFi
                                          core_serializers.AugmentedSerializerMixin,
                                          core_serializers.HyperlinkedRelatedModelSerializer):
 
+    service_name = serializers.ReadOnlyField(source='service.settings.name')
+
     class Meta(object):
         model = models.OpenStackServiceProjectLink
         fields = (
