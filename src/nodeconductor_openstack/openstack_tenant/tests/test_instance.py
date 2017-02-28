@@ -20,7 +20,7 @@ class InstanceCreateTest(test.APITransactionTestCase):
     def setUp(self):
         self.openstack_tenant_fixture = fixtures.OpenStackTenantFixture()
         self.openstack_settings = self.openstack_tenant_fixture.openstack_tenant_service_settings
-        self.openstack_spl = self.openstack_tenant_fixture.openstack_tenant_spl
+        self.openstack_spl = self.openstack_tenant_fixture.spl
         self.image = factories.ImageFactory(settings=self.openstack_settings, min_disk=10240, min_ram=1024)
         self.flavor = factories.FlavorFactory(settings=self.openstack_settings)
 
