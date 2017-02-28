@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
                 ('uuid', nodeconductor.core.fields.UUIDField()),
                 ('error_message', models.TextField(blank=True)),
-                ('schedule', nodeconductor.core.fields.CronScheduleField(max_length=15, validators=[nodeconductor.core.validators.validate_cron_schedule])),
+                ('schedule', nodeconductor.core.fields.CronScheduleField(max_length=15, validators=[nodeconductor.core.validators.validate_cron_schedule, nodeconductor.core.validators.MinCronValueValidator(1)])),
                 ('next_trigger_at', models.DateTimeField(null=True)),
                 ('timezone', models.CharField(default=django.utils.timezone.get_current_timezone_name, max_length=50)),
                 ('is_active', models.BooleanField(default=False)),
