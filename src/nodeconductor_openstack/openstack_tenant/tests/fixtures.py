@@ -33,8 +33,12 @@ class OpenStackTenantFixture(ProjectFixture):
         )
 
     @cached_property
+    def network(self):
+        return factories.NetworkFactory(settings=self.openstack_tenant_service_settings)
+
+    @cached_property
     def subnet(self):
-        pass
+        return factories.SubNetFactory(network=self.network, settings=self.openstack_tenant_service_settings)
 
     @cached_property
     def spl(self):

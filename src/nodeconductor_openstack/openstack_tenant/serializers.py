@@ -77,7 +77,7 @@ class FlavorSerializer(structure_serializers.BasePropertySerializer):
 class NetworkSerializer(structure_serializers.BasePropertySerializer):
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.Network
-        fields = ('uuid', 'name',
+        fields = ('url', 'uuid', 'name',
                   'type', 'is_external', 'segmentation_id', 'subnets')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
@@ -87,9 +87,12 @@ class NetworkSerializer(structure_serializers.BasePropertySerializer):
 
 
 class SubNetSerializer(structure_serializers.BasePropertySerializer):
+    dns_nameservers = core_fields.JsonField(read_only=True)
+    allocation_pools = core_fields.JsonField(read_only=True)
+
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.SubNet
-        fields = ('uuid', 'name',
+        fields = ('url', 'uuid', 'name',
                   'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp', 'dns_nameservers', 'network')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
@@ -398,6 +401,26 @@ class NestedSecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
         }
 
 
+class NestedInternalIPSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
+
+    class Meta(object):
+        model = models.InternalIP
+        fields = (
+            'ip4_address', 'mac_address', 'subnet', 'subnet_uuid', 'subnet_name', 'subnet_description', 'subnet_cidr')
+        read_only_fields = (
+            'ip4_address', 'mac_address', 'subnet_uuid', 'subnet_name', 'subnet_description', 'subnet_cidr')
+        related_paths = {
+            'subnet': ('uuid', 'name', 'description', 'cidr'),
+        }
+        extra_kwargs = {
+            'subnet': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-subnet-detail'},
+        }
+
+    def to_internal_value(self, data):
+        internal_value = super(NestedInternalIPSerializer, self).to_internal_value(data)
+        return models.InternalIP(subnet=internal_value['subnet'])
+
+
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -423,6 +446,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
+    internal_ips_set = NestedInternalIPSerializer(many=True, required=False)
 
     allocate_floating_ip = serializers.BooleanField(write_only=True, default=False)
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
@@ -445,11 +469,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
             'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
-            'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details',
+            'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details', 'internal_ips_set',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
             'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
-            'floating_ip', 'security_groups',
+            'floating_ip', 'security_groups', 'internal_ips_set',
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
             'flavor_disk', 'runtime_state', 'flavor_name', 'action',
@@ -457,11 +481,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     def get_fields(self):
         fields = super(InstanceSerializer, self).get_fields()
-        field = fields.get('floating_ip')
-        if field:
-            field.query_params = {'runtime_state': 'DOWN'}
-            field.value_field = 'url'
-            field.display_name_field = 'address'
+        floating_ip_field = fields.get('floating_ip')
+        if floating_ip_field:
+            floating_ip_field.query_params = {'runtime_state': 'DOWN'}
+            floating_ip_field.value_field = 'url'
+            floating_ip_field.display_name_field = 'address'
 
         return fields
 
@@ -507,6 +531,12 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     'Security group {} does not belong to the same service settings as service project link.'.format(
                         security_group.name))
 
+        for internal_ip in attrs.get('internal_ips_set', []):
+            if internal_ip.subnet.settings != settings:
+                raise serializers.ValidationError(
+                    'Subnet %s does not belong to the same service settings as service project link.'
+                    % internal_ip.subnet)
+
         self._validate_external_ip(attrs)
 
         return attrs
@@ -548,6 +578,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             Create volumes and security groups for instance.
         """
         security_groups = validated_data.pop('security_groups', [])
+        internal_ips = validated_data.pop('internal_ips_set', [])
         spl = validated_data['service_project_link']
         ssh_key = validated_data.get('ssh_public_key')
         if ssh_key:
@@ -576,6 +607,9 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         instance = super(InstanceSerializer, self).create(validated_data)
 
         instance.security_groups.add(*security_groups)
+        for internal_ip in internal_ips:
+            internal_ip.instance = instance
+            internal_ip.save()
 
         system_volume = models.Volume.objects.create(
             name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
@@ -735,6 +769,43 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
         if security_groups is not None:
             instance.security_groups.clear()
             instance.security_groups.add(*security_groups)
+
+        return instance
+
+
+class InstanceInternalIPsSetUpdateSerializer(serializers.Serializer):
+    internal_ips_set = NestedInternalIPSerializer(many=True)
+
+    def get_fields(self):
+        fields = super(InstanceInternalIPsSetUpdateSerializer, self).get_fields()
+        instance = self.instance
+        if instance:
+            fields['internal_ips_set'].view_name = 'openstacktenant-subnet-detail'
+            fields['internal_ips_set'].query_params = {
+                'settings_uuid': instance.service_project_link.service.settings.uuid
+            }
+        return fields
+
+    def validate_internal_ips_set(self, internal_ips_set):
+        spl = self.instance.service_project_link
+
+        for internal_ip in internal_ips_set:
+            subnet = internal_ip.subnet
+            if subnet.settings != spl.service.settings:
+                raise serializers.ValidationError(
+                    'Subnet %s (%s) is not within the same service settings' % (subnet.name, subnet.cidr))
+
+        return internal_ips_set
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        internal_ips_set = validated_data['internal_ips_set']
+        new_subnets = [ip.subnet for ip in internal_ips_set]
+        # delete stale IPs
+        models.InternalIP.objects.filter(instance=instance).exclude(subnet__in=new_subnets).delete()
+        # create new IPs
+        for internal_ip in internal_ips_set:
+            models.InternalIP.objects.get_or_create(instance=instance, subnet=internal_ip.subnet)
 
         return instance
 

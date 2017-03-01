@@ -489,6 +489,19 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     create_backup_schedule_validators = [core_validators.StateValidator(models.Instance.States.OK)]
     create_backup_schedule_serializer_class = serializers.BackupScheduleSerializer
 
+    @decorators.detail_route(methods=['post'])
+    def update_internal_ips_set(self, request, uuid=None):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        executors.InstanceInternalIPsSetUpdateExecutor().execute(instance)
+        return response.Response({'status': 'internal ips update was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
+    update_internal_ips_set_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+    update_internal_ips_set_serializer_class = serializers.InstanceInternalIPsSetUpdateSerializer
+
 
 class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewSet)):

@@ -451,9 +451,13 @@ class InstancePullExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
-        return core_tasks.BackendMethodTask().si(
-            serialized_instance, 'pull_instance',
-            state_transition='begin_updating')
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_instance, 'pull_instance', state_transition='begin_updating',
+            ),
+            core_tasks.BackendMethodTask().si(serialized_instance, 'pull_instance_security_groups'),
+            core_tasks.BackendMethodTask().si(serialized_instance, 'pull_instance_internal_ips'),
+        )
 
 
 class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
@@ -554,6 +558,16 @@ class InstanceRestartExecutor(core_executors.ActionExecutor):
                 success_state='ACTIVE',
                 erred_state='ERRED'
             ),
+        )
+
+
+class InstanceInternalIPsSetUpdateExecutor(core_executors.ActionExecutor):
+    action = 'Update internal IPs'
+
+    @classmethod
+    def get_task_signature(cls, instance, serializer_instance, **kwargs):
+        return core_tasks.BackendMethodTask().si(
+            serializer_instance, 'push_instance_internal_ips', state_transition='begin_updating',
         )
 
 
