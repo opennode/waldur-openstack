@@ -265,7 +265,7 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 
 class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
     name = serializers.CharField(write_only=True, help_text='New volume name.')
-    description = serializers.CharField(required=False, help_text='New volume name. Leave blank to use snapshot name.')
+    description = serializers.CharField(required=False, help_text='New volume description.')
 
     class Meta(object):
         model = models.SnapshotRestoration
@@ -317,6 +317,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
 
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
     action_details = core_serializers.JSONField(read_only=True)
+    metadata = core_serializers.JSONField()
     restorations = SnapshotRestorationSerializer(many=True, read_only=True)
     snapshot_schedule_uuid = serializers.ReadOnlyField(source='snapshot_schedule.uuid')
 
