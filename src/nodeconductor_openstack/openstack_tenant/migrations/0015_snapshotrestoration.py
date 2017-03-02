@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
                 ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, verbose_name='modified', editable=False)),
                 ('uuid', nodeconductor.core.fields.UUIDField()),
                 ('snapshot', models.ForeignKey(related_name='restorations', to='openstack_tenant.Snapshot')),
-                ('volume', models.OneToOneField(related_name='+', to='openstack_tenant.Volume')),
+                ('volume', models.OneToOneField(related_name='restoration', to='openstack_tenant.Volume')),
             ],
             options={
                 'abstract': False,
