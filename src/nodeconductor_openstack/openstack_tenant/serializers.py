@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+import collections
 import logging
 import pytz
 import re
@@ -421,6 +422,20 @@ class NestedInternalIPSerializer(core_serializers.AugmentedSerializerMixin, seri
         return models.InternalIP(subnet=internal_value['subnet'])
 
 
+def _validate_instance_internal_ips(internal_ips, settings):
+    """ - make sure that internal_ips belong to specified setting
+        - make sure that internal_ips does not connect to the same subnet twice
+    """
+    subnets = [internal_ip.subnet for internal_ip in internal_ips]
+    for subnet in subnets:
+        if subnet.settings != settings:
+            raise serializers.ValidationError(
+                'Subnet %s does not belong to the same service settings as service project link.' % subnet)
+    duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
+    if duplicates:
+        raise serializers.ValidationError('It is impossible to connect to subnet %s twice.' % duplicates[0])
+
+
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -531,12 +546,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     'Security group {} does not belong to the same service settings as service project link.'.format(
                         security_group.name))
 
-        for internal_ip in attrs.get('internal_ips_set', []):
-            if internal_ip.subnet.settings != settings:
-                raise serializers.ValidationError(
-                    'Subnet %s does not belong to the same service settings as service project link.'
-                    % internal_ip.subnet)
-
+        _validate_instance_internal_ips(attrs.get('internal_ips_set', []), settings)
         self._validate_external_ip(attrs)
 
         return attrs
@@ -788,13 +798,7 @@ class InstanceInternalIPsSetUpdateSerializer(serializers.Serializer):
 
     def validate_internal_ips_set(self, internal_ips_set):
         spl = self.instance.service_project_link
-
-        for internal_ip in internal_ips_set:
-            subnet = internal_ip.subnet
-            if subnet.settings != spl.service.settings:
-                raise serializers.ValidationError(
-                    'Subnet %s (%s) is not within the same service settings' % (subnet.name, subnet.cidr))
-
+        _validate_instance_internal_ips(internal_ips_set, spl.service.settings)
         return internal_ips_set
 
     @transaction.atomic

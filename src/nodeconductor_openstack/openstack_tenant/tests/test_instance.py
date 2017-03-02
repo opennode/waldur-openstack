@@ -373,3 +373,14 @@ class InstanceUpdateInternalIPsSetTest(test.APITransactionTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(self.instance.internal_ips_set.filter(subnet=subnet).exists())
+
+    def test_user_cannot_connect_instance_to_one_subnet_twice(self):
+        response = self.client.post(self.url, data={
+            'internal_ips_set': [
+                {'subnet': factories.SubNetFactory.get_url(self.fixture.subnet)},
+                {'subnet': factories.SubNetFactory.get_url(self.fixture.subnet)},
+            ]
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(self.instance.internal_ips_set.filter(subnet=self.fixture.subnet).exists())
