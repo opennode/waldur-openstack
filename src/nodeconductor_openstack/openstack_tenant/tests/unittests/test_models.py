@@ -1,5 +1,9 @@
 from __future__ import unicode_literals
 
+from croniter import croniter
+import datetime
+import freezegun
+
 from django.conf import settings
 from django.test import TestCase
 from django.utils import timezone
@@ -39,6 +43,7 @@ class BackupScheduleTest(TestCase):
         # new schedule
         schedule = factories.BackupScheduleFactory(next_trigger_at=None)
         self.assertGreater(schedule.next_trigger_at, timezone.now())
+
         # schedule become active
         schedule.is_active = False
         schedule.next_trigger_at = None
@@ -46,9 +51,53 @@ class BackupScheduleTest(TestCase):
         schedule.is_active = True
         schedule.save()
         self.assertGreater(schedule.next_trigger_at, timezone.now())
+
         # schedule was changed
         schedule.next_trigger_at = None
         schedule.schedule = '*/10 * * * *'
         schedule.save()
         schedule = models.BackupSchedule.objects.get(id=schedule.id)
         self.assertGreater(schedule.next_trigger_at, timezone.now())
+
+    def test_weekly_backup_schedule_next_trigger_at_is_correct(self):
+        schedule = factories.BackupScheduleFactory(schedule='0 2 * * 4')
+
+        cron = croniter('0 2 * * 4', timezone.now())
+        next_backup = schedule.next_trigger_at
+        self.assertEqual(next_backup, cron.get_next(datetime.datetime))
+        self.assertEqual(next_backup.weekday(), 3, 'Must be Thursday')
+
+        for k, v in {'hour': 2, 'minute': 0, 'second': 0}.items():
+            self.assertEqual(getattr(next_backup, k), v, 'Must be 2:00am')
+
+    def test_daily_backup_schedule_next_trigger_at_is_correct(self):
+        schedule = '0 2 * * *'
+
+        today = timezone.now()
+        expected = croniter(schedule, today).get_next(datetime.datetime)
+
+        with freezegun.freeze_time(today):
+            self.assertEqual(expected, factories.BackupScheduleFactory(schedule=schedule).next_trigger_at)
+
+
+class SnapshotScheduleTest(TestCase):
+
+    def test_weekly_snapshot_schedule_next_trigger_at_is_correct(self):
+        schedule = factories.SnapshotScheduleFactory(schedule='0 2 * * 4')
+
+        cron = croniter('0 2 * * 4', timezone.now())
+        next_snapshot = schedule.next_trigger_at
+        self.assertEqual(next_snapshot, cron.get_next(datetime.datetime))
+        self.assertEqual(next_snapshot.weekday(), 3, 'Must be Thursday')
+
+        for k, v in {'hour': 2, 'minute': 0, 'second': 0}.items():
+            self.assertEqual(getattr(next_snapshot, k), v, 'Must be 2:00am')
+
+    def test_daily_snapshot_schedule_next_trigger_at_is_correct(self):
+        schedule = '0 2 * * *'
+
+        today = timezone.now()
+        expected = croniter(schedule, today).get_next(datetime.datetime)
+
+        with freezegun.freeze_time(today):
+            self.assertEqual(expected, factories.SnapshotScheduleFactory(schedule=schedule).next_trigger_at)

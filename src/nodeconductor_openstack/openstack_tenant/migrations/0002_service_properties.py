@@ -43,7 +43,7 @@ class Migration(migrations.Migration):
                 ('address', models.GenericIPAddressField(protocol=b'IPv4')),
                 ('status', models.CharField(max_length=30)),
                 ('backend_network_id', models.CharField(max_length=255, editable=False)),
-                ('is_booked', models.BooleanField(default=False, help_text=b'Defines is FloatingIP booked by NodeConductor.')),
+                ('is_booked', models.BooleanField(default=False, help_text=b'Marks if floating IP has been booked for provisioning.')),
                 ('settings', models.ForeignKey(related_name='+', to='structure.ServiceSettings')),
             ],
             options={

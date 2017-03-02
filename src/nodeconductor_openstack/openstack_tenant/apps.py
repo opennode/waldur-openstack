@@ -21,7 +21,7 @@ class OpenStackTenantConfig(AppConfig):
         # Initialize service settings quotas based on tenant.
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
-        from nodeconductor_openstack.openstack.models import Tenant, SecurityGroup, FloatingIP
+        from nodeconductor_openstack.openstack.models import Tenant
         for quota in Tenant.get_quotas_fields():
             ServiceSettings.add_quota_field(
                 name=quota.name,
@@ -42,6 +42,28 @@ class OpenStackTenantConfig(AppConfig):
                 dispatch_uid='openstack_tenant.handlers.log_%s_action' % name,
             )
 
+        for handler in handlers.resource_handlers:
+            model = handler.resource_model
+            name = model.__name__.lower()
+
+            fsm_signals.post_transition.connect(
+                handler.create_handler,
+                sender=model,
+                dispatch_uid='openstack_tenant.handlers.create_%s' % name,
+            )
+
+            fsm_signals.post_transition.connect(
+                handler.update_handler,
+                sender=model,
+                dispatch_uid='openstack_tenant.handlers.update_%s' % name,
+            )
+
+            signals.post_delete.connect(
+                handler.delete_handler,
+                sender=model,
+                dispatch_uid='openstack_tenant.handlers.delete_%s' % name,
+            )
+
         signals.post_save.connect(
             handlers.log_backup_schedule_creation,
             sender=models.BackupSchedule,
@@ -60,40 +82,22 @@ class OpenStackTenantConfig(AppConfig):
             dispatch_uid='openstack_tenant.handlers.log_backup_schedule_deletion',
         )
 
-        fsm_signals.post_transition.connect(
-            handlers.create_floating_ip,
-            sender=FloatingIP,
-            dispatch_uid='openstack_tenant.handlers.create_floating_ip',
+        signals.post_save.connect(
+            handlers.log_snapshot_schedule_creation,
+            sender=models.SnapshotSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_snapshot_schedule_creation',
         )
 
-        fsm_signals.post_transition.connect(
-            handlers.update_floating_ip,
-            sender=FloatingIP,
-            dispatch_uid='openstack_tenant.handlers.update_floating_ip',
+        signals.post_save.connect(
+            handlers.log_snapshot_schedule_action,
+            sender=models.SnapshotSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_snapshot_schedule_action',
         )
 
-        fsm_signals.post_transition.connect(
-            handlers.create_security_group,
-            sender=SecurityGroup,
-            dispatch_uid='openstack_tenant.handlers.create_security_group',
-        )
-
-        fsm_signals.post_transition.connect(
-            handlers.update_security_group,
-            sender=SecurityGroup,
-            dispatch_uid='openstack_tenant.handlers.update_security_group',
-        )
-
-        signals.post_delete.connect(
-            handlers.delete_security_group,
-            sender=SecurityGroup,
-            dispatch_uid='openstack_tenant.handlers.delete_security_group',
-        )
-
-        signals.post_delete.connect(
-            handlers.delete_floating_ip,
-            sender=FloatingIP,
-            dispatch_uid='openstack_tenant.handlers.delete_floating_ip',
+        signals.pre_delete.connect(
+            handlers.log_snapshot_schedule_deletion,
+            sender=models.SnapshotSchedule,
+            dispatch_uid='openstack_tenant.handlers.log_snapshot_schedule_deletion',
         )
 
         signals.post_save.connect(

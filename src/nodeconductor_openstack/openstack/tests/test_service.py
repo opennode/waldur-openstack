@@ -150,6 +150,7 @@ class GetServiceTest(BaseServiceTest):
 
 
 class CreateServiceTest(BaseServiceTest):
+
     @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
     def test_user_can_add_service_to_the_customer_he_owns(self, mocked_backend):
         mocked_backend().check_admin_tenant.return_value = True
@@ -202,7 +203,7 @@ class CreateServiceTest(BaseServiceTest):
 
     def _get_owned_payload(self):
         return {
-            'name': factories.OpenStackServiceFactory().name,
+            'name': 'service_settings name',
             'customer': structure_factories.CustomerFactory.get_url(self.customers['owned']),
             'backend_url': 'http://example.com',
             'username': 'user',
@@ -211,15 +212,16 @@ class CreateServiceTest(BaseServiceTest):
             'is_admin': 'True',
         }
 
-    def _get_valid_payload(self, resource):
+    def _get_valid_payload(self, service):
         return {
-            'name': resource.name,
-            'settings': structure_factories.ServiceSettingsFactory.get_url(resource.settings),
-            'customer': structure_factories.CustomerFactory.get_url(resource.customer),
+            'name': service.settings.name,
+            'settings': structure_factories.ServiceSettingsFactory.get_url(service.settings),
+            'customer': structure_factories.CustomerFactory.get_url(service.customer),
         }
 
 
 class UpdateServiceTest(BaseServiceTest):
+
     def test_user_cannot_change_customer_of_service_he_owns(self):
         user = self.users['customer_owner']
 
@@ -236,15 +238,3 @@ class UpdateServiceTest(BaseServiceTest):
 
         reread_service = models.OpenStackService.objects.get(pk=service.pk)
         self.assertEqual(reread_service.customer, service.customer)
-
-    def test_user_can_change_service_name_of_service_he_owns(self):
-        self.client.force_authenticate(user=self.users['customer_owner'])
-
-        service = self.services['owned']
-
-        payload = {'name': 'new name'}
-        response = self.client.patch(factories.OpenStackServiceFactory.get_url(service), data=payload)
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-
-        reread_service = models.OpenStackService.objects.get(pk=service.pk)
-        self.assertEqual(reread_service.name, 'new name')

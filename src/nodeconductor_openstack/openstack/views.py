@@ -321,8 +321,9 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
                 "snapshots": 20
             }
 
-        Response code of a successful request is **202 ACCEPTED**. In case tenant is in a non-stable status, the response
-        would be **409 CONFLICT**. In this case REST client is advised to repeat the request after some time.
+        Response code of a successful request is **202 ACCEPTED**.
+        In case tenant is in a non-stable status, the response would be **409 CONFLICT**.
+        In this case REST client is advised to repeat the request after some time.
         On successful completion the task will synchronize quotas with the backend.
         """
         tenant = self.get_object()

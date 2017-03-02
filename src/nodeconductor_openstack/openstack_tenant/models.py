@@ -76,7 +76,7 @@ class FloatingIP(structure_models.ServiceProperty):
     address = models.GenericIPAddressField(protocol='IPv4')
     runtime_state = models.CharField(max_length=30)
     backend_network_id = models.CharField(max_length=255, editable=False)
-    is_booked = models.BooleanField(default=False, help_text='Defines is FloatingIP booked by NodeConductor.')
+    is_booked = models.BooleanField(default=False, help_text='Marks if floating IP has been booked for provisioning.')
 
     def __str__(self):
         return '%s:%s | %s' % (self.address, self.runtime_state, self.settings)
@@ -132,8 +132,18 @@ class Snapshot(structure_models.Storage):
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
     action_details = JSONField(default={})
+    snapshot_schedule = models.ForeignKey('SnapshotSchedule',
+                                          blank=True,
+                                          null=True,
+                                          on_delete=models.SET_NULL,
+                                          related_name='snapshots')
 
     tracker = FieldTracker()
+
+    kept_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Guaranteed time of snapshot retention. If null - keep forever.')
 
     @classmethod
     def get_url_name(cls):
@@ -157,10 +167,6 @@ class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
     class Permissions(object):
         customer_path = 'snapshot__service_project_link__project__customer'
         project_path = 'snapshot__service_project_link__project'
-
-    @classmethod
-    def get_url_name(cls):
-        return 'openstacktenant-snapshot-restoration'
 
 
 class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMixin, structure_models.NewResource):
@@ -196,8 +202,19 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
     action_details = JSONField(default={})
+    external_ip = models.OneToOneField(FloatingIP, blank=True, null=True,
+                                       related_name='instance',
+                                       on_delete=models.SET_NULL)
 
     tracker = FieldTracker()
+
+    @property
+    def external_ips(self):
+        return [self.external_ip.address] if self.external_ip else []
+
+    @property
+    def internal_ips(self):
+        return self.internal_ips_set.values_list('ip4_address', flat=True)
 
     @property
     def size(self):
@@ -265,24 +282,21 @@ class BackupRestoration(core_models.UuidMixin, TimeStampedModel):
         customer_path = 'backup__service_project_link__project__customer'
         project_path = 'backup__service_project_link__project'
 
-    def get_backend(self):
-        return self.backup.get_backend()
 
-    @classmethod
-    def get_url_name(cls):
-        return 'openstacktenant-backup-restoration'
+class BaseSchedule(structure_models.NewResource, core_models.ScheduleMixin):
+    retention_time = models.PositiveIntegerField(
+        help_text='Retention time in days, if 0 - resource will be kept forever')
+    maximal_number_of_resources = models.PositiveSmallIntegerField()
+    call_count = models.PositiveSmallIntegerField(default=0, help_text="How many times a resource schedule was called.")
+
+    class Meta(object):
+        abstract = True
 
 
-class BackupSchedule(structure_models.NewResource,
-                     core_models.ScheduleMixin):
-
+class BackupSchedule(BaseSchedule):
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='backup_schedules', on_delete=models.PROTECT)
     instance = models.ForeignKey(Instance, related_name='backup_schedules')
-    retention_time = models.PositiveIntegerField(
-        help_text='Retention time in days, if 0 - backup will be kept forever')
-    maximal_number_of_backups = models.PositiveSmallIntegerField()
-    call_count = models.PositiveSmallIntegerField(default=0, help_text="How many times backup schedule was called.")
 
     tracker = FieldTracker()
 
@@ -294,12 +308,36 @@ class BackupSchedule(structure_models.NewResource,
         return 'openstacktenant-backup-schedule'
 
 
+class SnapshotSchedule(BaseSchedule):
+    service_project_link = models.ForeignKey(
+        OpenStackTenantServiceProjectLink, related_name='snapshot_schedules', on_delete=models.PROTECT)
+    source_volume = models.ForeignKey(Volume, related_name='snapshot_schedules')
+
+    tracker = FieldTracker()
+
+    def __str__(self):
+        return 'SnapshotSchedule of %s. Active: %s' % (self.source_volume, self.is_active)
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-snapshot-schedule'
+
+
+@python_2_unicode_compatible
 class Network(core_models.DescribableMixin, structure_models.ServiceProperty):
     is_external = models.BooleanField(default=False)
     type = models.CharField(max_length=50, blank=True)
     segmentation_id = models.IntegerField(null=True)
 
+    def __str__(self):
+        return self.type
 
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-network'
+
+
+@python_2_unicode_compatible
 class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     network = models.ForeignKey(Network, related_name='subnets')
     cidr = models.CharField(max_length=32, blank=True)
@@ -308,6 +346,13 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
     dns_nameservers = JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')
+
+    def __str__(self):
+        return '%s | %s' % (self.network, self.gateway_ip)
+
+    @classmethod
+    def get_url_name(cls):
+        return 'openstacktenant-subnet'
 
 
 class InternalIP(openstack_base_models.Port):

@@ -195,6 +195,9 @@ class Tenant(structure_models.PrivateCloud):
     def get_backend(self):
         return self.service_project_link.service.get_backend(tenant_id=self.backend_id)
 
+    def get_log_fields(self):
+        return super(Tenant, self).get_log_fields() + ('extra_configuration',)
+
     def create_service(self, name):
         """
         Create non-admin service from this tenant.
@@ -217,7 +220,6 @@ class Tenant(structure_models.PrivateCloud):
             }
         )
         return OpenStackService.objects.create(
-            name=name,
             settings=new_settings,
             customer=customer
         )

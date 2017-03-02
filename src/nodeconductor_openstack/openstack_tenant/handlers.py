@@ -1,8 +1,11 @@
 from __future__ import unicode_literals
 
+from django.core import exceptions as django_exceptions
+
 from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import models as structure_models
 
+from ..openstack import models as openstack_models
 from . import log, models
 
 
@@ -67,6 +70,51 @@ def log_action(sender, instance, created=False, **kwargs):
             resource, resource.tracker.previous('action'), resource.tracker.previous('action_details'))
 
 
+def log_snapshot_schedule_creation(sender, instance, created=False, **kwargs):
+    if not created:
+        return
+
+    snapshot_schedule = instance
+    log.event_logger.openstack_snapshot_schedule.info(
+        'Snapshot schedule "%s" has been created' % snapshot_schedule.name,
+        event_type='resource_snapshot_schedule_created',
+        event_context={'resource': snapshot_schedule.source_volume, 'snapshot_schedule': snapshot_schedule},
+    )
+
+
+def log_snapshot_schedule_action(sender, instance, created=False, **kwargs):
+    snapshot_schedule = instance
+    if created or not snapshot_schedule.tracker.has_changed('is_active'):
+        return
+
+    context = {'resource': snapshot_schedule.source_volume, 'snapshot_schedule': snapshot_schedule}
+    if snapshot_schedule.is_active:
+        log.event_logger.openstack_snapshot_schedule.info(
+            'Snapshot schedule "%s" has been activated' % snapshot_schedule.name,
+            event_type='resource_snapshot_schedule_activated',
+            event_context=context,
+        )
+    else:
+        if snapshot_schedule.error_message:
+            message = 'Snapshot schedule "%s" has been deactivated because of error' % snapshot_schedule.name
+        else:
+            message = 'Snapshot schedule "%s" has been deactivated' % snapshot_schedule.name
+        log.event_logger.openstack_snapshot_schedule.info(
+            message,
+            event_type='resource_snapshot_schedule_deactivated',
+            event_context=context,
+        )
+
+
+def log_snapshot_schedule_deletion(sender, instance, **kwargs):
+    snapshot_schedule = instance
+    log.event_logger.openstack_snapshot_schedule.info(
+        'Snapshot schedule "%s" has been deleted' % snapshot_schedule.name,
+        event_type='resource_snapshot_schedule_deleted',
+        event_context={'resource': snapshot_schedule.source_volume, 'snapshot_schedule': snapshot_schedule},
+    )
+
+
 def log_backup_schedule_creation(sender, instance, created=False, **kwargs):
     if not created:
         return
@@ -112,155 +160,6 @@ def log_backup_schedule_deletion(sender, instance, **kwargs):
     )
 
 
-def delete_security_group(sender, instance, **kwargs):
-    """
-    Deletes security group on openstack security group deletion
-    :param instance: openstack.models.SecurityGroup instance
-    """
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
-    if not settings:
-        return
-
-    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
-    if security_group:
-        security_group.delete()
-
-
-def delete_floating_ip(sender, instance, **kwargs):
-    """
-    Deletes floating ip on openstack floating ip deletion
-    :param instance: openstack.models.FloatingIP instance
-    """
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
-    if not settings:
-        return
-
-    floating_ip = models.FloatingIP.objects.filter(settings=settings, backend_id=instance.backend_id).first()
-    if floating_ip:
-        floating_ip.delete()
-
-
-def update_security_group(sender, instance, name, source, target, **kwargs):
-    """
-    Updates security group and their rules on openstack security group transition from 'UPDATING' state to 'OK'.
-    :param instance: openstack.models.SecurityGroup instance
-    :param source: transition from state
-    :param target: transition to state
-    :return:
-    """
-    if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
-        return
-
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
-    if not settings:
-        return
-
-    security_group = models.SecurityGroup.objects.filter(settings=settings, backend_id=instance.backend_id).first()
-    if security_group:
-        security_group.name = instance.name
-        security_group.description = instance.description
-        security_group.save()
-
-        security_group.rules.all().delete()
-
-        group_rules = [models.SecurityGroupRule(
-            protocol=rule.protocol,
-            from_port=rule.from_port,
-            to_port=rule.to_port,
-            cidr=rule.cidr,
-            backend_id=rule.backend_id,
-            security_group=security_group,
-        ) for rule in instance.rules.iterator()]
-
-        security_group.rules.bulk_create(group_rules)
-
-
-def create_security_group(sender, instance, name, source, target, **kwargs):
-    """
-    Creates security group on openstack security group transition from 'CREATING' state to 'OK'.
-    :param instance: openstack.models.SecurityGroup instance
-    :param source: transition from state
-    :param target: transition to state
-    :return:
-    """
-    if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
-        return
-
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
-    if not settings:
-        return
-
-    security_group = models.SecurityGroup.objects.create(
-        description=instance.description,
-        name=instance.name,
-        backend_id=instance.backend_id,
-        settings=settings,
-    )
-
-    if instance.rules.count() > 0:
-        group_rules = [models.SecurityGroupRule(
-            protocol=rule.protocol,
-            from_port=rule.from_port,
-            to_port=rule.to_port,
-            cidr=rule.cidr,
-            backend_id=rule.backend_id,
-            security_group=security_group,
-        ) for rule in instance.rules.iterator()]
-
-        security_group.rules.bulk_create(group_rules)
-
-
-def update_floating_ip(sender, instance, name, source, target, **kwargs):
-    """
-    Updates floating ip on openstack floating ip transition from 'UPDATING' state to 'OK'.
-    :param instance: openstack.models.FloatingIP instance
-    :param source: transition from state
-    :param target: transition to state
-    :return:
-    """
-    if source != StateMixin.States.UPDATING and target != StateMixin.States.OK:
-        return
-
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
-    if not settings:
-        return
-
-    floating_ip = models.FloatingIP.objects.get(settings=settings, backend_id=instance.backend_id)
-
-    if floating_ip:
-        floating_ip.name = instance.name
-        floating_ip.address = instance.address
-        floating_ip.runtime_state = instance.runtime_state
-        floating_ip.backend_network_id = instance.backend_network_id
-
-        floating_ip.save()
-
-
-def create_floating_ip(sender, instance, name, source, target, **kwargs):
-    """
-    Creates floating ip on openstack floating ip transition from 'CREATING' state to 'OK'.
-    :param instance: openstack.models.FloatingIP instance
-    :param source: transition from state
-    :param target: transition to state
-    :return:
-    """
-    if source != StateMixin.States.CREATING and target != StateMixin.States.OK:
-        return
-
-    settings = structure_models.ServiceSettings.objects.filter(scope=instance.tenant).first()
-    if not settings:
-        return
-
-    models.FloatingIP.objects.create(
-        name=instance.name,
-        backend_id=instance.backend_id,
-        settings=settings,
-        address=instance.address,
-        runtime_state=instance.runtime_state,
-        backend_network_id=instance.backend_network_id,
-    )
-
-
 def update_service_settings_password(sender, instance, created=False, **kwargs):
     """
     Updates service settings password on tenant user_password change.
@@ -276,3 +175,148 @@ def update_service_settings_password(sender, instance, created=False, **kwargs):
         if service_settings:
             service_settings.password = tenant.user_password
             service_settings.save()
+
+
+class BaseSynchronizationHandler(object):
+    """
+    This class provides signal handlers for synchronization of OpenStack properties
+    when parent OpenStack resource are created, updated or deleted.
+    Security groups, floating IPs, networks and subnets are implemented as
+    resources in openstack application. However they are implemented as service properties
+    in the openstack_tenant application.
+    """
+    property_model = None
+    resource_model = None
+    fields = []
+
+    def get_tenant(self, resource):
+        return resource.tenant
+
+    def get_service_settings(self, resource):
+        try:
+            return structure_models.ServiceSettings.objects.get(scope=self.get_tenant(resource))
+        except (django_exceptions.ObjectDoesNotExist, django_exceptions.MultipleObjectsReturned):
+            return
+
+    def get_service_property(self, resource, settings):
+        try:
+            return self.property_model.objects.get(settings=settings, backend_id=resource.backend_id)
+        except (django_exceptions.ObjectDoesNotExist, django_exceptions.MultipleObjectsReturned):
+            return
+
+    def map_resource_to_dict(self, resource):
+        return {field: getattr(resource, field) for field in self.fields}
+
+    def create_service_property(self, resource, settings):
+        params = self.map_resource_to_dict(resource)
+        return self.property_model.objects.create(
+            settings=settings,
+            backend_id=resource.backend_id,
+            name=resource.name,
+            **params
+        )
+
+    def update_service_property(self, resource, settings):
+        service_property = self.get_service_property(resource, settings)
+        if not service_property:
+            return
+        params = self.map_resource_to_dict(resource)
+        for key, value in params.items():
+            setattr(service_property, key, value)
+        service_property.name = resource.name
+        service_property.save()
+        return service_property
+
+    def create_handler(self, sender, instance, name, source, target, **kwargs):
+        """
+        Creates service property on resource transition from 'CREATING' state to 'OK'.
+        """
+        if source == StateMixin.States.CREATING and target == StateMixin.States.OK:
+            settings = self.get_service_settings(instance)
+            if settings:
+                self.create_service_property(instance, settings)
+
+    def update_handler(self, sender, instance, name, source, target, **kwargs):
+        """
+        Updates service property on resource transition from 'UPDATING' state to 'OK'.
+        """
+        if source == StateMixin.States.UPDATING and target == StateMixin.States.OK:
+            settings = self.get_service_settings(instance)
+            if settings:
+                self.update_service_property(instance, settings)
+
+    def delete_handler(self, sender, instance, **kwargs):
+        """
+        Deletes service property on resource deletion
+        """
+        settings = self.get_service_settings(instance)
+        if not settings:
+            return
+        service_property = self.get_service_property(instance, settings)
+        if not service_property:
+            return
+        service_property.delete()
+
+
+class FloatingIPHandler(BaseSynchronizationHandler):
+    property_model = models.FloatingIP
+    resource_model = openstack_models.FloatingIP
+    fields = ('address', 'backend_network_id', 'runtime_state')
+
+
+class SecurityGroupHandler(BaseSynchronizationHandler):
+    property_model = models.SecurityGroup
+    resource_model = openstack_models.SecurityGroup
+    fields = ('description',)
+
+    def map_rules(self, security_group, openstack_security_group):
+        return [models.SecurityGroupRule(
+            protocol=rule.protocol,
+            from_port=rule.from_port,
+            to_port=rule.to_port,
+            cidr=rule.cidr,
+            backend_id=rule.backend_id,
+            security_group=security_group,
+        ) for rule in openstack_security_group.rules.iterator()]
+
+    def create_service_property(self, resource, settings):
+        service_property = super(SecurityGroupHandler, self).create_service_property(resource, settings)
+        if resource.rules.count() > 0:
+            group_rules = self.map_rules(service_property, resource)
+            service_property.rules.bulk_create(group_rules)
+        return service_property
+
+    def update_service_property(self, resource, settings):
+        service_property = super(SecurityGroupHandler, self).update_service_property(resource, settings)
+        service_property.rules.all().delete()
+        group_rules = self.map_rules(service_property, resource)
+        service_property.rules.bulk_create(group_rules)
+        return service_property
+
+
+class NetworkHandler(BaseSynchronizationHandler):
+    property_model = models.Network
+    resource_model = openstack_models.Network
+    fields = ('is_external', 'segmentation_id', 'type')
+
+
+class SubNetHandler(BaseSynchronizationHandler):
+    property_model = models.SubNet
+    resource_model = openstack_models.SubNet
+    fields = ('allocation_pools', 'cidr', 'dns_nameservers', 'enable_dhcp', 'ip_version')
+
+    def get_tenant(self, resource):
+        return resource.network.tenant
+
+    def map_resource_to_dict(self, resource):
+        params = super(SubNetHandler, self).map_resource_to_dict(resource)
+        params['network'] = models.Network.objects.get(backend_id=resource.network.backend_id)
+        return params
+
+
+resource_handlers = (
+    FloatingIPHandler(),
+    SecurityGroupHandler(),
+    NetworkHandler(),
+    SubNetHandler(),
+)
