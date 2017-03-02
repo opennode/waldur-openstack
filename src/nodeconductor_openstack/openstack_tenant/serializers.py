@@ -317,7 +317,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
 
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
     action_details = core_serializers.JSONField(read_only=True)
-    metadata = core_serializers.JSONField()
+    metadata = core_serializers.JSONField(required=False)
     restorations = SnapshotRestorationSerializer(many=True, read_only=True)
     snapshot_schedule_uuid = serializers.ReadOnlyField(source='snapshot_schedule.uuid')
 
