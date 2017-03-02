@@ -262,6 +262,14 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     restore_serializer_class = serializers.SnapshotRestorationSerializer
     restore_validators = [core_validators.StateValidator(models.Snapshot.States.OK)]
 
+    @decorators.detail_route(methods=['get'])
+    def restorations(self, request, uuid=None):
+        snapshot = self.get_object()
+        serializer = self.get_serializer(snapshot.restorations.all(), many=True)
+        return response.Response(serializer.data, status=status.HTTP_200_OK)
+
+    restorations_serializer_class = serializers.SnapshotRestorationSerializer
+
 
 class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewSet)):
