@@ -421,6 +421,29 @@ class NestedInternalIPSerializer(core_serializers.AugmentedSerializerMixin, seri
         return models.InternalIP(subnet=internal_value['subnet'])
 
 
+class NestedFloatingIPSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
+    subnet = serializers.HyperlinkedRelatedField(
+        queryset=models.SubNet.objects.all(),
+        source='internal_ip.subnet',
+        view_name='openstacktenant-subnet-detail',
+        lookup_field='uuid')
+    subnet_uuid = serializers.ReadOnlyField(source='internal_ip.subnet.uuid')
+    subnet_name = serializers.ReadOnlyField(source='internal_ip.subnet.name')
+    subnet_description = serializers.ReadOnlyField(source='internal_ip.subnet.description')
+    subnet_cidr = serializers.ReadOnlyField(source='internal_ip.subnet.cidr')
+
+    class Meta(object):
+        model = models.FloatingIP
+        fields = ('url', 'uuid', 'address', 'internal_ip_ip4_address', 'internal_ip_mac_address',
+                  'subnet', 'subnet_uuid', 'subnet_name', 'subnet_description', 'subnet_cidr')
+        related_paths = {
+            'internal_ip': ('ip4_address', 'mac_address')
+        }
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-fip-detail'},
+        }
+
+
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -447,33 +470,24 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
     internal_ips_set = NestedInternalIPSerializer(many=True, required=False)
+    floating_ips = NestedFloatingIPSerializer(many=True, required=False)
 
-    allocate_floating_ip = serializers.BooleanField(write_only=True, default=False)
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
     data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024, write_only=True)
 
-    floating_ip = serializers.HyperlinkedRelatedField(
-        label='Floating IP',
-        required=False,
-        allow_null=True,
-        view_name='openstacktenant-fip-detail',
-        lookup_field='uuid',
-        queryset=models.FloatingIP.objects.all(),
-        write_only=True
-    )
     volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
     action_details = core_serializers.JSONField(read_only=True)
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size',
             'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
-            'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details', 'internal_ips_set',
+            'floating_ips', 'volumes', 'runtime_state', 'action', 'action_details', 'internal_ips_set',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
-            'floating_ip', 'security_groups', 'internal_ips_set',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size',
+            'floating_ips', 'security_groups', 'internal_ips_set',
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
             'flavor_disk', 'runtime_state', 'flavor_name', 'action',
