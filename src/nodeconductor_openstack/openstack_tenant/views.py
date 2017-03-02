@@ -502,6 +502,14 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     update_internal_ips_set_validators = [core_validators.StateValidator(models.Instance.States.OK)]
     update_internal_ips_set_serializer_class = serializers.InstanceInternalIPsSetUpdateSerializer
 
+    @decorators.detail_route(methods=['get'])
+    def internal_ips_set(self, request, uuid=None):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance.internal_ips_set.all(), many=True)
+        return response.Response(serializer.data, status=status.HTTP_200_OK)
+
+    internal_ips_set_serializer_class = serializers.NestedInternalIPSerializer
+
 
 class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewSet)):
