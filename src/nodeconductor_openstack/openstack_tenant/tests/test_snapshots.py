@@ -13,7 +13,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         self.fixture = fixtures.OpenStackTenantFixture()
 
     def _make_restore_request(self):
-        url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
+        url = factories.SnapshotFactory.get_url(snapshot=self.fixture.snapshot, action='restore')
         request_data = {
             'name': '/dev/sdb1',
         }
@@ -53,13 +53,13 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(models.SnapshotRestoration.objects.count(), 1)
         restoration = models.SnapshotRestoration.objects.first()
-        restored_volume = models.Volume.objects.exclude(pk=self.fixture.openstack_snapshot.source_volume.pk).first()
-        self.assertEqual(self.fixture.openstack_snapshot, restoration.snapshot)
+        restored_volume = models.Volume.objects.exclude(pk=self.fixture.snapshot.source_volume.pk).first()
+        self.assertEqual(self.fixture.snapshot, restoration.snapshot)
         self.assertEqual(restored_volume, restoration.volume)
 
     def test_user_is_able_to_specify_a_name_of_the_restored_volume(self):
         self.client.force_authenticate(self.fixture.owner)
-        url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
+        url = factories.SnapshotFactory.get_url(snapshot=self.fixture.snapshot, action='restore')
 
         expected_name = 'C:/ Drive'
         request_data = {
@@ -76,7 +76,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
 
     def test_user_is_able_to_specify_a_description_of_the_restored_volume(self):
         self.client.force_authenticate(self.fixture.owner)
-        url = factories.SnapshotFactory.get_url(snapshot=self.fixture.openstack_snapshot, action='restore')
+        url = factories.SnapshotFactory.get_url(snapshot=self.fixture.snapshot, action='restore')
 
         expected_description = 'Restored after blue screen.'
         request_data = {
@@ -95,8 +95,8 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
     def test_restore_is_not_available_if_snapshot_is_not_in_OK_state(self):
         self.client.force_authenticate(self.fixture.owner)
         snapshot = factories.SnapshotFactory(
-            service_project_link=self.fixture.openstack_tenant_spl,
-            source_volume=self.fixture.openstack_volume,
+            service_project_link=self.fixture.spl,
+            source_volume=self.fixture.volume,
             state=models.Snapshot.States.ERRED)
         url = factories.SnapshotFactory.get_url(snapshot=snapshot, action='restore')
 
@@ -108,7 +108,7 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         quota = self.fixture.openstack_tenant_service_settings.quotas.get(name='volumes')
         quota.limit = quota.usage
         quota.save()
-        snapshot = self.fixture.openstack_snapshot
+        snapshot = self.fixture.snapshot
         expected_volumes_amount = models.Volume.objects.count()
 
         url = factories.SnapshotFactory.get_url(snapshot=snapshot, action='restore')
@@ -129,7 +129,7 @@ class SnapshotRetrieveTest(test.APITransactionTestCase):
     @data('staff', 'owner', 'admin', 'manager', 'global_support')
     def test_a_list_of_restored_volumes_are_displayed_if_user_has_project_level_permissions(self, user):
         self.client.force_authenticate(user=getattr(self.fixture, user))
-        snapshot_restoration = factories.SnapshotRestorationFactory(snapshot=self.fixture.openstack_snapshot)
+        snapshot_restoration = factories.SnapshotRestorationFactory(snapshot=self.fixture.snapshot)
         url = factories.SnapshotFactory.get_url(snapshot=snapshot_restoration.snapshot)
 
         response = self.client.get(url)
@@ -141,7 +141,7 @@ class SnapshotRetrieveTest(test.APITransactionTestCase):
     @data('user')
     def test_user_cannot_see_snapshot_restoration_if_has_no_project_level_permissions(self, user):
         self.client.force_authenticate(user=getattr(self.fixture, user))
-        self.fixture.openstack_snapshot
+        self.fixture.snapshot
 
         url = factories.SnapshotFactory.get_list_url()
         response = self.client.get(url)

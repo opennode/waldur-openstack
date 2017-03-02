@@ -3,6 +3,7 @@ from uuid import uuid4
 from rest_framework import test, status
 
 from nodeconductor.structure.tests import factories as structure_factories
+from nodeconductor_openstack.openstack.tests import fixtures as openstack_fixtures
 
 from ..models import Instance
 from . import factories, fixtures
@@ -12,9 +13,10 @@ class AssignFloatingIPTestCase(test.APITransactionTestCase):
 
     def setUp(self):
         self.openstack_tenant_fixture = fixtures.OpenStackTenantFixture()
+        self.openstack_fixture = openstack_fixtures.OpenStackFixture()
         self.openstack_tenant_settings = self.openstack_tenant_fixture.openstack_tenant_service_settings
-        self.spl = self.openstack_tenant_fixture.openstack_tenant_spl
-        self.tenant = self.openstack_tenant_fixture.tenant
+        self.spl = self.openstack_tenant_fixture.spl
+        self.tenant = self.openstack_fixture.tenant
 
     def test_user_cannot_assign_floating_ip_to_instance_in_unstable_state(self):
         floating_ip = factories.FloatingIPFactory(

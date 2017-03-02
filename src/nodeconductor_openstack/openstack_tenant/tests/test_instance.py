@@ -20,7 +20,7 @@ class InstanceCreateTest(test.APITransactionTestCase):
     def setUp(self):
         self.openstack_tenant_fixture = fixtures.OpenStackTenantFixture()
         self.openstack_settings = self.openstack_tenant_fixture.openstack_tenant_service_settings
-        self.openstack_spl = self.openstack_tenant_fixture.openstack_tenant_spl
+        self.openstack_spl = self.openstack_tenant_fixture.spl
         self.image = factories.ImageFactory(settings=self.openstack_settings, min_disk=10240, min_ram=1024)
         self.flavor = factories.FlavorFactory(settings=self.openstack_settings)
 
@@ -96,6 +96,21 @@ class InstanceCreateTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
         self.assertEqual(response.data['allocate_floating_ip'],
                          ['Can not allocate floating IP - quota has been filled.'])
+
+    def test_user_can_define_instance_subnets(self):
+        subnet = self.openstack_tenant_fixture.subnet
+        data = self.get_valid_data(internal_ips_set=[{'subnet': factories.SubNetFactory.get_url(subnet)}])
+
+        response = self.client.post(self.url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        instance = models.Instance.objects.get(uuid=response.data['uuid'])
+        self.assertTrue(models.InternalIP.objects.filter(subnet=subnet, instance=instance).exists())
+
+    def test_user_cannot_assign_subnet_from_other_settings_to_instance(self):
+        data = self.get_valid_data(internal_ips_set=[{'subnet': factories.SubNetFactory.get_url()}])
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class InstanceDeleteTest(BaseBackendTestCase):
@@ -317,3 +332,55 @@ class InstanceCreateBackupSchedule(test.APITransactionTestCase):
         response = self.client.post(create_url, backup_schedule_data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['timezone'], settings.TIME_ZONE)
+
+
+class InstanceUpdateInternalIPsSetTest(test.APITransactionTestCase):
+    action_name = 'update_internal_ips_set'
+
+    def setUp(self):
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.client.force_authenticate(user=self.fixture.admin)
+        self.instance = self.fixture.instance
+        self.url = factories.InstanceFactory.get_url(self.instance, action=self.action_name)
+
+    def test_user_can_update_instance_internal_ips_set(self):
+        # instance had 2 internal IPs
+        ip_to_keep = factories.InternalIPFactory(instance=self.instance, subnet=self.fixture.subnet)
+        ip_to_delete = factories.InternalIPFactory(instance=self.instance)
+        # instance should be connected to new subnet
+        subnet_to_connect = factories.SubNetFactory(settings=self.fixture.openstack_tenant_service_settings)
+
+        response = self.client.post(self.url, data={
+            'internal_ips_set': [
+                {'subnet': factories.SubNetFactory.get_url(self.fixture.subnet)},
+                {'subnet': factories.SubNetFactory.get_url(subnet_to_connect)},
+            ]
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertTrue(self.instance.internal_ips_set.filter(pk=ip_to_keep.pk).exists())
+        self.assertFalse(self.instance.internal_ips_set.filter(pk=ip_to_delete.pk).exists())
+        self.assertTrue(self.instance.internal_ips_set.filter(subnet=subnet_to_connect).exists())
+
+    def test_user_cannot_add_intenal_ip_from_different_settings(self):
+        subnet = factories.SubNetFactory()
+
+        response = self.client.post(self.url, data={
+            'internal_ips_set': [
+                {'subnet': factories.SubNetFactory.get_url(subnet)},
+            ]
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(self.instance.internal_ips_set.filter(subnet=subnet).exists())
+
+    def test_user_cannot_connect_instance_to_one_subnet_twice(self):
+        response = self.client.post(self.url, data={
+            'internal_ips_set': [
+                {'subnet': factories.SubNetFactory.get_url(self.fixture.subnet)},
+                {'subnet': factories.SubNetFactory.get_url(self.fixture.subnet)},
+            ]
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(self.instance.internal_ips_set.filter(subnet=self.fixture.subnet).exists())
