@@ -163,7 +163,7 @@ class Snapshot(structure_models.Storage):
 
 class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
     snapshot = models.ForeignKey(Snapshot, related_name='restorations')
-    volume = models.OneToOneField(Volume, related_name='+')
+    volume = models.OneToOneField(Volume, related_name='restoration')
 
     class Permissions(object):
         customer_path = 'snapshot__service_project_link__project__customer'

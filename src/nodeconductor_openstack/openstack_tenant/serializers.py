@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+import collections
 import logging
 import pytz
 import re
@@ -268,7 +269,7 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 
 class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
     name = serializers.CharField(write_only=True, help_text='New volume name.')
-    description = serializers.CharField(required=False, help_text='New volume name. Leave blank to use snapshot name.')
+    description = serializers.CharField(required=False, help_text='New volume description.')
 
     class Meta(object):
         model = models.SnapshotRestoration
@@ -320,6 +321,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
 
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
     action_details = core_serializers.JSONField(read_only=True)
+    metadata = core_serializers.JSONField(required=False)
     restorations = SnapshotRestorationSerializer(many=True, read_only=True)
     snapshot_schedule_uuid = serializers.ReadOnlyField(source='snapshot_schedule.uuid')
 
@@ -444,6 +446,20 @@ class NestedFloatingIPSerializer(core_serializers.AugmentedSerializerMixin, seri
         }
 
 
+def _validate_instance_internal_ips(internal_ips, settings):
+    """ - make sure that internal_ips belong to specified setting
+        - make sure that internal_ips does not connect to the same subnet twice
+    """
+    subnets = [internal_ip.subnet for internal_ip in internal_ips]
+    for subnet in subnets:
+        if subnet.settings != settings:
+            raise serializers.ValidationError(
+                'Subnet %s does not belong to the same service settings as service project link.' % subnet)
+    duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
+    if duplicates:
+        raise serializers.ValidationError('It is impossible to connect to subnet %s twice.' % duplicates[0])
+
+
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -545,12 +561,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     'Security group {} does not belong to the same service settings as service project link.'.format(
                         security_group.name))
 
-        for internal_ip in attrs.get('internal_ips_set', []):
-            if internal_ip.subnet.settings != settings:
-                raise serializers.ValidationError(
-                    'Subnet %s does not belong to the same service settings as service project link.'
-                    % internal_ip.subnet)
-
+        _validate_instance_internal_ips(attrs.get('internal_ips_set', []), settings)
         self._validate_external_ip(attrs)
 
         return attrs
@@ -802,13 +813,7 @@ class InstanceInternalIPsSetUpdateSerializer(serializers.Serializer):
 
     def validate_internal_ips_set(self, internal_ips_set):
         spl = self.instance.service_project_link
-
-        for internal_ip in internal_ips_set:
-            subnet = internal_ip.subnet
-            if subnet.settings != spl.service.settings:
-                raise serializers.ValidationError(
-                    'Subnet %s (%s) is not within the same service settings' % (subnet.name, subnet.cidr))
-
+        _validate_instance_internal_ips(internal_ips_set, spl.service.settings)
         return internal_ips_set
 
     @transaction.atomic
