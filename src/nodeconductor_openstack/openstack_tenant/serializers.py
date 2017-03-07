@@ -474,6 +474,7 @@ def _validate_instance_internal_ips(internal_ips, settings):
 def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instance_subnets):
     if floating_ips_with_subnets and 'external_network_id' not in settings.options:
         raise serializers.ValidationError('Please specify tenant external network to perform floating IP operations.')
+
     for floating_ip, subnet in floating_ips_with_subnets:
         if subnet not in instance_subnets:
             message = 'SubNet %s is not connected to instance.' % subnet
@@ -483,12 +484,39 @@ def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instanc
         if floating_ip.is_booked:
             raise serializers.ValidationError(
                 'Floating IP %s is already booked for another instance creation' % floating_ip)
-        if floating_ip.runtime_state != 'DOWN':
+        if not floating_ip.internal_ip and floating_ip.runtime_state != 'DOWN':
             raise serializers.ValidationError('Floating IP %s runtime state should be DOWN.' % floating_ip)
         if floating_ip.settings != settings:
             message = (
                 'Floating IP %s does not belong to the same service settings as service project link.' % floating_ip)
             raise serializers.ValidationError({'floating_ips': message})
+
+    subnets = [subnet for _, subnet in floating_ips_with_subnets]
+    duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
+    if duplicates:
+        raise serializers.ValidationError('It is impossible to use subnet %s twice.' % duplicates[0])
+
+
+def _connect_floating_ip_to_instance(floating_ip, subnet, instance):
+    """ Connect floating IP to instance via specified subnet.
+        If floating IP is not defined - take exist free one or create a new one.
+    """
+    settings = instance.service_project_link.service.settings
+    if not floating_ip:
+        kwargs = {
+            'runtime_state': 'DOWN',
+            'settings': settings,
+            'is_booked': False,
+            'backend_network_id': settings.options['external_network_id'],
+        }
+        floating_ip = models.FloatingIP.objects.filter(**kwargs).first()
+        if not floating_ip:
+            floating_ip = models.FloatingIP(**kwargs)
+            floating_ip.increase_backend_quotas_usage()
+    floating_ip.is_booked = True
+    floating_ip.internal_ip = models.InternalIP.objects.get(instance=instance, subnet=subnet)
+    floating_ip.save()
+    return floating_ip
 
 
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
@@ -641,18 +669,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             internal_ip.instance = instance
             internal_ip.save()
         # floating IPs
-        settings = spl.service.settings
         for floating_ip, subnet in floating_ips_with_subnets:
-            if not floating_ip:
-                floating_ip, created = models.FloatingIP.objects.get_or_create(
-                    runtime_state='DOWN',
-                    settings=settings,
-                    backend_network_id=settings.options['external_network_id'])
-                if created:
-                    floating_ip.increase_backend_quotas_usage()
-            floating_ip.is_booked = True
-            floating_ip.internal_ip = models.InternalIP.objects.get(instance=instance, subnet=subnet)
-            floating_ip.save()
+            _connect_floating_ip_to_instance(floating_ip, subnet, instance)
         # volumes
         system_volume = models.Volume.objects.create(
             name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
@@ -670,6 +688,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         data_volume.increase_backend_quotas_usage()
         instance.volumes.add(system_volume, data_volume)
 
+        print 'INSTANCE FIPs', instance.floating_ips.all()
         return instance
 
     def update(self, instance, validated_data):
@@ -844,6 +863,41 @@ class InstanceInternalIPsSetUpdateSerializer(serializers.Serializer):
         for internal_ip in internal_ips_set:
             models.InternalIP.objects.get_or_create(instance=instance, subnet=internal_ip.subnet)
 
+        return instance
+
+
+class InstanceFlaotingIPsUpdateSerializer(serializers.Serializer):
+    floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
+
+    def get_fields(self):
+        fields = super(InstanceFlaotingIPsUpdateSerializer, self).get_fields()
+        instance = self.instance
+        if instance:
+            fields['floating_ips'].view_name = 'openstacktenant-fip-detail'
+            fields['floating_ips'].query_params = {
+                'settings_uuid': instance.service_project_link.service.settings.uuid.hex,
+                'runtime_state': 'DOWN',
+                'is_booked': 'False',
+            }
+        return fields
+
+    def validate_floating_ips(self, floating_ips):
+        spl = self.instance.service_project_link
+        subnets = self.instance.subnets.all()
+        _validate_instance_floating_ips(floating_ips, spl.service.settings, subnets)
+        return floating_ips
+
+    def update(self, instance, validated_data):
+        floating_ips_with_subnets = validated_data['floating_ips']
+        floating_ips_to_disconnect = list(self.instance.floating_ips)
+        for floating_ip, subnet in floating_ips_with_subnets:
+            if floating_ip in floating_ips_to_disconnect:
+                floating_ips_to_disconnect.remove(floating_ip)
+                continue
+            _connect_floating_ip_to_instance(floating_ip, subnet, instance)
+        for floating_ip in floating_ips_to_disconnect:
+            floating_ip.internal_ip = None
+            floating_ip.save()
         return instance
 
 

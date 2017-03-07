@@ -304,7 +304,14 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
                 update_fields=['runtime_state', 'device']
             ))
 
+        # Update floating IPs states
+        _tasks.append(core_tasks.IndependentBackendMethodTask().si(serialized_instance, 'pull_floating_ips'))
+
         return chain(*_tasks)
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        return tasks.SetInstanceOKTask().si(serialized_instance)
 
     @classmethod
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
@@ -464,6 +471,26 @@ class InstancePullExecutor(core_executors.ActionExecutor):
         )
 
 
+class InstanceFloatingIPsUpdateExecutor(core_executors.ActionExecutor):
+    action = 'Update floating IPs'
+
+    @classmethod
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_instance, 'push_instance_floating_ips', state_transition='begin_updating'),
+            core_tasks.IndependentBackendMethodTask().si(serialized_instance, 'pull_floating_ips'),
+        )
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        return tasks.SetInstanceOKTask().si(serialized_instance)
+
+    @classmethod
+    def get_failure_signature(cls, instance, serialized_instance, **kwargs):
+        return tasks.SetInstanceErredTask().s(serialized_instance)
+
+
 class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
     # TODO: rewrite this executor completely
     action = 'Assign floating IP'
@@ -570,9 +597,9 @@ class InstanceInternalIPsSetUpdateExecutor(core_executors.ActionExecutor):
     action = 'Update internal IPs'
 
     @classmethod
-    def get_task_signature(cls, instance, serializer_instance, **kwargs):
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
         return core_tasks.BackendMethodTask().si(
-            serializer_instance, 'push_instance_internal_ips', state_transition='begin_updating',
+            serialized_instance, 'push_instance_internal_ips', state_transition='begin_updating',
         )
 
 

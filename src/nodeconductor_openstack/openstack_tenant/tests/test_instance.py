@@ -62,32 +62,6 @@ class InstanceCreateTest(test.APITransactionTestCase):
     #     response = self.client.post(self.url, self.get_valid_data())
     #     self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
-    # def test_user_can_provision_instance_with_manual_external_ip(self):
-    #     self.floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='DOWN')
-    #     response = self.client.post(self.url, self.get_valid_data(
-    #         floating_ip=factories.FloatingIPFactory.get_url(self.floating_ip),
-    #     ))
-    #     self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-
-    # def test_user_can_not_provision_instance_if_external_ip_is_not_available(self):
-    #     self.floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='ACTIVE')
-
-    #     response = self.client.post(self.url, self.get_valid_data(
-    #         floating_ip=factories.FloatingIPFactory.get_url(self.floating_ip),
-    #     ))
-    #     self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-    #     self.assertEqual(response.data['floating_ip'], ['Floating IP runtime_state must be DOWN.'])
-
-    # def test_user_can_not_provision_instance_if_external_ip_belongs_to_another_service_project_link(self):
-    #     another_settings = factories.OpenStackTenantServiceSettingsFactory()
-    #     floating_ip = factories.FloatingIPFactory(settings=another_settings, runtime_state='DOWN')
-
-    #     response = self.client.post(self.url, self.get_valid_data(
-    #         floating_ip=factories.FloatingIPFactory.get_url(floating_ip),
-    #     ))
-    #     self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
-    #     self.assertEqual(response.data['floating_ip'], ['Floating IP must belong to the same service settings.'])
-
     # def test_user_can_not_provision_instance_if_tenant_quota_exceeded(self):
     #     quota = self.openstack_settings.quotas.get(name='floating_ip_count')
     #     quota.limit = quota.usage
@@ -115,89 +89,89 @@ class InstanceCreateTest(test.APITransactionTestCase):
     #     response = self.client.post(self.url, data)
     #     self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_user_can_define_instance_floating_ips(self):
-        subnet = self.openstack_tenant_fixture.subnet
-        subnet_url = factories.SubNetFactory.get_url(subnet)
-        floating_ip = self.openstack_tenant_fixture.floating_ip
-        data = self.get_valid_data(
-            internal_ips_set=[{'subnet': subnet_url}],
-            floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
-        )
+    # def test_user_can_define_instance_floating_ips(self):
+    #     subnet = self.openstack_tenant_fixture.subnet
+    #     subnet_url = factories.SubNetFactory.get_url(subnet)
+    #     floating_ip = self.openstack_tenant_fixture.floating_ip
+    #     data = self.get_valid_data(
+    #         internal_ips_set=[{'subnet': subnet_url}],
+    #         floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
+    #     )
 
-        response = self.client.post(self.url, data)
+    #     response = self.client.post(self.url, data)
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        instance = models.Instance.objects.get(uuid=response.data['uuid'])
-        self.assertIn(floating_ip, instance.floating_ips)
+    #     self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+    #     instance = models.Instance.objects.get(uuid=response.data['uuid'])
+    #     self.assertIn(floating_ip, instance.floating_ips)
 
-    def test_user_cannot_assign_floating_ip_from_other_settings_to_instance(self):
-        subnet = self.openstack_tenant_fixture.subnet
-        subnet_url = factories.SubNetFactory.get_url(subnet)
-        floating_ip = factories.FloatingIPFactory()
-        data = self.get_valid_data(
-            internal_ips_set=[{'subnet': subnet_url}],
-            floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
-        )
+    # def test_user_cannot_assign_floating_ip_from_other_settings_to_instance(self):
+    #     subnet = self.openstack_tenant_fixture.subnet
+    #     subnet_url = factories.SubNetFactory.get_url(subnet)
+    #     floating_ip = factories.FloatingIPFactory()
+    #     data = self.get_valid_data(
+    #         internal_ips_set=[{'subnet': subnet_url}],
+    #         floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
+    #     )
 
-        response = self.client.post(self.url, data)
+    #     response = self.client.post(self.url, data)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    #     self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_user_cannot_assign_floating_ip_to_disconnected_subnet(self):
-        subnet = self.openstack_tenant_fixture.subnet
-        subnet_url = factories.SubNetFactory.get_url(subnet)
-        floating_ip = self.openstack_tenant_fixture.floating_ip
-        data = self.get_valid_data(
-            floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
-        )
+    # def test_user_cannot_assign_floating_ip_to_disconnected_subnet(self):
+    #     subnet = self.openstack_tenant_fixture.subnet
+    #     subnet_url = factories.SubNetFactory.get_url(subnet)
+    #     floating_ip = self.openstack_tenant_fixture.floating_ip
+    #     data = self.get_valid_data(
+    #         floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
+    #     )
 
-        response = self.client.post(self.url, data)
+    #     response = self.client.post(self.url, data)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    #     self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_user_cannot_assign_active_floating_ip(self):
-        subnet = self.openstack_tenant_fixture.subnet
-        subnet_url = factories.SubNetFactory.get_url(subnet)
-        floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='ACTIVE')
-        data = self.get_valid_data(
-            internal_ips_set=[{'subnet': subnet_url}],
-            floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
-        )
+    # def test_user_cannot_assign_active_floating_ip(self):
+    #     subnet = self.openstack_tenant_fixture.subnet
+    #     subnet_url = factories.SubNetFactory.get_url(subnet)
+    #     floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='ACTIVE')
+    #     data = self.get_valid_data(
+    #         internal_ips_set=[{'subnet': subnet_url}],
+    #         floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
+    #     )
 
-        response = self.client.post(self.url, data)
+    #     response = self.client.post(self.url, data)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    #     self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_user_can_allocate_floating_ip(self):
-        subnet = self.openstack_tenant_fixture.subnet
-        subnet_url = factories.SubNetFactory.get_url(subnet)
-        self.openstack_tenant_fixture.floating_ip.status = 'ACTIVE'
-        self.openstack_tenant_fixture.floating_ip.save()
-        data = self.get_valid_data(
-            internal_ips_set=[{'subnet': subnet_url}],
-            floating_ips=[{'subnet': subnet_url}],
-        )
+    # def test_user_can_allocate_floating_ip(self):
+    #     subnet = self.openstack_tenant_fixture.subnet
+    #     subnet_url = factories.SubNetFactory.get_url(subnet)
+    #     self.openstack_tenant_fixture.floating_ip.status = 'ACTIVE'
+    #     self.openstack_tenant_fixture.floating_ip.save()
+    #     data = self.get_valid_data(
+    #         internal_ips_set=[{'subnet': subnet_url}],
+    #         floating_ips=[{'subnet': subnet_url}],
+    #     )
 
-        response = self.client.post(self.url, data)
+    #     response = self.client.post(self.url, data)
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        instance = models.Instance.objects.get(uuid=response.data['uuid'])
-        self.assertEqual(instance.floating_ips.count(), 1)
+    #     self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+    #     instance = models.Instance.objects.get(uuid=response.data['uuid'])
+    #     self.assertEqual(instance.floating_ips.count(), 1)
 
-    def test_user_cannot_allocate_floating_ip_if_quota_limit_is_reached(self):
-        self.openstack_settings.quotas.filter(name=self.openstack_settings.Quotas.floating_ip_count).update(limit=0)
-        subnet = self.openstack_tenant_fixture.subnet
-        subnet_url = factories.SubNetFactory.get_url(subnet)
-        self.openstack_tenant_fixture.floating_ip.status = 'ACTIVE'
-        self.openstack_tenant_fixture.floating_ip.save()
-        data = self.get_valid_data(
-            internal_ips_set=[{'subnet': subnet_url}],
-            floating_ips=[{'subnet': subnet_url}],
-        )
+    # def test_user_cannot_allocate_floating_ip_if_quota_limit_is_reached(self):
+    #     self.openstack_settings.quotas.filter(name=self.openstack_settings.Quotas.floating_ip_count).update(limit=0)
+    #     subnet = self.openstack_tenant_fixture.subnet
+    #     subnet_url = factories.SubNetFactory.get_url(subnet)
+    #     self.openstack_tenant_fixture.floating_ip.status = 'ACTIVE'
+    #     self.openstack_tenant_fixture.floating_ip.save()
+    #     data = self.get_valid_data(
+    #         internal_ips_set=[{'subnet': subnet_url}],
+    #         floating_ips=[{'subnet': subnet_url}],
+    #     )
 
-        response = self.client.post(self.url, data)
+    #     response = self.client.post(self.url, data)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    #     self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 
@@ -472,3 +446,64 @@ class InstanceCreateTest(test.APITransactionTestCase):
 
 #         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 #         self.assertFalse(self.instance.internal_ips_set.filter(subnet=self.fixture.subnet).exists())
+
+
+class InstanceUpdateFloatingIPsTest(test.APITransactionTestCase):
+    action_name = 'update_floating_ips'
+
+    def setUp(self):
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.fixture.openstack_tenant_service_settings.options = {'external_network_id': uuid.uuid4().hex}
+        self.fixture.openstack_tenant_service_settings.save()
+        self.client.force_authenticate(user=self.fixture.admin)
+        self.instance = self.fixture.instance
+        factories.InternalIPFactory.create(instance=self.instance, subnet=self.fixture.subnet)
+        self.url = factories.InstanceFactory.get_url(self.instance, action=self.action_name)
+        self.subnet_url = factories.SubNetFactory.get_url(self.fixture.subnet)
+
+    def test_user_can_update_instance_floating_ips(self):
+        floating_ip_url = factories.FloatingIPFactory.get_url(self.fixture.floating_ip)
+        data = {
+            'floating_ips': [
+                {'subnet': self.subnet_url, 'url': floating_ip_url},
+            ]
+        }
+
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(self.instance.floating_ips.count(), 1)
+        self.assertIn(self.fixture.floating_ip, self.instance.floating_ips)
+
+    def test_user_cannot_add_floating_ip_via_subnet_that_is_not_connected_to_instance(self):
+        subnet_url = factories.SubNetFactory.get_url()
+        data = {'floating_ips': [{'subnet': subnet_url}]}
+
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_user_can_remove_floating_ip_from_instance(self):
+        self.fixture.floating_ip.internal_ip = self.instance.internal_ips_set.first()
+        self.fixture.floating_ip.save()
+        data = {'floating_ips': []}
+
+        response = self.client.post(self.url, data=data)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(self.instance.floating_ips.count(), 0)
+
+    def test_free_floating_ip_is_used_for_allocation(self):
+        external_network_id = self.fixture.openstack_tenant_service_settings.options['external_network_id']
+        self.fixture.floating_ip.backend_network_id = external_network_id
+        self.fixture.floating_ip.save()
+        data = {'floating_ips': [{'subnet': self.subnet_url}]}
+
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertIn(self.fixture.floating_ip, self.instance.floating_ips)
+
+    def test_user_cannot_use_same_subnet_twice(self):
+        data = {'floating_ips': [{'subnet': self.subnet_url}, {'subnet': self.subnet_url}]}
+        response = self.client.post(self.url, data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
