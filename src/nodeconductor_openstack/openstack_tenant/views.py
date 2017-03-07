@@ -295,12 +295,11 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     def perform_create(self, serializer):
         instance = serializer.save()
+        # TODO: Fix floating ips
         executors.InstanceCreateExecutor.execute(
             instance,
             ssh_key=serializer.validated_data.get('ssh_public_key'),
             flavor=serializer.validated_data['flavor'],
-            allocate_floating_ip=serializer.validated_data['allocate_floating_ip'],
-            floating_ip=serializer.validated_data.get('floating_ip'),
             is_heavy_task=True,
         )
 

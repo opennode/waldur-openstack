@@ -423,7 +423,8 @@ class NestedInternalIPSerializer(core_serializers.AugmentedSerializerMixin, seri
         return models.InternalIP(subnet=internal_value['subnet'])
 
 
-class NestedFloatingIPSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
+class NestedFloatingIPSerializer(core_serializers.AugmentedSerializerMixin,
+                                 core_serializers.HyperlinkedRelatedModelSerializer):
     subnet = serializers.HyperlinkedRelatedField(
         queryset=models.SubNet.objects.all(),
         source='internal_ip.subnet',
@@ -438,12 +439,22 @@ class NestedFloatingIPSerializer(core_serializers.AugmentedSerializerMixin, seri
         model = models.FloatingIP
         fields = ('url', 'uuid', 'address', 'internal_ip_ip4_address', 'internal_ip_mac_address',
                   'subnet', 'subnet_uuid', 'subnet_name', 'subnet_description', 'subnet_cidr')
+        read_only_fields = ('address', 'internal_ip_ip4_address', 'internal_ip_mac_address')
         related_paths = {
             'internal_ip': ('ip4_address', 'mac_address')
         }
         extra_kwargs = {
             'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-fip-detail'},
         }
+
+    def to_internal_value(self, data):
+        """ Return floating and subnet that it should be connected to as internal value """
+        internal_value = super(core_serializers.HyperlinkedRelatedModelSerializer, self).to_internal_value(data)
+        subnet = internal_value['internal_ip']['subnet']
+        floating_ip = None
+        if 'url' in data:
+            floating_ip = super(NestedFloatingIPSerializer, self).to_internal_value(data)
+        return floating_ip, subnet
 
 
 def _validate_instance_internal_ips(internal_ips, settings):
@@ -458,6 +469,26 @@ def _validate_instance_internal_ips(internal_ips, settings):
     duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
     if duplicates:
         raise serializers.ValidationError('It is impossible to connect to subnet %s twice.' % duplicates[0])
+
+
+def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instance_subnets):
+    if floating_ips_with_subnets and 'external_network_id' not in settings.options:
+        raise serializers.ValidationError('Please specify tenant external network to perform floating IP operations.')
+    for floating_ip, subnet in floating_ips_with_subnets:
+        if subnet not in instance_subnets:
+            message = 'SubNet %s is not connected to instance.' % subnet
+            raise serializers.ValidationError({'floating_ips': message})
+        if not floating_ip:
+            continue
+        if floating_ip.is_booked:
+            raise serializers.ValidationError(
+                'Floating IP %s is already booked for another instance creation' % floating_ip)
+        if floating_ip.runtime_state != 'DOWN':
+            raise serializers.ValidationError('Floating IP %s runtime state should be DOWN.' % floating_ip)
+        if floating_ip.settings != settings:
+            message = (
+                'Floating IP %s does not belong to the same service settings as service project link.' % floating_ip)
+            raise serializers.ValidationError({'floating_ips': message})
 
 
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
@@ -486,7 +517,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
     internal_ips_set = NestedInternalIPSerializer(many=True, required=False)
-    floating_ips = NestedFloatingIPSerializer(many=True, required=False)
+    floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
 
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
     data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024, write_only=True)
@@ -561,41 +592,12 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     'Security group {} does not belong to the same service settings as service project link.'.format(
                         security_group.name))
 
-        _validate_instance_internal_ips(attrs.get('internal_ips_set', []), settings)
-        self._validate_external_ip(attrs)
+        internal_ips = attrs.get('internal_ips_set', [])
+        _validate_instance_internal_ips(internal_ips, settings)
+        subnets = [internal_ip.subnet for internal_ip in internal_ips]
+        _validate_instance_floating_ips(attrs.get('floating_ips', []), settings, subnets)
 
         return attrs
-
-    def _validate_external_ip(self, attrs):
-        floating_ip = attrs.get('floating_ip')
-        spl = attrs['service_project_link']
-        allocate_floating_ip = attrs['allocate_floating_ip']
-
-        # Case 1. If floating_ip!=None then requested floating IP is assigned to the instance.
-        if floating_ip:
-
-            if floating_ip.runtime_state != 'DOWN':
-                raise serializers.ValidationError({'floating_ip': 'Floating IP runtime_state must be DOWN.'})
-
-            if floating_ip.settings != spl.service.settings:
-                raise serializers.ValidationError({
-                    'floating_ip': 'Floating IP must belong to the same service settings.'
-                })
-
-        # Case 2. If floating_ip=None and allocate_floating_ip=True
-        # then new floating IP is allocated and assigned to the instance.
-        elif allocate_floating_ip:
-
-            floating_ip_count_quota = spl.service.settings.quotas.get(name='floating_ip_count')
-            if floating_ip_count_quota.is_exceeded(delta=1):
-                raise serializers.ValidationError({
-                    'allocate_floating_ip': 'Can not allocate floating IP - quota has been filled.'
-                })
-
-        # Case 3. If floating_ip=None and allocate_floating_ip=False
-        # floating IP allocation is not attempted, only internal IP is created.
-        else:
-            logger.debug('Floating IP allocation is not attempted.')
 
     @transaction.atomic
     def create(self, validated_data):
@@ -604,6 +606,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         """
         security_groups = validated_data.pop('security_groups', [])
         internal_ips = validated_data.pop('internal_ips_set', [])
+        floating_ips_with_subnets = validated_data.pop('floating_ips', [])
         spl = validated_data['service_project_link']
         ssh_key = validated_data.get('ssh_public_key')
         if ssh_key:
@@ -631,11 +634,26 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         instance = super(InstanceSerializer, self).create(validated_data)
 
+        # security groups
         instance.security_groups.add(*security_groups)
+        # internal IPs
         for internal_ip in internal_ips:
             internal_ip.instance = instance
             internal_ip.save()
-
+        # floating IPs
+        settings = spl.service.settings
+        for floating_ip, subnet in floating_ips_with_subnets:
+            if not floating_ip:
+                floating_ip, created = models.FloatingIP.objects.get_or_create(
+                    runtime_state='DOWN',
+                    settings=settings,
+                    backend_network_id=settings.options['external_network_id'])
+                if created:
+                    floating_ip.increase_backend_quotas_usage()
+            floating_ip.is_booked = True
+            floating_ip.internal_ip = models.InternalIP.objects.get(instance=instance, subnet=subnet)
+            floating_ip.save()
+        # volumes
         system_volume = models.Volume.objects.create(
             name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
             service_project_link=spl,

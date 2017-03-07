@@ -265,8 +265,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
     """ First - create instance volumes in parallel, after - create instance based on created volumes """
 
     @classmethod
-    def get_task_signature(cls, instance, serialized_instance,
-                           ssh_key=None, flavor=None, floating_ip=None, allocate_floating_ip=False):
+    def get_task_signature(cls, instance, serialized_instance, ssh_key=None, flavor=None):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
@@ -290,12 +289,9 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         # Create instance based on volumes
         kwargs = {
             'backend_flavor_id': flavor.backend_id,
-            'allocate_floating_ip': allocate_floating_ip,
         }
         if ssh_key is not None:
             kwargs['public_key'] = ssh_key.public_key
-        if floating_ip is not None:
-            kwargs['floating_ip_uuid'] = floating_ip.uuid.hex
         # Wait 10 seconds after volume creation due to OpenStack restrictions.
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance', **kwargs).set(countdown=10))
@@ -374,12 +370,20 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
             ),
             openstack_tasks.PollBackendCheckTask().si(
                 serialized_instance,
-                backend_check_method='is_instance_deleted'
+                backend_check_method='is_instance_deleted',
             ),
             core_tasks.BackendMethodTask().si(
                 serialized_instance,
-                backend_method='pull_instance_volumes'
-            )
+                backend_method='pull_instance_volumes',
+            ),
+            core_tasks.BackendMethodTask().si(
+                serialized_instance,
+                backend_method='pull_instance_volumes',
+            ),
+            core_tasks.IndependentBackendMethodTask().si(
+                serialized_instance,
+                backend_method='pull_floating_ips',
+            ),
         ]
 
     @classmethod
@@ -461,6 +465,7 @@ class InstancePullExecutor(core_executors.ActionExecutor):
 
 
 class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
+    # TODO: rewrite this executor completely
     action = 'Assign floating IP'
 
     @classmethod

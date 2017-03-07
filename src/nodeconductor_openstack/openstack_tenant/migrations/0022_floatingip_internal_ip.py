@@ -33,4 +33,13 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, related_name='floating_ips', to='openstack_tenant.InternalIP'),
         ),
         migrations.RunPython(connect_floating_ips_to_internal_ips),
+        migrations.AlterField(
+            model_name='floatingip',
+            name='address',
+            field=models.GenericIPAddressField(null=True, protocol='IPv4'),
+        ),
+        migrations.AlterUniqueTogether(
+            name='floatingip',
+            unique_together=set([]),
+        ),
     ]
