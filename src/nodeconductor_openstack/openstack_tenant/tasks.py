@@ -224,6 +224,7 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
                 self._update(instance, backend_instance, backend.INSTANCE_UPDATE_FIELDS)
                 backend.pull_instance_security_groups(instance)
                 backend.pull_instance_internal_ips(instance)
+                backend.pull_instance_floating_ips(instance)
 
     def _set_erred(self, resource):
         resource.set_erred()

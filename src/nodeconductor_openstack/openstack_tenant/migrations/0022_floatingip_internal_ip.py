@@ -42,4 +42,9 @@ class Migration(migrations.Migration):
             name='floatingip',
             unique_together=set([]),
         ),
+        migrations.AddField(
+            model_name='internalip',
+            name='backend_id',
+            field=models.CharField(blank=True, max_length=255),
+        ),
     ]

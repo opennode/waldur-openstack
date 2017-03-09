@@ -476,11 +476,24 @@ class InstanceFloatingIPsUpdateExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
-        return chain(
-            core_tasks.BackendMethodTask().si(
-                serialized_instance, 'push_instance_floating_ips', state_transition='begin_updating'),
-            core_tasks.IndependentBackendMethodTask().si(serialized_instance, 'pull_floating_ips'),
-        )
+        _tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_updating')]
+        # Create non-exist floating IPs
+        for floating_ip in instance.floating_ips.filter(backend_id=''):
+            serialized_floating_ip = core_utils.serialize_instance(floating_ip)
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_floating_ip, 'create_floating_ip'))
+        # Push instance floating IPs
+        _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_floating_ips'))
+        # Wait for operation completion
+        for index, floating_ip in enumerate(instance.floating_ips):
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                core_utils.serialize_instance(floating_ip),
+                backend_pull_method='pull_floating_ip_runtime_state',
+                success_state='ACTIVE',
+                erred_state='ERRED',
+            ).set(countdown=5 if not index else 0))
+        # Pull floating IPs again to update state of disconnected IPs
+        _tasks.append(core_tasks.IndependentBackendMethodTask().si(serialized_instance, 'pull_floating_ips'))
+        return chain(*_tasks)
 
     @classmethod
     def get_success_signature(cls, instance, serialized_instance, **kwargs):
@@ -489,54 +502,6 @@ class InstanceFloatingIPsUpdateExecutor(core_executors.ActionExecutor):
     @classmethod
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
         return tasks.SetInstanceErredTask().s(serialized_instance)
-
-
-class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
-    # TODO: rewrite this executor completely
-    action = 'Assign floating IP'
-
-    @classmethod
-    def get_action_details(cls, instance, floating_ip_uuid=None, **kwargs):
-        if floating_ip_uuid is None:
-            return {'message': 'Allocate new floating IP and assign it to instance'}
-        floating_ip_address = models.FloatingIP.objects.get(uuid=floating_ip_uuid).address
-        return {
-            'message': 'Assign floating IP %s' % floating_ip_address,
-            'floating_ip_address': floating_ip_address,
-        }
-
-    @classmethod
-    def get_task_signature(cls, instance, serialized_instance, floating_ip_uuid=None, **kwargs):
-        if floating_ip_uuid is not None:
-            return core_tasks.BackendMethodTask().si(
-                serialized_instance, 'assign_floating_ip_to_instance',
-                floating_ip_uuid=floating_ip_uuid,
-                state_transition='begin_updating',
-            )
-        else:
-            return core_tasks.BackendMethodTask().si(
-                serialized_instance, 'allocate_and_assign_floating_ip_to_instance',
-                state_transition='begin_updating',
-            )
-
-
-class InstanceUnassignFloatingIpExecutor(core_executors.ActionExecutor):
-    action = 'Unassign floating IP'
-
-    @classmethod
-    def get_task_signature(cls, instance, serializer_instance=None, floating_ip=None, **kwargs):
-        _tasks = [core_tasks.BackendMethodTask().si(
-            serializer_instance,
-            'unassign_floating_ip',
-            state_transition='begin_updating'
-        ), tasks.PollRuntimeStateTask().si(
-            core_utils.serialize_instance(floating_ip),
-            backend_pull_method='pull_floating_ip_runtime_state',
-            success_state='DOWN',
-            erred_state='ACTIVE',
-        ).set(countdown=30)]
-
-        return chain(*_tasks)
 
 
 class InstanceStopExecutor(core_executors.ActionExecutor):

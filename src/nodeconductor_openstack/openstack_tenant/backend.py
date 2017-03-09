@@ -610,6 +610,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     subnet=subnet,
                     mac_address=port['mac_address'],
                     ip4_address=fixed_ip['ip_address'],
+                    backend_id=port['id'],
                 )
                 internal_ips.append(internal_ip)
             logger.info(
@@ -617,49 +618,62 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
         return internal_ips
 
-    @log_backend_action()
-    def push_instance_floating_ips(self, instance):
+    # XXX: This method partly duplicates "pull_floating_ips". It would be better to merge them in one.
+    def pull_instance_floating_ips(self, instance):
+        # method assumes that instance internal IPs is up to date.
         neutron = self.neutron_client
-
-        floating_ips_to_allocate = instance.floating_ips.filter(backend_id='')
-        for floating_ip in floating_ips_to_allocate:
-            self._allocate_floating_ip(floating_ip)
-
-        floating_ips = {ip.backend_id: ip for ip in instance.floating_ips}
+        instance_internal_ips = {ip.backend_id: ip for ip in instance.internal_ips_set.all()}
         try:
-            backend_internal_ips = neutron.list_ports(device_id=instance.backend_id)
-            backend_floating_ips = neutron.list_floatingips(
-                port_id=[internal_ip['id'] for internal_ip in backend_internal_ips])
+            backend_floating_ips = neutron.list_floatingips(port_id=instance_internal_ips.keys())['floatingips']
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        # TODO: Rewrite using neutron
+        # delete stale:
+        for floating_ip in instance.floating_ips.exclude(backend_id__in=[ip['id'] for ip in backend_floating_ips]):
+            floating_ip.internal_ip = None
+            floating_ip.save()
 
-        # # Add non-connected floating IPs to instance:
-        # for address in set(floating_ips.keys()) - set(backend_addresses):
-        #     floating_ip = floating_ips[address]
-        #     try:
-        #         print floating_ip, 'was connected'
-        #         nova.servers.add_floating_ip(
-        #             server=instance.backend_id,
-        #             address=floating_ip.address,
-        #             fixed_address=floating_ip.internal_ip.ip4_address,
-        #         )
-        #     except nova_exceptions.ClientException as e:
-        #         six.reraise(OpenStackBackendError, e)
-        #     floating_ip.runtime_state = 'ACTIVE'
-        #     floating_ip.is_booked = False
-        #     floating_ip.save(update_fields=['runtime_state', 'is_booked'])
+        # create or update exist:
+        for backend_floating_ip in backend_floating_ips:
+            internal_ip = instance_internal_ips[backend_floating_ip['port_id']]
+            models.FloatingIP.objects.update_or_create(
+                backend_id=backend_floating_ip['id'],
+                settings=self.settings,
+                defaults={
+                    'runtime_state': backend_floating_ip['status'],
+                    'address': backend_floating_ip['floating_ip_address'],
+                    'backend_network_id': backend_floating_ip['floating_network_id'],
+                    'internal_ip': internal_ip,
+                }
+            )
 
-        # # Remove stale ones:
-        # for address in set(backend_addresses) - set(floating_ips.keys()):
-        #     try:
-        #         print address, 'was disconnected'
-        #         nova.servers.remove_floating_ip(server=instance.backend_id, address=address)
-        #     except nova_exceptions.ClientException as e:
-        #         six.reraise(OpenStackBackendError, e)
+    # TODO:
+    # 3. Remove leftovers.
+    @log_backend_action()
+    def push_instance_floating_ips(self, instance):
+        neutron = self.neutron_client
+        instance_floating_ips = instance.floating_ips
+        try:
+            backend_floating_ips = neutron.list_floatingips(
+                port_id=instance.internal_ips_set.values_list('backend_id', flat=True))['floatingips']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
 
-    def _allocate_floating_ip(self, floating_ip):
+        # disconnect stale
+        instance_floating_ips_ids = [fip.backend_id for fip in instance_floating_ips]
+        for backend_floating_ip in backend_floating_ips:
+            if backend_floating_ip['id'] not in instance_floating_ips_ids:
+                neutron.update_floatingip(backend_floating_ip['id'], body={'floatingip': {'port_id': None}})
+
+        # connect new ones
+        backend_floating_ip_ids = {fip['id']: fip for fip in backend_floating_ips}
+        for floating_ip in instance_floating_ips:
+            backend_floating_ip = backend_floating_ip_ids.get(floating_ip.backend_id)
+            if not backend_floating_ip or backend_floating_ip['port_id'] != floating_ip.internal_ip.backend_id:
+                neutron.update_floatingip(
+                    floating_ip.backend_id, body={'floatingip': {'port_id': floating_ip.internal_ip.backend_id}})
+
+    def create_floating_ip(self, floating_ip):
         neutron = self.neutron_client
         try:
             backend_floating_ip = neutron.create_floatingip({
@@ -843,27 +857,21 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        backend_subnet_ids = set(ip['fixed_ips'][0]['subnet_id'] for ip in backend_internal_ips)
-        nc_subnet_ids = set(
-            models.InternalIP.objects.filter(instance=instance).values_list('subnet__backend_id', flat=True))
+        # remove stale internal IPs
+        instance.internal_ips_set.exclude(backend_id__in=[ip['id'] for ip in backend_internal_ips]).delete()
 
-        # remove internal IPs if instance is not connected to that network anymore
-        models.InternalIP.objects.filter(
-            instance=instance, subnet__backend_id__in=(nc_subnet_ids - backend_subnet_ids)).delete()
-
-        # add missing internal IPs
-        for backend_subnet_id in backend_subnet_ids:
-            backend_internal_ip = next(
-                ip for ip in backend_internal_ips if ip['fixed_ips'][0]['subnet_id'] == backend_subnet_id)
+        # add or update exist internal IPs
+        for backend_internal_ip in backend_internal_ips:
+            backend_subnet_id = backend_internal_ip['fixed_ips'][0]['subnet_id']
             try:
                 subnet = models.SubNet.objects.get(settings=self.settings, backend_id=backend_subnet_id)
             except models.SubNet.DoesNotExist:
                 # subnet was not pulled yet. Internal IP will be pulled with subnet later.
                 continue
-            models.InternalIP.objects.update_or_create(
-                instance=instance,
-                subnet=subnet,
+            instance.internal_ips_set.update_or_create(
+                backend_id=backend_internal_ip['id'],
                 defaults={
+                    'subnet': subnet,
                     'mac_address': backend_internal_ip['mac_address'],
                     'ip4_address': backend_internal_ip['fixed_ips'][0]['ip_address'],
                 }
@@ -871,22 +879,24 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def push_instance_internal_ips(self, instance):
-        # we assume that instance can be connected to subnet only once.
+        # we assume that instance can be connected to subnet only once
+        # we assume that internal IP subnet cannot be changed
         neutron = self.neutron_client
         try:
             backend_internal_ips = neutron.list_ports(device_id=instance.backend_id)['ports']
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        backend_subnet_ip_map = {ip['fixed_ips'][0]['subnet_id']: ip['id'] for ip in backend_internal_ips}
+        # delete stale internal IPs
+        exist_ids = instance.internal_ips_set.values_list('backend_id', flat=True)
+        for backend_internal_ip in backend_internal_ips:
+            if backend_internal_ip['id'] not in exist_ids:
+                neutron.delete_port(backend_internal_ip['id'])
 
         # create new internal IPs
-        print backend_subnet_ip_map
-        new_internal_ips = instance.internal_ips_set.exclude(subnet__backend_id__in=backend_subnet_ip_map)
-        print new_internal_ips
+        new_internal_ips = instance.internal_ips_set.exclude(backend_id__in=[ip['id'] for ip in backend_internal_ips])
         for new_internal_ip in new_internal_ips:
             try:
-                print 'About to push internal ip', new_internal_ip.subnet.name
                 backend_internal_ip = neutron.create_port({'port': {
                     'network_id': new_internal_ip.subnet.network.backend_id,
                     'device_id': instance.backend_id}
@@ -895,14 +905,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 six.reraise(OpenStackBackendError, e)
             new_internal_ip.mac_address = backend_internal_ip['mac_address']
             new_internal_ip.ip4_address = backend_internal_ip['fixed_ips'][0]['ip_address']
+            new_internal_ip.backend_id = backend_internal_ip['id']
             new_internal_ip.save()
-
-        # delete stale IPs
-        nc_subnet_ids = instance.internal_ips_set.values_list('subnet__backend_id', flat=True)
-        stale_ip_ids = [ip_id for subnet_id, ip_id in backend_subnet_ip_map.items() if subnet_id not in nc_subnet_ids]
-        for ip_id in stale_ip_ids:
-            print 'About to delete internal ip', ip_id
-            neutron.delete_port(ip_id)
 
     @log_backend_action()
     def pull_instance_security_groups(self, instance):

@@ -688,7 +688,6 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         data_volume.increase_backend_quotas_usage()
         instance.volumes.add(system_volume, data_volume)
 
-        print 'INSTANCE FIPs', instance.floating_ips.all()
         return instance
 
     def update(self, instance, validated_data):
