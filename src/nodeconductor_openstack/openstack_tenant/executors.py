@@ -347,7 +347,7 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
         delete_volumes = kwargs.pop('delete_volumes', True)
-        delete_instance = cls.get_delete_instance_tasks(serialized_instance)
+        delete_instance = cls.get_delete_instance_tasks(instance, serialized_instance)
 
         # Case 1. Instance does not exist at backend
         if not instance.backend_id:
@@ -368,8 +368,8 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
             return chain(detach_volumes + delete_instance)
 
     @classmethod
-    def get_delete_instance_tasks(cls, serialized_instance):
-        return [
+    def get_delete_instance_tasks(cls, instance, serialized_instance):
+        _tasks = [
             core_tasks.BackendMethodTask().si(
                 serialized_instance,
                 backend_method='delete_instance',
@@ -383,15 +383,14 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
                 serialized_instance,
                 backend_method='pull_instance_volumes',
             ),
-            core_tasks.BackendMethodTask().si(
-                serialized_instance,
-                backend_method='pull_instance_volumes',
-            ),
-            core_tasks.IndependentBackendMethodTask().si(
-                serialized_instance,
-                backend_method='pull_floating_ips',
-            ),
         ]
+        # pull related floating IPs state after instance deletion
+        for index, floating_ip in enumerate(instance.floating_ips):
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                core_utils.serialize_instance(floating_ip),
+                'pull_floating_ip_runtime_state',
+            ).set(countdown=5 if not index else 0))
+        return _tasks
 
     @classmethod
     def get_detach_data_volumes_tasks(cls, instance, serialized_instance):

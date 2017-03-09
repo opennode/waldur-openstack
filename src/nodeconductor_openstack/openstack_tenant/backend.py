@@ -110,7 +110,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                         'backend_network_id': backend_ip['floating_network_id'],
                     })
 
-            models.FloatingIP.objects.filter(backend_id__in=cur_ips.keys()).delete()
+            models.FloatingIP.objects.filter(backend_id__in=cur_ips.keys()).exclude(is_booked=True).delete()
 
     def _pull_security_groups(self):
         nova = self.nova_client
