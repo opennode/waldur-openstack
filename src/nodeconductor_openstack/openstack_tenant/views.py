@@ -295,7 +295,6 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     def perform_create(self, serializer):
         instance = serializer.save()
-        # TODO: Fix floating ips
         executors.InstanceCreateExecutor.execute(
             instance,
             ssh_key=serializer.validated_data.get('ssh_public_key'),
@@ -384,6 +383,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     start_validators = [core_validators.StateValidator(models.Instance.States.OK),
                         core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
+    start_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def stop(self, request, uuid=None):
@@ -393,6 +393,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     stop_validators = [core_validators.StateValidator(models.Instance.States.OK),
                        core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
+    stop_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def restart(self, request, uuid=None):
@@ -402,6 +403,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     restart_validators = [core_validators.StateValidator(models.Instance.States.OK),
                           core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
+    restart_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def update_security_groups(self, request, uuid=None):
@@ -470,7 +472,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response({'status': 'floating ips update was scheduled'}, status=status.HTTP_202_ACCEPTED)
 
     update_floating_ips_validators = [core_validators.StateValidator(models.Instance.States.OK)]
-    update_floating_ips_serializer_class = serializers.InstanceFlaotingIPsUpdateSerializer
+    update_floating_ips_serializer_class = serializers.InstanceFloatingIPsUpdateSerializer
 
     @decorators.detail_route(methods=['get'])
     def floating_ips(self, request, uuid=None):

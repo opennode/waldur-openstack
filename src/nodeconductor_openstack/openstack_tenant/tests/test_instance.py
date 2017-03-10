@@ -162,7 +162,6 @@ class InstanceCreateTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
-
 class InstanceDeleteTest(BaseBackendTestCase):
     def setUp(self):
         super(InstanceDeleteTest, self).setUp()

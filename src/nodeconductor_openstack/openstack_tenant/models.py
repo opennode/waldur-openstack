@@ -77,7 +77,7 @@ class FloatingIP(structure_models.ServiceProperty):
     runtime_state = models.CharField(max_length=30)
     backend_network_id = models.CharField(max_length=255, editable=False)
     is_booked = models.BooleanField(default=False, help_text='Marks if floating IP has been booked for provisioning.')
-    internal_ip = models.ForeignKey('InternalIP', related_name='floating_ips', null=True)
+    internal_ip = models.ForeignKey('InternalIP', related_name='floating_ips', null=True, on_delete=models.SET_NULL)
 
     class Meta:
         # It should be possible to create floating IP dynamically on instance creation

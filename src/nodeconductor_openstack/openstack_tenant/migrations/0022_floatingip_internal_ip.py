@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='floatingip',
             name='internal_ip',
-            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, related_name='floating_ips', to='openstack_tenant.InternalIP'),
+            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='floating_ips', to='openstack_tenant.InternalIP'),
         ),
         migrations.RunPython(connect_floating_ips_to_internal_ips),
         migrations.AlterField(

@@ -23,7 +23,6 @@ def _instance_data(user, instance=None):
             instance.service_project_link),
         'ssh_public_key': structure_factories.SshPublicKeyFactory.get_url(ssh_public_key),
         'system_volume_size': max(image.min_disk, 1024),
-        'allocate_floating_ip': False,
     }
 
 

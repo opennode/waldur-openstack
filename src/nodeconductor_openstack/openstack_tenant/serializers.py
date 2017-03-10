@@ -448,12 +448,24 @@ class NestedFloatingIPSerializer(core_serializers.AugmentedSerializerMixin,
         }
 
     def to_internal_value(self, data):
-        """ Return floating and subnet that it should be connected to as internal value """
-        internal_value = super(core_serializers.HyperlinkedRelatedModelSerializer, self).to_internal_value(data)
-        subnet = internal_value['internal_ip']['subnet']
+        """
+        Return pair (floating_ip, subnet) as internal value.
+
+        On floating IP creation user should specify what subnet should be used
+        for connection and may specify what exactly floating IP should be used.
+        If floating IP is not specified it will be represented as None.
+        """
         floating_ip = None
         if 'url' in data:
+            # use HyperlinkedRelatedModelSerializer (parent of NestedFloatingIPSerializer)
+            # method to convert "url" to FloatingIP object
             floating_ip = super(NestedFloatingIPSerializer, self).to_internal_value(data)
+
+        # use HyperlinkedModelSerializer (parent of HyperlinkedRelatedModelSerializer)
+        # to convert "subnet" to SubNet object
+        internal_value = super(core_serializers.HyperlinkedRelatedModelSerializer, self).to_internal_value(data)
+        subnet = internal_value['internal_ip']['subnet']
+
         return floating_ip, subnet
 
 
@@ -865,18 +877,18 @@ class InstanceInternalIPsSetUpdateSerializer(serializers.Serializer):
         return instance
 
 
-class InstanceFlaotingIPsUpdateSerializer(serializers.Serializer):
+class InstanceFloatingIPsUpdateSerializer(serializers.Serializer):
     floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
 
     def get_fields(self):
-        fields = super(InstanceFlaotingIPsUpdateSerializer, self).get_fields()
+        fields = super(InstanceFloatingIPsUpdateSerializer, self).get_fields()
         instance = self.instance
         if instance:
             fields['floating_ips'].view_name = 'openstacktenant-fip-detail'
             fields['floating_ips'].query_params = {
                 'settings_uuid': instance.service_project_link.service.settings.uuid.hex,
                 'runtime_state': 'DOWN',
-                'is_booked': 'False',
+                'is_booked': False,
             }
         return fields
 

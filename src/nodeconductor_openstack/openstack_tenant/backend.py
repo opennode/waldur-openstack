@@ -496,6 +496,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
     @log_backend_action()
     def create_instance(self, instance, backend_flavor_id=None, public_key=None):
         nova = self.nova_client
+        neutron = self.neutron_client
 
         try:
             backend_flavor = nova.flavors.get(backend_flavor_id)
@@ -563,8 +564,15 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     instance.uuid)
                 raise OpenStackBackendError("Timed out waiting for instance %s to provision" % instance.uuid)
 
-            self.pull_instance_internal_ips(instance)
-            self.push_instance_floating_ips(instance)
+            # nova does not return enough information about internal IPs on creation,
+            # we need to pull it additionally from neutron
+            for internal_ip in instance.internal_ips_set.all():
+                backend_internal_ip = neutron.list_ports(
+                    device_id=instance.backend_id, network_id=internal_ip.subnet.network.backend_id)['ports'][0]
+                internal_ip.backend_id = backend_internal_ip['id']
+                internal_ip.ip4_address = backend_internal_ip['fixed_ips'][0]['ip_address']
+                internal_ip.mac_address = backend_internal_ip['mac_address']
+                internal_ip.save()
 
             backend_security_groups = server.list_security_group()
             for bsg in backend_security_groups:
@@ -580,7 +588,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 else:
                     instance.security_groups.add(security_group)
 
-        except nova_exceptions.ClientException as e:
+        except (nova_exceptions.ClientException, neutron_exceptions.NeutronClientException) as e:
             logger.exception("Failed to provision instance %s", instance.uuid)
             six.reraise(OpenStackBackendError, e)
         else:
@@ -647,8 +655,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 }
             )
 
-    # TODO:
-    # 3. Remove leftovers.
     @log_backend_action()
     def push_instance_floating_ips(self, instance):
         neutron = self.neutron_client
@@ -783,18 +789,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         return instance
 
     def _backend_instance_to_instance(self, backend_instance, backend_flavor):
-        # TODO: add security groups and volume definition
-        # parse IPs
-        internal_backend_ips = []
-        external_backend_ips = []
-
-        for net_conf in backend_instance.addresses.values():
-            for ip in net_conf:
-                if ip['OS-EXT-IPS:type'] == 'fixed':
-                    internal_backend_ips.append(ip['addr'])
-                if ip['OS-EXT-IPS:type'] == 'floating':
-                    external_backend_ips.append(ip['addr'])
-
         # parse launch time
         try:
             d = dateparse.parse_datetime(backend_instance.to_dict()['OS-SRV-USG:launched_at'])

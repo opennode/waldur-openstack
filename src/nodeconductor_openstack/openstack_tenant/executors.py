@@ -5,7 +5,7 @@ from celery import chain
 from nodeconductor.core import executors as core_executors, tasks as core_tasks, utils as core_utils
 from nodeconductor_openstack.openstack import tasks as openstack_tasks
 
-from . import tasks, models
+from . import tasks
 
 
 class VolumeCreateExecutor(core_executors.CreateExecutor):
@@ -304,9 +304,20 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
                 update_fields=['runtime_state', 'device']
             ))
 
-        # Update floating IPs states
-        _tasks.append(core_tasks.IndependentBackendMethodTask().si(serialized_instance, 'pull_floating_ips'))
-
+        # Create non-exist floating IPs
+        for floating_ip in instance.floating_ips.filter(backend_id=''):
+            serialized_floating_ip = core_utils.serialize_instance(floating_ip)
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_floating_ip, 'create_floating_ip'))
+        # Push instance floating IPs
+        _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_floating_ips'))
+        # Wait for operation completion
+        for index, floating_ip in enumerate(instance.floating_ips):
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                core_utils.serialize_instance(floating_ip),
+                backend_pull_method='pull_floating_ip_runtime_state',
+                success_state='ACTIVE',
+                erred_state='ERRED',
+            ).set(countdown=5 if not index else 0))
         return chain(*_tasks)
 
     @classmethod
@@ -659,7 +670,6 @@ class BackupRestorationExecutor(core_executors.CreateExecutor):
         # Create instance. Wait 10 seconds after volumes creation due to OpenStack restrictions.
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance',
-            allocate_floating_ip=False,
             backend_flavor_id=backup_restoration.flavor.backend_id
         ).set(countdown=10))
         return chain(*_tasks)
