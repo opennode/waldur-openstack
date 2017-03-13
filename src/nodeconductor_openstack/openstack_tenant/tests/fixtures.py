@@ -85,3 +85,10 @@ class OpenStackTenantFixture(ProjectFixture):
             state=models.SnapshotSchedule.States.OK,
             source_volume=self.volume,
         )
+
+    @cached_property
+    def floating_ip(self):
+        return factories.FloatingIPFactory(
+            settings=self.openstack_tenant_service_settings,
+            runtime_state='DOWN',
+        )

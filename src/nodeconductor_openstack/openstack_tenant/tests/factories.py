@@ -330,7 +330,7 @@ class SubNetFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.SubNet
 
-    name = factory.Sequence(lambda n: 'network%s' % n)
+    name = factory.Sequence(lambda n: 'subnet%s' % n)
     settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
     network = factory.SubFactory(NetworkFactory)
 

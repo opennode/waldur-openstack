@@ -299,8 +299,6 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             instance,
             ssh_key=serializer.validated_data.get('ssh_public_key'),
             flavor=serializer.validated_data['flavor'],
-            allocate_floating_ip=serializer.validated_data['allocate_floating_ip'],
-            floating_ip=serializer.validated_data.get('floating_ip'),
             is_heavy_task=True,
         )
 
@@ -361,64 +359,6 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     destroy_validators = [_is_shutoff_and_ok_or_erred, _has_backups]
     destroy_serializer_class = serializers.InstanceDeleteSerializer
 
-    def _instance_has_external_ips(instance):
-        if instance.external_ips:
-            raise core_exceptions.IncorrectStateException('Instance already has floating IP.')
-
-    @decorators.detail_route(methods=['post'])
-    def assign_floating_ip(self, request, uuid=None):
-        """
-        To assign floating IP to the instance, make **POST** request to
-        */api/openstacktenant-instances/<uuid>/assign_floating_ip/* with link to the floating IP.
-        Make empty POST request to allocate new floating IP and assign it to instance.
-        Note that instance should be in stable state, service project link of the instance should be in stable state
-        and have external network.
-
-        Example of a valid request:
-
-        .. code-block:: http
-
-            POST /api/openstacktenant-instances/6c9b01c251c24174a6691a1f894fae31/assign_floating_ip/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-            {
-                "floating_ip": "http://example.com/api/floating-ips/5e7d93955f114d88981dea4f32ab673d/"
-            }
-        """
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        floating_ip = serializer.save()
-        if floating_ip:
-            executors.InstanceAssignFloatingIpExecutor.execute(instance, floating_ip_uuid=floating_ip.uuid)
-        else:
-            executors.InstanceAssignFloatingIpExecutor.execute(instance)
-
-        return response.Response({'status': 'assign_floating_ip was scheduled'}, status=status.HTTP_202_ACCEPTED)
-
-    assign_floating_ip.title = 'Assign floating IP'
-    assign_floating_ip_validators = [core_validators.StateValidator(models.Instance.States.OK),
-                                     _instance_has_external_ips]
-    assign_floating_ip_serializer_class = serializers.AssignFloatingIpSerializer
-
-    def _instance_has_no_floating_ip(instance):
-        if not instance.external_ip:
-            raise core_exceptions.IncorrectStateException('External ips is not assosiated with floating ip.')
-
-    @decorators.detail_route(methods=['post'])
-    def unassign_floating_ip(self, request, uuid=None):
-        instance = self.get_object()
-        executors.InstanceUnassignFloatingIpExecutor.execute(instance, floating_ip=instance.external_ip)
-        return response.Response({'status': 'unassign_floating_ip was scheduled'}, status=status.HTTP_202_ACCEPTED)
-
-    unassign_floating_ip.title = 'Unassign floating IP'
-    unassign_floating_ip_validators = [core_validators.StateValidator(models.Instance.States.OK),
-                                       _instance_has_no_floating_ip]
-    unassign_floating_ip_serializer_class = rf_serializers.Serializer
-
     @decorators.detail_route(methods=['post'])
     def change_flavor(self, request, uuid=None):
         instance = self.get_object()
@@ -443,6 +383,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     start_validators = [core_validators.StateValidator(models.Instance.States.OK),
                         core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
+    start_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def stop(self, request, uuid=None):
@@ -452,6 +393,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     stop_validators = [core_validators.StateValidator(models.Instance.States.OK),
                        core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
+    stop_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def restart(self, request, uuid=None):
@@ -461,6 +403,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     restart_validators = [core_validators.StateValidator(models.Instance.States.OK),
                           core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
+    restart_serializer_class = rf_serializers.Serializer
 
     @decorators.detail_route(methods=['post'])
     def update_security_groups(self, request, uuid=None):
@@ -517,6 +460,28 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response(serializer.data, status=status.HTTP_200_OK)
 
     internal_ips_set_serializer_class = serializers.NestedInternalIPSerializer
+
+    @decorators.detail_route(methods=['post'])
+    def update_floating_ips(self, request, uuid=None):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        executors.InstanceFloatingIPsUpdateExecutor().execute(instance)
+        return response.Response({'status': 'floating ips update was scheduled'}, status=status.HTTP_202_ACCEPTED)
+
+    update_floating_ips_validators = [core_validators.StateValidator(models.Instance.States.OK)]
+    update_floating_ips_serializer_class = serializers.InstanceFloatingIPsUpdateSerializer
+
+    @decorators.detail_route(methods=['get'])
+    def floating_ips(self, request, uuid=None):
+        instance = self.get_object()
+        serializer = self.get_serializer(
+            instance=instance.floating_ips.all(), queryset=models.FloatingIP.objects.all(), many=True)
+        return response.Response(serializer.data, status=status.HTTP_200_OK)
+
+    floating_ips_serializer_class = serializers.NestedFloatingIPSerializer
 
 
 class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,

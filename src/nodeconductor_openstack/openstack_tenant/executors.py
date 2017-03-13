@@ -5,7 +5,7 @@ from celery import chain
 from nodeconductor.core import executors as core_executors, tasks as core_tasks, utils as core_utils
 from nodeconductor_openstack.openstack import tasks as openstack_tasks
 
-from . import tasks, models
+from . import tasks
 
 
 class VolumeCreateExecutor(core_executors.CreateExecutor):
@@ -265,8 +265,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
     """ First - create instance volumes in parallel, after - create instance based on created volumes """
 
     @classmethod
-    def get_task_signature(cls, instance, serialized_instance,
-                           ssh_key=None, flavor=None, floating_ip=None, allocate_floating_ip=False):
+    def get_task_signature(cls, instance, serialized_instance, ssh_key=None, flavor=None):
         """ Create all instance volumes in parallel and wait for them to provision """
         serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
 
@@ -290,12 +289,9 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         # Create instance based on volumes
         kwargs = {
             'backend_flavor_id': flavor.backend_id,
-            'allocate_floating_ip': allocate_floating_ip,
         }
         if ssh_key is not None:
             kwargs['public_key'] = ssh_key.public_key
-        if floating_ip is not None:
-            kwargs['floating_ip_uuid'] = floating_ip.uuid.hex
         # Wait 10 seconds after volume creation due to OpenStack restrictions.
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance', **kwargs).set(countdown=10))
@@ -308,7 +304,25 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
                 update_fields=['runtime_state', 'device']
             ))
 
+        # Create non-exist floating IPs
+        for floating_ip in instance.floating_ips.filter(backend_id=''):
+            serialized_floating_ip = core_utils.serialize_instance(floating_ip)
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_floating_ip, 'create_floating_ip'))
+        # Push instance floating IPs
+        _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_floating_ips'))
+        # Wait for operation completion
+        for index, floating_ip in enumerate(instance.floating_ips):
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                core_utils.serialize_instance(floating_ip),
+                backend_pull_method='pull_floating_ip_runtime_state',
+                success_state='ACTIVE',
+                erred_state='ERRED',
+            ).set(countdown=5 if not index else 0))
         return chain(*_tasks)
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        return tasks.SetInstanceOKTask().si(serialized_instance)
 
     @classmethod
     def get_failure_signature(cls, instance, serialized_instance, **kwargs):
@@ -344,7 +358,7 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
         delete_volumes = kwargs.pop('delete_volumes', True)
-        delete_instance = cls.get_delete_instance_tasks(serialized_instance)
+        delete_instance = cls.get_delete_instance_tasks(instance, serialized_instance)
 
         # Case 1. Instance does not exist at backend
         if not instance.backend_id:
@@ -365,8 +379,8 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
             return chain(detach_volumes + delete_instance)
 
     @classmethod
-    def get_delete_instance_tasks(cls, serialized_instance):
-        return [
+    def get_delete_instance_tasks(cls, instance, serialized_instance):
+        _tasks = [
             core_tasks.BackendMethodTask().si(
                 serialized_instance,
                 backend_method='delete_instance',
@@ -374,13 +388,20 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
             ),
             openstack_tasks.PollBackendCheckTask().si(
                 serialized_instance,
-                backend_check_method='is_instance_deleted'
+                backend_check_method='is_instance_deleted',
             ),
             core_tasks.BackendMethodTask().si(
                 serialized_instance,
-                backend_method='pull_instance_volumes'
-            )
+                backend_method='pull_instance_volumes',
+            ),
         ]
+        # pull related floating IPs state after instance deletion
+        for index, floating_ip in enumerate(instance.floating_ips):
+            _tasks.append(core_tasks.BackendMethodTask().si(
+                core_utils.serialize_instance(floating_ip),
+                'pull_floating_ip_runtime_state',
+            ).set(countdown=5 if not index else 0))
+        return _tasks
 
     @classmethod
     def get_detach_data_volumes_tasks(cls, instance, serialized_instance):
@@ -460,51 +481,37 @@ class InstancePullExecutor(core_executors.ActionExecutor):
         )
 
 
-class InstanceAssignFloatingIpExecutor(core_executors.ActionExecutor):
-    action = 'Assign floating IP'
+class InstanceFloatingIPsUpdateExecutor(core_executors.ActionExecutor):
+    action = 'Update floating IPs'
 
     @classmethod
-    def get_action_details(cls, instance, floating_ip_uuid=None, **kwargs):
-        if floating_ip_uuid is None:
-            return {'message': 'Allocate new floating IP and assign it to instance'}
-        floating_ip_address = models.FloatingIP.objects.get(uuid=floating_ip_uuid).address
-        return {
-            'message': 'Assign floating IP %s' % floating_ip_address,
-            'floating_ip_address': floating_ip_address,
-        }
-
-    @classmethod
-    def get_task_signature(cls, instance, serialized_instance, floating_ip_uuid=None, **kwargs):
-        if floating_ip_uuid is not None:
-            return core_tasks.BackendMethodTask().si(
-                serialized_instance, 'assign_floating_ip_to_instance',
-                floating_ip_uuid=floating_ip_uuid,
-                state_transition='begin_updating',
-            )
-        else:
-            return core_tasks.BackendMethodTask().si(
-                serialized_instance, 'allocate_and_assign_floating_ip_to_instance',
-                state_transition='begin_updating',
-            )
-
-
-class InstanceUnassignFloatingIpExecutor(core_executors.ActionExecutor):
-    action = 'Unassign floating IP'
-
-    @classmethod
-    def get_task_signature(cls, instance, serializer_instance=None, floating_ip=None, **kwargs):
-        _tasks = [core_tasks.BackendMethodTask().si(
-            serializer_instance,
-            'unassign_floating_ip',
-            state_transition='begin_updating'
-        ), tasks.PollRuntimeStateTask().si(
-            core_utils.serialize_instance(floating_ip),
-            backend_pull_method='pull_floating_ip_runtime_state',
-            success_state='DOWN',
-            erred_state='ACTIVE',
-        ).set(countdown=30)]
-
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
+        _tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_updating')]
+        # Create non-exist floating IPs
+        for floating_ip in instance.floating_ips.filter(backend_id=''):
+            serialized_floating_ip = core_utils.serialize_instance(floating_ip)
+            _tasks.append(core_tasks.BackendMethodTask().si(serialized_floating_ip, 'create_floating_ip'))
+        # Push instance floating IPs
+        _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_floating_ips'))
+        # Wait for operation completion
+        for index, floating_ip in enumerate(instance.floating_ips):
+            _tasks.append(tasks.PollRuntimeStateTask().si(
+                core_utils.serialize_instance(floating_ip),
+                backend_pull_method='pull_floating_ip_runtime_state',
+                success_state='ACTIVE',
+                erred_state='ERRED',
+            ).set(countdown=5 if not index else 0))
+        # Pull floating IPs again to update state of disconnected IPs
+        _tasks.append(core_tasks.IndependentBackendMethodTask().si(serialized_instance, 'pull_floating_ips'))
         return chain(*_tasks)
+
+    @classmethod
+    def get_success_signature(cls, instance, serialized_instance, **kwargs):
+        return tasks.SetInstanceOKTask().si(serialized_instance)
+
+    @classmethod
+    def get_failure_signature(cls, instance, serialized_instance, **kwargs):
+        return tasks.SetInstanceErredTask().s(serialized_instance)
 
 
 class InstanceStopExecutor(core_executors.ActionExecutor):
@@ -565,9 +572,9 @@ class InstanceInternalIPsSetUpdateExecutor(core_executors.ActionExecutor):
     action = 'Update internal IPs'
 
     @classmethod
-    def get_task_signature(cls, instance, serializer_instance, **kwargs):
+    def get_task_signature(cls, instance, serialized_instance, **kwargs):
         return core_tasks.BackendMethodTask().si(
-            serializer_instance, 'push_instance_internal_ips', state_transition='begin_updating',
+            serialized_instance, 'push_instance_internal_ips', state_transition='begin_updating',
         )
 
 
@@ -663,7 +670,6 @@ class BackupRestorationExecutor(core_executors.CreateExecutor):
         # Create instance. Wait 10 seconds after volumes creation due to OpenStack restrictions.
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance',
-            allocate_floating_ip=False,
             backend_flavor_id=backup_restoration.flavor.backend_id
         ).set(countdown=10))
         return chain(*_tasks)
