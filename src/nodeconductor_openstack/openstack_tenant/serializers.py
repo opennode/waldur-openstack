@@ -484,13 +484,12 @@ def _validate_instance_internal_ips(internal_ips, settings):
     
 
 def _validate_instance_security_groups(security_groups, settings):
-    """ make sure that security_group belong to specified setting.
+    """ Make sure that security_group belong to specified setting.
     """
     for security_group in security_groups:
         if security_group.settings != settings:
-            raise serializers.ValidationError(
-                'Security group {} does not belong to the same service settings as service project link.'.format(
-                    security_group.name))
+            error_template = 'Security group %s does not belong to the same service settings as service project link.'
+            raise serializers.ValidationError(error_template % security_group.name)
 
 
 def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instance_subnets):
