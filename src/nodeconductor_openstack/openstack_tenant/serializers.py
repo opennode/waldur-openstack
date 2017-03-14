@@ -958,13 +958,6 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
         return fields
 
-    @staticmethod
-    def eager_load(queryset):
-        return queryset.prefetch_related(
-            'instance__security_groups',
-            'instance__security_groups__rules',
-        )
-
     def validate(self, attrs):
         flavor = attrs['flavor']
         backup = self.context['view'].get_object()
