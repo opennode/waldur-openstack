@@ -15,7 +15,7 @@ from ... import models
 class BackupScheduleTest(TestCase):
     def setUp(self):
         self.openstack_tenant_fixture = fixtures.OpenStackTenantFixture()
-        self.instance = self.openstack_tenant_fixture.openstack_instance
+        self.instance = self.openstack_tenant_fixture.instance
 
     def test_update_next_trigger_at(self):
         now = timezone.now()

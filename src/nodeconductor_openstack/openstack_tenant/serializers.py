@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+import collections
 import logging
 import pytz
 import re
@@ -77,7 +78,7 @@ class FlavorSerializer(structure_serializers.BasePropertySerializer):
 class NetworkSerializer(structure_serializers.BasePropertySerializer):
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.Network
-        fields = ('uuid', 'name',
+        fields = ('url', 'uuid', 'name',
                   'type', 'is_external', 'segmentation_id', 'subnets')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
@@ -87,9 +88,12 @@ class NetworkSerializer(structure_serializers.BasePropertySerializer):
 
 
 class SubNetSerializer(structure_serializers.BasePropertySerializer):
+    dns_nameservers = core_fields.JsonField(read_only=True)
+    allocation_pools = core_fields.JsonField(read_only=True)
+
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.SubNet
-        fields = ('uuid', 'name',
+        fields = ('url', 'uuid', 'name',
                   'cidr', 'gateway_ip', 'allocation_pools', 'ip_version', 'enable_dhcp', 'dns_nameservers', 'network')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
@@ -265,7 +269,7 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 
 class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
     name = serializers.CharField(write_only=True, help_text='New volume name.')
-    description = serializers.CharField(required=False, help_text='New volume name. Leave blank to use snapshot name.')
+    description = serializers.CharField(required=False, help_text='New volume description.')
 
     class Meta(object):
         model = models.SnapshotRestoration
@@ -317,6 +321,7 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
 
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
     action_details = core_serializers.JSONField(read_only=True)
+    metadata = core_serializers.JSONField(required=False)
     restorations = SnapshotRestorationSerializer(many=True, read_only=True)
     snapshot_schedule_uuid = serializers.ReadOnlyField(source='snapshot_schedule.uuid')
 
@@ -398,6 +403,134 @@ class NestedSecurityGroupSerializer(core_serializers.AugmentedSerializerMixin,
         }
 
 
+class NestedInternalIPSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
+
+    class Meta(object):
+        model = models.InternalIP
+        fields = (
+            'ip4_address', 'mac_address', 'subnet', 'subnet_uuid', 'subnet_name', 'subnet_description', 'subnet_cidr')
+        read_only_fields = (
+            'ip4_address', 'mac_address', 'subnet_uuid', 'subnet_name', 'subnet_description', 'subnet_cidr')
+        related_paths = {
+            'subnet': ('uuid', 'name', 'description', 'cidr'),
+        }
+        extra_kwargs = {
+            'subnet': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-subnet-detail'},
+        }
+
+    def to_internal_value(self, data):
+        internal_value = super(NestedInternalIPSerializer, self).to_internal_value(data)
+        return models.InternalIP(subnet=internal_value['subnet'])
+
+
+class NestedFloatingIPSerializer(core_serializers.AugmentedSerializerMixin,
+                                 core_serializers.HyperlinkedRelatedModelSerializer):
+    subnet = serializers.HyperlinkedRelatedField(
+        queryset=models.SubNet.objects.all(),
+        source='internal_ip.subnet',
+        view_name='openstacktenant-subnet-detail',
+        lookup_field='uuid')
+    subnet_uuid = serializers.ReadOnlyField(source='internal_ip.subnet.uuid')
+    subnet_name = serializers.ReadOnlyField(source='internal_ip.subnet.name')
+    subnet_description = serializers.ReadOnlyField(source='internal_ip.subnet.description')
+    subnet_cidr = serializers.ReadOnlyField(source='internal_ip.subnet.cidr')
+
+    class Meta(object):
+        model = models.FloatingIP
+        fields = ('url', 'uuid', 'address', 'internal_ip_ip4_address', 'internal_ip_mac_address',
+                  'subnet', 'subnet_uuid', 'subnet_name', 'subnet_description', 'subnet_cidr')
+        read_only_fields = ('address', 'internal_ip_ip4_address', 'internal_ip_mac_address')
+        related_paths = {
+            'internal_ip': ('ip4_address', 'mac_address')
+        }
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-fip-detail'},
+        }
+
+    def to_internal_value(self, data):
+        """
+        Return pair (floating_ip, subnet) as internal value.
+
+        On floating IP creation user should specify what subnet should be used
+        for connection and may specify what exactly floating IP should be used.
+        If floating IP is not specified it will be represented as None.
+        """
+        floating_ip = None
+        if 'url' in data:
+            # use HyperlinkedRelatedModelSerializer (parent of NestedFloatingIPSerializer)
+            # method to convert "url" to FloatingIP object
+            floating_ip = super(NestedFloatingIPSerializer, self).to_internal_value(data)
+
+        # use HyperlinkedModelSerializer (parent of HyperlinkedRelatedModelSerializer)
+        # to convert "subnet" to SubNet object
+        internal_value = super(core_serializers.HyperlinkedRelatedModelSerializer, self).to_internal_value(data)
+        subnet = internal_value['internal_ip']['subnet']
+
+        return floating_ip, subnet
+
+
+def _validate_instance_internal_ips(internal_ips, settings):
+    """ - make sure that internal_ips belong to specified setting
+        - make sure that internal_ips does not connect to the same subnet twice
+    """
+    subnets = [internal_ip.subnet for internal_ip in internal_ips]
+    for subnet in subnets:
+        if subnet.settings != settings:
+            raise serializers.ValidationError(
+                'Subnet %s does not belong to the same service settings as service project link.' % subnet)
+    duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
+    if duplicates:
+        raise serializers.ValidationError('It is impossible to connect to subnet %s twice.' % duplicates[0])
+
+
+def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instance_subnets):
+    if floating_ips_with_subnets and 'external_network_id' not in settings.options:
+        raise serializers.ValidationError('Please specify tenant external network to perform floating IP operations.')
+
+    for floating_ip, subnet in floating_ips_with_subnets:
+        if subnet not in instance_subnets:
+            message = 'SubNet %s is not connected to instance.' % subnet
+            raise serializers.ValidationError({'floating_ips': message})
+        if not floating_ip:
+            continue
+        if floating_ip.is_booked:
+            raise serializers.ValidationError(
+                'Floating IP %s is already booked for another instance creation' % floating_ip)
+        if not floating_ip.internal_ip and floating_ip.runtime_state != 'DOWN':
+            raise serializers.ValidationError('Floating IP %s runtime state should be DOWN.' % floating_ip)
+        if floating_ip.settings != settings:
+            message = (
+                'Floating IP %s does not belong to the same service settings as service project link.' % floating_ip)
+            raise serializers.ValidationError({'floating_ips': message})
+
+    subnets = [subnet for _, subnet in floating_ips_with_subnets]
+    duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
+    if duplicates:
+        raise serializers.ValidationError('It is impossible to use subnet %s twice.' % duplicates[0])
+
+
+def _connect_floating_ip_to_instance(floating_ip, subnet, instance):
+    """ Connect floating IP to instance via specified subnet.
+        If floating IP is not defined - take exist free one or create a new one.
+    """
+    settings = instance.service_project_link.service.settings
+    if not floating_ip:
+        kwargs = {
+            'runtime_state': 'DOWN',
+            'settings': settings,
+            'is_booked': False,
+            'backend_network_id': settings.options['external_network_id'],
+        }
+        floating_ip = models.FloatingIP.objects.filter(**kwargs).first()
+        if not floating_ip:
+            floating_ip = models.FloatingIP(**kwargs)
+            floating_ip.increase_backend_quotas_usage()
+    floating_ip.is_booked = True
+    floating_ip.internal_ip = models.InternalIP.objects.get(instance=instance, subnet=subnet)
+    floating_ip.save()
+    return floating_ip
+
+
 class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
@@ -423,33 +556,25 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
+    internal_ips_set = NestedInternalIPSerializer(many=True, required=False)
+    floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
 
-    allocate_floating_ip = serializers.BooleanField(write_only=True, default=False)
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
     data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024, write_only=True)
 
-    floating_ip = serializers.HyperlinkedRelatedField(
-        label='Floating IP',
-        required=False,
-        allow_null=True,
-        view_name='openstacktenant-fip-detail',
-        lookup_field='uuid',
-        queryset=models.FloatingIP.objects.all(),
-        write_only=True
-    )
     volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
     action_details = core_serializers.JSONField(read_only=True)
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
         fields = structure_serializers.VirtualMachineSerializer.Meta.fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size',
             'security_groups', 'internal_ips', 'flavor_disk', 'flavor_name',
-            'floating_ip', 'volumes', 'runtime_state', 'action', 'action_details',
+            'floating_ips', 'volumes', 'runtime_state', 'action', 'action_details', 'internal_ips_set',
         )
         protected_fields = structure_serializers.VirtualMachineSerializer.Meta.protected_fields + (
-            'flavor', 'image', 'system_volume_size', 'data_volume_size', 'allocate_floating_ip',
-            'floating_ip', 'security_groups',
+            'flavor', 'image', 'system_volume_size', 'data_volume_size',
+            'floating_ips', 'security_groups', 'internal_ips_set',
         )
         read_only_fields = structure_serializers.VirtualMachineSerializer.Meta.read_only_fields + (
             'flavor_disk', 'runtime_state', 'flavor_name', 'action',
@@ -457,11 +582,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     def get_fields(self):
         fields = super(InstanceSerializer, self).get_fields()
-        field = fields.get('floating_ip')
-        if field:
-            field.query_params = {'runtime_state': 'DOWN'}
-            field.value_field = 'url'
-            field.display_name_field = 'address'
+        floating_ip_field = fields.get('floating_ip')
+        if floating_ip_field:
+            floating_ip_field.query_params = {'runtime_state': 'DOWN'}
+            floating_ip_field.value_field = 'url'
+            floating_ip_field.display_name_field = 'address'
 
         return fields
 
@@ -507,40 +632,12 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
                     'Security group {} does not belong to the same service settings as service project link.'.format(
                         security_group.name))
 
-        self._validate_external_ip(attrs)
+        internal_ips = attrs.get('internal_ips_set', [])
+        _validate_instance_internal_ips(internal_ips, settings)
+        subnets = [internal_ip.subnet for internal_ip in internal_ips]
+        _validate_instance_floating_ips(attrs.get('floating_ips', []), settings, subnets)
 
         return attrs
-
-    def _validate_external_ip(self, attrs):
-        floating_ip = attrs.get('floating_ip')
-        spl = attrs['service_project_link']
-        allocate_floating_ip = attrs['allocate_floating_ip']
-
-        # Case 1. If floating_ip!=None then requested floating IP is assigned to the instance.
-        if floating_ip:
-
-            if floating_ip.runtime_state != 'DOWN':
-                raise serializers.ValidationError({'floating_ip': 'Floating IP runtime_state must be DOWN.'})
-
-            if floating_ip.settings != spl.service.settings:
-                raise serializers.ValidationError({
-                    'floating_ip': 'Floating IP must belong to the same service settings.'
-                })
-
-        # Case 2. If floating_ip=None and allocate_floating_ip=True
-        # then new floating IP is allocated and assigned to the instance.
-        elif allocate_floating_ip:
-
-            floating_ip_count_quota = spl.service.settings.quotas.get(name='floating_ip_count')
-            if floating_ip_count_quota.is_exceeded(delta=1):
-                raise serializers.ValidationError({
-                    'allocate_floating_ip': 'Can not allocate floating IP - quota has been filled.'
-                })
-
-        # Case 3. If floating_ip=None and allocate_floating_ip=False
-        # floating IP allocation is not attempted, only internal IP is created.
-        else:
-            logger.debug('Floating IP allocation is not attempted.')
 
     @transaction.atomic
     def create(self, validated_data):
@@ -548,6 +645,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             Create volumes and security groups for instance.
         """
         security_groups = validated_data.pop('security_groups', [])
+        internal_ips = validated_data.pop('internal_ips_set', [])
+        floating_ips_with_subnets = validated_data.pop('floating_ips', [])
         spl = validated_data['service_project_link']
         ssh_key = validated_data.get('ssh_public_key')
         if ssh_key:
@@ -575,8 +674,16 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         instance = super(InstanceSerializer, self).create(validated_data)
 
+        # security groups
         instance.security_groups.add(*security_groups)
-
+        # internal IPs
+        for internal_ip in internal_ips:
+            internal_ip.instance = instance
+            internal_ip.save()
+        # floating IPs
+        for floating_ip, subnet in floating_ips_with_subnets:
+            _connect_floating_ip_to_instance(floating_ip, subnet, instance)
+        # volumes
         system_volume = models.Volume.objects.create(
             name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
             service_project_link=spl,
@@ -598,7 +705,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     def update(self, instance, validated_data):
         # DRF adds data_volume_size to validated_data, because it has default value.
         # This field is protected, so it should not be used for update.
-        del validated_data['data_volume_size']
+        if 'data_volume_size' in validated_data:
+            del validated_data['data_volume_size']
         return super(InstanceSerializer, self).update(instance, validated_data)
 
 
@@ -736,6 +844,72 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
             instance.security_groups.clear()
             instance.security_groups.add(*security_groups)
 
+        return instance
+
+
+class InstanceInternalIPsSetUpdateSerializer(serializers.Serializer):
+    internal_ips_set = NestedInternalIPSerializer(many=True)
+
+    def get_fields(self):
+        fields = super(InstanceInternalIPsSetUpdateSerializer, self).get_fields()
+        instance = self.instance
+        if instance:
+            fields['internal_ips_set'].view_name = 'openstacktenant-subnet-detail'
+            fields['internal_ips_set'].query_params = {
+                'settings_uuid': instance.service_project_link.service.settings.uuid
+            }
+        return fields
+
+    def validate_internal_ips_set(self, internal_ips_set):
+        spl = self.instance.service_project_link
+        _validate_instance_internal_ips(internal_ips_set, spl.service.settings)
+        return internal_ips_set
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        internal_ips_set = validated_data['internal_ips_set']
+        new_subnets = [ip.subnet for ip in internal_ips_set]
+        # delete stale IPs
+        models.InternalIP.objects.filter(instance=instance).exclude(subnet__in=new_subnets).delete()
+        # create new IPs
+        for internal_ip in internal_ips_set:
+            models.InternalIP.objects.get_or_create(instance=instance, subnet=internal_ip.subnet)
+
+        return instance
+
+
+class InstanceFloatingIPsUpdateSerializer(serializers.Serializer):
+    floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
+
+    def get_fields(self):
+        fields = super(InstanceFloatingIPsUpdateSerializer, self).get_fields()
+        instance = self.instance
+        if instance:
+            fields['floating_ips'].view_name = 'openstacktenant-fip-detail'
+            fields['floating_ips'].query_params = {
+                'settings_uuid': instance.service_project_link.service.settings.uuid.hex,
+                'runtime_state': 'DOWN',
+                'is_booked': False,
+            }
+        return fields
+
+    def validate_floating_ips(self, floating_ips):
+        spl = self.instance.service_project_link
+        subnets = self.instance.subnets.all()
+        _validate_instance_floating_ips(floating_ips, spl.service.settings, subnets)
+        return floating_ips
+
+    def update(self, instance, validated_data):
+        floating_ips_with_subnets = validated_data['floating_ips']
+        floating_ips_to_disconnect = list(self.instance.floating_ips)
+        for floating_ip, subnet in floating_ips_with_subnets:
+            if floating_ip in floating_ips_to_disconnect:
+                floating_ips_to_disconnect.remove(floating_ip)
+                continue
+            _connect_floating_ip_to_instance(floating_ip, subnet, instance)
+        for floating_ip in floating_ips_to_disconnect:
+            floating_ip.internal_ip = None
+            floating_ip.save()
         return instance
 
 

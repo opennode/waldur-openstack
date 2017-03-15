@@ -58,6 +58,14 @@ class ResourceActionEventLogger(EventLogger):
             'resource_unassign_floating_ip_scheduled',
             'resource_unassign_floating_ip_succeeded',
             'resource_unassign_floating_ip_failed',
+
+            'resource_update_internal_ips_scheduled',
+            'resource_update_internal_ips_succeeded',
+            'resource_update_internal_ips_failed',
+
+            'resource_update_floating_ips_scheduled',
+            'resource_update_floating_ips_succeeded',
+            'resource_update_floating_ips_failed',
         )
         event_groups = {'resources': event_types}
 

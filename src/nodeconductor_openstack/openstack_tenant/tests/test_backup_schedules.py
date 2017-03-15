@@ -21,7 +21,7 @@ class BackupScheduleRetrieveTest(BaseBackupScheduleTest):
 
     def setUp(self):
         super(BackupScheduleRetrieveTest, self).setUp()
-        self.backup_schedule = self.fixture.openstack_backup_schedule
+        self.backup_schedule = self.fixture.backup_schedule
         self.url = factories.BackupScheduleFactory.get_list_url()
 
     @data('owner', 'manager', 'admin', 'staff', 'global_support')
@@ -47,7 +47,7 @@ class BackupScheduleDeleteTest(BaseBackupScheduleTest):
 
     def setUp(self):
         super(BackupScheduleDeleteTest, self).setUp()
-        self.schedule = factories.BackupScheduleFactory(instance=self.fixture.openstack_instance)
+        self.schedule = factories.BackupScheduleFactory(instance=self.fixture.instance)
         self.url = factories.BackupScheduleFactory.get_url(self.schedule)
 
     @data('owner', 'admin', 'manager', 'staff')
@@ -74,7 +74,7 @@ class BackupScheduleActivateTest(BaseBackupScheduleTest):
     def setUp(self):
         super(BackupScheduleActivateTest, self).setUp()
         self.client.force_authenticate(self.fixture.owner)
-        self.schedule = self.fixture.openstack_backup_schedule
+        self.schedule = self.fixture.backup_schedule
 
     def test_backup_schedule_do_not_start_activation_of_active_schedule(self):
         url = factories.BackupScheduleFactory.get_url(self.schedule, action='activate')
@@ -109,7 +109,7 @@ class BackupScheduleDeactivateTest(BaseBackupScheduleTest):
 
     def setUp(self):
         super(BackupScheduleDeactivateTest, self).setUp()
-        self.schedule = self.fixture.openstack_backup_schedule
+        self.schedule = self.fixture.backup_schedule
 
     def test_backup_schedule_do_not_start_deactivation_of_not_active_schedule(self):
         self.client.force_authenticate(self.fixture.owner)

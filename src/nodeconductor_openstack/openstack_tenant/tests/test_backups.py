@@ -74,9 +74,9 @@ class BackupPermissionsTest(helpers.PermissionsTest):
     def setUp(self):
         super(BackupPermissionsTest, self).setUp()
         self.fixture = fixtures.OpenStackTenantFixture()
-        self.instance = self.fixture.openstack_instance
+        self.instance = self.fixture.instance
         self.backup = factories.BackupFactory(
-            service_project_link=self.fixture.openstack_tenant_spl,
+            service_project_link=self.fixture.spl,
             state=models.Backup.States.OK,
             instance=self.instance,
         )

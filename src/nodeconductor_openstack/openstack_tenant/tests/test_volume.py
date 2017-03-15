@@ -71,8 +71,8 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
 class VolumeAttachTestCase(test.APITransactionTestCase):
     def setUp(self):
         self.fixture = fixtures.OpenStackTenantFixture()
-        self.volume = self.fixture.openstack_volume
-        self.instance = self.fixture.openstack_instance
+        self.volume = self.fixture.volume
+        self.instance = self.fixture.instance
         self.url = factories.VolumeFactory.get_url(self.volume, action='attach')
 
     def get_response(self):
@@ -120,7 +120,7 @@ class VolumeAttachTestCase(test.APITransactionTestCase):
 class VolumeSnapshotTestCase(test.APITransactionTestCase):
     def setUp(self):
         self.fixture = fixtures.OpenStackTenantFixture()
-        self.volume = self.fixture.openstack_volume
+        self.volume = self.fixture.volume
         self.url = factories.VolumeFactory.get_url(self.volume, action='snapshot')
         self.volume.state = models.Volume.States.OK
         self.volume.runtime_state = 'available'
@@ -153,7 +153,7 @@ class VolumeCreateSnapshotScheduleTest(test.APITransactionTestCase):
 
     def setUp(self):
         self.fixture = fixtures.OpenStackTenantFixture()
-        self.url = factories.VolumeFactory.get_url(self.fixture.openstack_volume, self.action_name)
+        self.url = factories.VolumeFactory.get_url(self.fixture.volume, self.action_name)
         self.snapshot_schedule_data = {
             'name': 'test schedule',
             'retention_time': 3,

@@ -23,7 +23,6 @@ def _instance_data(user, instance=None):
             instance.service_project_link),
         'ssh_public_key': structure_factories.SshPublicKeyFactory.get_url(ssh_public_key),
         'system_volume_size': max(image.min_disk, 1024),
-        'allocate_floating_ip': False,
     }
 
 
@@ -31,7 +30,7 @@ class InstanceSecurityGroupsTest(test.APITransactionTestCase):
 
     def setUp(self):
         self.fixture = fixtures.OpenStackTenantFixture()
-        self.instance = self.fixture.openstack_instance
+        self.instance = self.fixture.instance
         self.settings = self.fixture.openstack_tenant_service_settings
         self.admin = self.fixture.admin
         self.client.force_authenticate(self.admin)

@@ -46,12 +46,16 @@ class FloatingIPFilter(structure_filters.ServicePropertySettingsFilter):
 
     class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
         model = models.FloatingIP
-        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('runtime_state',)
+        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('runtime_state', 'is_booked')
 
 
 class VolumeFilter(structure_filters.BaseResourceFilter):
     instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='instance__uuid')
     instance_uuid = django_filters.UUIDFilter(name='instance__uuid')
+
+    snapshot = core_filters.URLFilter(
+        view_name='openstacktenant-snapshot-detail', name='restoration__snapshot__uuid')
+    snapshot_uuid = django_filters.UUIDFilter(name='restoration__snapshot__uuid')
 
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Volume

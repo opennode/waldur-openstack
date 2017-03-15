@@ -73,10 +73,16 @@ class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):
 
 @python_2_unicode_compatible
 class FloatingIP(structure_models.ServiceProperty):
-    address = models.GenericIPAddressField(protocol='IPv4')
+    address = models.GenericIPAddressField(protocol='IPv4', null=True)
     runtime_state = models.CharField(max_length=30)
     backend_network_id = models.CharField(max_length=255, editable=False)
     is_booked = models.BooleanField(default=False, help_text='Marks if floating IP has been booked for provisioning.')
+    internal_ip = models.ForeignKey('InternalIP', related_name='floating_ips', null=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        # It should be possible to create floating IP dynamically on instance creation
+        # so floating IP with empty backend id can exist.
+        unique_together = tuple()
 
     def __str__(self):
         return '%s:%s | %s' % (self.address, self.runtime_state, self.settings)
@@ -87,6 +93,9 @@ class FloatingIP(structure_models.ServiceProperty):
 
     def get_backend(self):
         return self.settings.get_backend()
+
+    def increase_backend_quotas_usage(self, validate=True):
+        self.settings.add_quota_usage(self.settings.Quotas.floating_ip_count, 1, validate=validate)
 
 
 class Volume(structure_models.Storage):
@@ -162,7 +171,7 @@ class Snapshot(structure_models.Storage):
 
 class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
     snapshot = models.ForeignKey(Snapshot, related_name='restorations')
-    volume = models.OneToOneField(Volume, related_name='+')
+    volume = models.OneToOneField(Volume, related_name='restoration')
 
     class Permissions(object):
         customer_path = 'snapshot__service_project_link__project__customer'
@@ -202,15 +211,13 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
     action_details = JSONField(default={})
-    external_ip = models.OneToOneField(FloatingIP, blank=True, null=True,
-                                       related_name='instance',
-                                       on_delete=models.SET_NULL)
+    subnets = models.ManyToManyField('SubNet', through='InternalIP')
 
     tracker = FieldTracker()
 
     @property
     def external_ips(self):
-        return [self.external_ip.address] if self.external_ip else []
+        return self.floating_ips.values_list('address', flat=True)
 
     @property
     def internal_ips(self):
@@ -248,6 +255,10 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
         settings.add_quota_usage(settings.Quotas.instances, -1)
         settings.add_quota_usage(settings.Quotas.ram, -self.ram)
         settings.add_quota_usage(settings.Quotas.vcpu, -self.cores)
+
+    @property
+    def floating_ips(self):
+        return FloatingIP.objects.filter(internal_ip__instance=self)
 
 
 class Backup(structure_models.NewResource):
@@ -330,7 +341,7 @@ class Network(core_models.DescribableMixin, structure_models.ServiceProperty):
     segmentation_id = models.IntegerField(null=True)
 
     def __str__(self):
-        return self.type
+        return self.name
 
     @classmethod
     def get_url_name(cls):
@@ -348,7 +359,7 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     dns_nameservers = JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')
 
     def __str__(self):
-        return '%s | %s' % (self.network, self.gateway_ip)
+        return '%s (%s)' % (self.name, self.cidr)
 
     @classmethod
     def get_url_name(cls):

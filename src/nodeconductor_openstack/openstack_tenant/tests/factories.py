@@ -330,6 +330,24 @@ class SubNetFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.SubNet
 
-    name = factory.Sequence(lambda n: 'network%s' % n)
+    name = factory.Sequence(lambda n: 'subnet%s' % n)
     settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
     network = factory.SubFactory(NetworkFactory)
+
+    @classmethod
+    def get_url(cls, subnet=None):
+        if subnet is None:
+            subnet = SubNetFactory()
+        return 'http://testserver' + reverse('openstacktenant-subnet-detail', kwargs={'uuid': subnet.uuid})
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstacktenant-subnet-list')
+
+
+class InternalIPFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.InternalIP
+
+    instance = factory.SubFactory(InstanceFactory)
+    subnet = factory.SubFactory(SubNetFactory)

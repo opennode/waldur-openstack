@@ -49,6 +49,20 @@ class PollRuntimeStateTask(core_tasks.Task):
         return instance
 
 
+class SetInstanceOKTask(core_tasks.StateTransitionTask):
+    """ Additionally mark or related floating IPs as free """
+
+    def pre_execute(self, instance):
+        self.kwargs['state_transition'] = 'set_ok'
+        self.kwargs['action'] = ''
+        self.kwargs['action_details'] = {}
+        super(SetInstanceOKTask, self).pre_execute(instance)
+
+    def execute(self, instance, *args, **kwargs):
+        super(SetInstanceOKTask, self).execute(instance)
+        instance.floating_ips.update(is_booked=False)
+
+
 class SetInstanceErredTask(core_tasks.ErrorStateTransitionTask):
     """ Mark instance as erred and delete resources that were not created. """
 
@@ -66,6 +80,10 @@ class SetInstanceErredTask(core_tasks.ErrorStateTransitionTask):
             else:
                 volume.set_erred()
                 volume.save(update_fields=['state'])
+
+        # set instance floating IPs as free, delete not created ones.
+        instance.floating_ips.filter(backend_id='').delete()
+        instance.floating_ips.update(is_booked=False)
 
 
 class SetBackupErredTask(core_tasks.ErrorStateTransitionTask):
@@ -200,21 +218,13 @@ class PullServiceSettingsResources(core_tasks.BackgroundTask):
         for instance in instances:
             try:
                 backend_instance = backend_instances_map[instance.backend_id]
-                if backend_instance._internal_ips_set:
-                    backend_ip4_addresses = [ip.ip4_address for ip in backend_instance._internal_ips_set]
-                    internal_ips_to_delete = instance.internal_ips_set.filter(ip4_address__in=backend_ip4_addresses)
             except KeyError:
                 self._set_erred(instance)
             else:
-                with transaction.atomic():
-                    self._update(instance, backend_instance, backend.INSTANCE_UPDATE_FIELDS)
-                    if set(instance.security_groups.all()) != set(backend_instance._security_groups):
-                        instance.security_groups.clear()
-                        instance.security_groups.add(*backend_instance._security_groups)
-
-                    if backend_instance._internal_ips_set:
-                        instance.internal_ips_set.filter(pk__in=internal_ips_to_delete).delete()
-                        instance.internal_ips_set.add(*backend_instance._internal_ips_set)
+                self._update(instance, backend_instance, backend.INSTANCE_UPDATE_FIELDS)
+                backend.pull_instance_security_groups(instance)
+                backend.pull_instance_internal_ips(instance)
+                backend.pull_instance_floating_ips(instance)
 
     def _set_erred(self, resource):
         resource.set_erred()

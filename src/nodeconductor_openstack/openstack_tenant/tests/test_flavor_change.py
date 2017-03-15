@@ -12,7 +12,7 @@ from . import factories, fixtures
 class FlavorChangeInstanceTestCase(test.APITransactionTestCase):
     def setUp(self):
         self.fixture = fixtures.OpenStackTenantFixture()
-        self.instance = self.fixture.openstack_instance
+        self.instance = self.fixture.instance
         self.instance.runtime_state = 'SHUTOFF'
         self.instance.state = Instance.States.OK
         self.instance.save(update_fields=['runtime_state', 'state'])
