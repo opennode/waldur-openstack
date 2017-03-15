@@ -705,7 +705,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     def update(self, instance, validated_data):
         # DRF adds data_volume_size to validated_data, because it has default value.
         # This field is protected, so it should not be used for update.
-        del validated_data['data_volume_size']
+        if 'data_volume_size' in validated_data:
+            del validated_data['data_volume_size']
         return super(InstanceSerializer, self).update(instance, validated_data)
 
 
