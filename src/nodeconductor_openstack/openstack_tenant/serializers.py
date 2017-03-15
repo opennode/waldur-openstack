@@ -476,8 +476,8 @@ def _validate_instance_internal_ips(internal_ips, settings):
     subnets = [internal_ip.subnet for internal_ip in internal_ips]
     for subnet in subnets:
         if subnet.settings != settings:
-            raise serializers.ValidationError(
-                'Subnet %s does not belong to the same service settings as service project link.' % subnet)
+            message = 'Subnet %s does not belong to the same service settings as service project link.' % subnet
+            raise serializers.ValidationError({'internal_ips_set': message})
     duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
     if duplicates:
         raise serializers.ValidationError('It is impossible to connect to subnet %s twice.' % duplicates[0])
@@ -489,7 +489,7 @@ def _validate_instance_security_groups(security_groups, settings):
     for security_group in security_groups:
         if security_group.settings != settings:
             error_template = 'Security group %s does not belong to the same service settings as service project link.'
-            raise serializers.ValidationError(error_template % security_group.name)
+            raise serializers.ValidationError({'security_groups': error_template % security_group.name})
 
 
 def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instance_subnets):
@@ -504,9 +504,10 @@ def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instanc
             continue
         if floating_ip.is_booked:
             raise serializers.ValidationError(
-                'Floating IP %s is already booked for another instance creation' % floating_ip)
+                {'floating_ips': 'Floating IP %s is already booked for another instance creation' % floating_ip})
         if not floating_ip.internal_ip and floating_ip.runtime_state != 'DOWN':
-            raise serializers.ValidationError('Floating IP %s runtime state should be DOWN.' % floating_ip)
+            raise serializers.ValidationError(
+                {'floating_ips': 'Floating IP %s runtime state should be DOWN.' % floating_ip})
         if floating_ip.settings != settings:
             message = (
                 'Floating IP %s does not belong to the same service settings as service project link.' % floating_ip)
