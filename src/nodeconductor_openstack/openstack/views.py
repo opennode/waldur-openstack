@@ -5,7 +5,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, decorators, response, permissions, status, serializers as rf_serializers
 from rest_framework.exceptions import ValidationError
 
-from nodeconductor.core import validators as core_validators
+from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
 from nodeconductor.structure import (
     views as structure_views, SupportedServices, executors as structure_executors,
     filters as structure_filters, permissions as structure_permissions)
@@ -355,6 +355,11 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     create_network_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
     create_network_serializer_class = serializers.NetworkSerializer
 
+    def external_network_is_defined(tenant):
+        if not tenant.external_network_id:
+            raise core_exceptions.IncorrectStateException(
+                'Cannot create floating IP if tenant external network is not defined.')
+
     @decorators.detail_route(methods=['post'])
     def create_floating_ip(self, request, uuid=None):
         serializer = self.get_serializer(data=request.data)
@@ -364,7 +369,8 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         executors.FloatingIPCreateExecutor.execute(floating_ip)
         return response.Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    create_floating_ip_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+    create_floating_ip_validators = [core_validators.StateValidator(models.Tenant.States.OK),
+                                     external_network_is_defined]
     create_floating_ip_serializer_class = serializers.FloatingIPSerializer
 
     @decorators.detail_route(methods=['post'])

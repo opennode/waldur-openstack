@@ -122,7 +122,7 @@ class TenantCreateServiceTest(BaseTenantActionsTest):
     def test_can_create_service(self, user, mocked_execute):
         self.client.force_authenticate(getattr(self.fixture, user))
         service_settings_name = 'Valid service settings name'
-        response = self.client.post(self.url,  {'name': service_settings_name})
+        response = self.client.post(self.url, {'name': service_settings_name})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(mocked_execute.called)
 
@@ -192,6 +192,16 @@ class TenantCreateFloatingIPTest(BaseTenantActionsTest):
         response = self.client.post(self.url)
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.tenant.floating_ips.count(), 0)
+        self.assertFalse(mocked_task.called)
+
+    def test_user_cannot_create_floating_ip_if_external_network_is_not_defined_for_tenant(self, mocked_task):
+        self.tenant.external_network_id = ''
+        self.tenant.save()
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(self.tenant.floating_ips.count(), 0)
         self.assertFalse(mocked_task.called)
 
