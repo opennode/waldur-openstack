@@ -14,7 +14,7 @@ install_requires = [
     'iptools>=0.6.1',
     'nodeconductor>0.124.0',
     'python-ceilometerclient>=2.3.0',
-    'python-cinderclient>=1.6.0',
+    'python-cinderclient>=1.6.0,<2.0.0',
     'python-glanceclient>=2.0.0',
     'python-keystoneclient>=2.3.1',
     'python-neutronclient>=4.1.1',

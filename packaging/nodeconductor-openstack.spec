@@ -10,6 +10,7 @@ Source0: %{name}-%{version}.tar.gz
 Requires: nodeconductor > 0.124.0
 Requires: python-ceilometerclient >= 2.3.0
 Requires: python-cinderclient >= 1.6.0
+Requires: python-cinderclient < 2.0.0
 Requires: python-glanceclient >= 1:2.0.0
 Requires: python-iptools >= 0.6.1
 Requires: python-keystoneclient >= 1:2.3.1
