@@ -159,8 +159,7 @@ class BackupRestorationTest(test.APITransactionTestCase):
         security_group = factories.SecurityGroupFactory()
         self.assertNotEqual(self.backup.service_project_link.service.settings, security_group.settings)
         payload = self._get_valid_payload(
-            security_groups=[{'url': factories.SecurityGroupFactory.get_url(security_group)}]
-        )
+            security_groups=[{'url': factories.SecurityGroupFactory.get_url(security_group)}])
 
         response = self.client.post(self.url, payload)
 
@@ -277,7 +276,6 @@ class BackupRestorationTest(test.APITransactionTestCase):
     def _get_valid_payload(self, **options):
         payload = {
             'name': 'instance name',
-            'flavor': factories.FlavorFactory.get_url(self.valid_flavor)
-        }
+            'flavor': factories.FlavorFactory.get_url(self.valid_flavor)}
         payload.update(options)
         return payload
