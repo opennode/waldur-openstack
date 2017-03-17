@@ -28,6 +28,10 @@ class OpenStackBackend(BaseOpenStackBackend):
     FLOATING_IP_UPDATE_FIELDS = ('name', 'description', 'address', 'backend_network_id', 'runtime_state',
                                  'error_message', 'state')
     SECURITY_GROUP_UPDATE_FIELDS = ('name', 'description', 'error_message', 'state')
+    NETWORK_UPDATE_FIELDS = ('name', 'description', 'is_external', 'type', 'segmentation_id',
+                             'runtime_state', 'error_message', 'state')
+    SUBNET_UPDATE_FIELDS = ('name', 'description', 'allocation_pools', 'cidr', 'ip_version',
+                            'enable_dhcp', 'gateway_ip', 'dns_nameservers', 'error_message', 'state')
 
     def check_admin_tenant(self):
         try:
@@ -40,12 +44,14 @@ class OpenStackBackend(BaseOpenStackBackend):
             return True
 
     def sync(self):
-        self._pull_flavors()
-        self._pull_images()
-        self._pull_service_settings_quotas()
+        self.pull_flavors()
+        self.pull_images()
+        self.pull_service_settings_quotas()
         self.pull_tenants()
         self.pull_security_groups()
         self.pull_floating_ips()
+        self.pull_networks()
+        self.pull_subnets()
 
     def pull_tenants(self):
         keystone = self.keystone_admin_client
@@ -187,7 +193,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         return rule
 
-    def _pull_flavors(self):
+    def pull_flavors(self):
         nova = self.nova_admin_client
         try:
             flavors = nova.flavors.findall(is_public=True)
@@ -210,7 +216,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
             models.Flavor.objects.filter(backend_id__in=cur_flavors.keys()).delete()
 
-    def _pull_images(self):
+    def pull_images(self):
         glance = self.glance_client
         try:
             images = glance.images.list()
@@ -452,6 +458,120 @@ class OpenStackBackend(BaseOpenStackBackend):
                     if backend_rule['remote_ip_prefix'] is not None else '0.0.0.0/0',
                 })
         security_group.rules.filter(backend_id__in=cur_rules.keys()).delete()
+
+    def pull_networks(self, tenants=None):
+        neutron = self.neutron_client
+
+        if tenants is None:
+            tenants = models.Tenant.objects.filter(
+                state=models.Tenant.States.OK,
+                service_project_link__service__settings=self.settings,
+            ).prefetch_related('networks')
+        tenant_mappings = {tenant.backend_id: tenant for tenant in tenants}
+
+        try:
+            backend_networks = neutron.list_networks(tenant_id=tenant_mappings.keys())['networks']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        network_uuids = []
+        with transaction.atomic():
+            for backend_network in backend_networks:
+                tenant = tenant_mappings[backend_network['tenant_id']]
+
+                imported_network = self._backend_network_to_network(
+                    backend_network, tenant=tenant, service_project_link=tenant.service_project_link)
+
+                try:
+                    network = tenant.networks.get(backend_id=imported_network.backend_id)
+                except models.Network.DoesNotExist:
+                    imported_network.save()
+                    network = imported_network
+                else:
+                    update_pulled_fields(network, imported_network, self.NETWORK_UPDATE_FIELDS)
+
+                network_uuids.append(network.uuid)
+
+            for network in models.Network.objects.filter(
+                    state__in=[models.Network.States.OK, models.Network.States.ERRED],
+                    service_project_link__service__settings=self.settings).exclude(uuid__in=network_uuids):
+                handle_resource_not_found(network)
+
+    def _backend_network_to_network(self, backend_network, **kwargs):
+        network = models.Network(
+            name=backend_network['name'],
+            description=backend_network['description'],
+            is_external=backend_network['router:external'],
+            runtime_state=backend_network['status'],
+            backend_id=backend_network['id'],
+            state=models.Network.States.OK,
+        )
+        if backend_network.get('provider:network_type'):
+            network.type = backend_network['provider:network_type']
+        if backend_network.get('provider:segmentation_id'):
+            network.segmentation_id = backend_network['provider:segmentation_id']
+
+        for field, value in kwargs.items():
+            setattr(network, field, value)
+
+        return network
+
+    def pull_subnets(self, networks=None):
+        neutron = self.neutron_client
+
+        if networks is None:
+            networks = models.Network.objects.filter(
+                state=models.Network.States.OK,
+                service_project_link__service__settings=self.settings,
+            ).prefetch_related('subnets')
+        network_mappings = {network.backend_id: network for network in networks}
+
+        try:
+            backend_subnets = neutron.list_subnets(network_id=network_mappings.keys())['subnets']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        subnet_uuids = []
+        with transaction.atomic():
+            for backend_subnet in backend_subnets:
+                network = network_mappings[backend_subnet['network_id']]
+
+                imported_subnet = self._backend_subnet_to_subnet(
+                    backend_subnet, network=network, service_project_link=network.service_project_link)
+
+                try:
+                    subnet = network.subnets.get(backend_id=imported_subnet.backend_id)
+                except models.SubNet.DoesNotExist:
+                    imported_subnet.save()
+                    subnet = imported_subnet
+                else:
+                    update_pulled_fields(subnet, imported_subnet, self.SUBNET_UPDATE_FIELDS)
+
+                subnet_uuids.append(subnet.uuid)
+
+            for subnet in models.SubNet.objects.filter(
+                    state__in=[models.SubNet.States.OK, models.SubNet.States.ERRED],
+                    service_project_link__service__settings=self.settings).exclude(uuid__in=subnet_uuids):
+                handle_resource_not_found(subnet)
+
+    def _backend_subnet_to_subnet(self, backend_subnet, **kwargs):
+        subnet = models.SubNet(
+            name=backend_subnet['name'],
+            description=backend_subnet['description'],
+            allocation_pools=backend_subnet['allocation_pools'],
+            cidr=backend_subnet['cidr'],
+            ip_version=backend_subnet['ip_version'],
+            enable_dhcp=backend_subnet['enable_dhcp'],
+            gateway_ip=backend_subnet.get('gateway_ip'),
+            dns_nameservers=backend_subnet['dns_nameservers'],
+            backend_id=backend_subnet['id'],
+            state=models.SubNet.States.OK,
+        )
+
+        for field, value in kwargs.items():
+            setattr(subnet, field, value)
+
+        return subnet
 
     @log_backend_action()
     def create_tenant(self, tenant):
@@ -1077,14 +1197,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        network = models.Network(
-            name=backend_network['name'],
-            type=backend_network.get('provider:network_type'),
-            segmentation_id=backend_network.get('provider:segmentation_id'),
-            runtime_state=backend_network['status'],
-            state=models.Network.States.OK,
-        )
-        return network
+        return self._backend_network_to_network(backend_network)
 
     @log_backend_action()
     def pull_network(self, network):
@@ -1093,8 +1206,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         network.refresh_from_db()
         if network.modified < import_time:
-            update_fields = ('name', 'type', 'segmentation_id', 'runtime_state')
-            update_pulled_fields(network, imported_network, update_fields)
+            update_pulled_fields(network, imported_network, self.NETWORK_UPDATE_FIELDS)
 
     @log_backend_action()
     def create_subnet(self, subnet):
@@ -1299,7 +1411,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             logger.error('Tenant with id %s does not exist', tenant.backend_id)
             six.reraise(OpenStackBackendError, e)
 
-    def _pull_service_settings_quotas(self):
+    def pull_service_settings_quotas(self):
         nova = self.nova_admin_client
         try:
             stats = nova.hypervisor_stats.statistics()
