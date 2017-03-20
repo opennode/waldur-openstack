@@ -13,7 +13,8 @@ from novaclient import exceptions as nova_exceptions
 from nodeconductor.structure import log_backend_action, SupportedServices
 
 from nodeconductor_openstack.openstack_base.backend import (
-    OpenStackBackendError, BaseOpenStackBackend, update_pulled_fields, handle_resource_not_found)
+    OpenStackBackendError, BaseOpenStackBackend, update_pulled_fields,
+    handle_resource_not_found, handle_resource_update_success)
 from . import models
 
 logger = logging.getLogger(__name__)
@@ -24,14 +25,12 @@ class OpenStackBackend(BaseOpenStackBackend):
         'tenant_name': 'admin',
         'is_admin': True,
     }
-    TENANT_UPDATE_FIELDS = ('name', 'description', 'error_message', 'runtime_state', 'state')
-    FLOATING_IP_UPDATE_FIELDS = ('name', 'description', 'address', 'backend_network_id', 'runtime_state',
-                                 'error_message', 'state')
-    SECURITY_GROUP_UPDATE_FIELDS = ('name', 'description', 'error_message', 'state')
-    NETWORK_UPDATE_FIELDS = ('name', 'description', 'is_external', 'type', 'segmentation_id',
-                             'runtime_state', 'error_message', 'state')
+    TENANT_UPDATE_FIELDS = ('name', 'description', 'error_message', 'runtime_state')
+    FLOATING_IP_UPDATE_FIELDS = ('name', 'description', 'address', 'backend_network_id', 'runtime_state')
+    SECURITY_GROUP_UPDATE_FIELDS = ('name', 'description')
+    NETWORK_UPDATE_FIELDS = ('name', 'description', 'is_external', 'type', 'segmentation_id', 'runtime_state')
     SUBNET_UPDATE_FIELDS = ('name', 'description', 'allocation_pools', 'cidr', 'ip_version',
-                            'enable_dhcp', 'gateway_ip', 'dns_nameservers', 'error_message', 'state')
+                            'enable_dhcp', 'gateway_ip', 'dns_nameservers')
 
     def check_admin_tenant(self):
         try:
@@ -44,9 +43,12 @@ class OpenStackBackend(BaseOpenStackBackend):
             return True
 
     def sync(self):
+        # pull service properties
         self.pull_flavors()
         self.pull_images()
         self.pull_service_settings_quotas()
+
+        # pull resources
         self.pull_tenants()
         self.pull_security_groups()
         self.pull_floating_ips()
@@ -90,6 +92,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 imported_backend_tenant = self._backend_tenant_to_tenant(backend_tenant,
                                                                          nova_quotas, cinder_quotas, neutron_quotas)
                 update_pulled_fields(tenant, imported_backend_tenant, self.TENANT_UPDATE_FIELDS)
+                handle_resource_update_success(tenant)
                 for quota_name, limit in imported_backend_tenant._quota_limits.items():
                     tenant.set_quota_limit(quota_name, limit)
 
@@ -309,6 +312,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                     if floating_ip.address != floating_ip.name:
                         imported_floating_ip.name = floating_ip.name
                     update_pulled_fields(floating_ip, imported_floating_ip, self.FLOATING_IP_UPDATE_FIELDS)
+                    handle_resource_update_success(floating_ip)
 
                 floating_ip_uuids.append(floating_ip.uuid)
 
@@ -344,6 +348,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 if floating_ip.address != floating_ip.name:
                     imported_floating_ip.name = floating_ip.name
                 update_pulled_fields(floating_ip, imported_floating_ip, self.FLOATING_IP_UPDATE_FIELDS)
+                handle_resource_update_success(floating_ip)
 
             for floating_ip in tenant.floating_ips.filter(backend_id__in=floating_ips.keys()):
                 handle_resource_not_found(floating_ip)
@@ -394,6 +399,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                     security_group = imported_security_group
                 else:
                     update_pulled_fields(security_group, imported_security_group, self.SECURITY_GROUP_UPDATE_FIELDS)
+                    handle_resource_update_success(security_group)
 
                 security_group_uuids.append(security_group.uuid)
                 self._extract_security_group_rules(security_group, backend_security_group)
@@ -424,6 +430,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                     security_group = imported_security_group
                 else:
                     update_pulled_fields(security_group, imported_security_group, self.SECURITY_GROUP_UPDATE_FIELDS)
+                    handle_resource_update_success(security_group)
 
                 self._extract_security_group_rules(security_group, backend_security_group)
 
@@ -489,6 +496,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                     network = imported_network
                 else:
                     update_pulled_fields(network, imported_network, self.NETWORK_UPDATE_FIELDS)
+                    handle_resource_update_success(network)
 
                 network_uuids.append(network.uuid)
 
@@ -546,6 +554,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                     subnet = imported_subnet
                 else:
                     update_pulled_fields(subnet, imported_subnet, self.SUBNET_UPDATE_FIELDS)
+                    handle_resource_update_success(subnet)
 
                 subnet_uuids.append(subnet.uuid)
 

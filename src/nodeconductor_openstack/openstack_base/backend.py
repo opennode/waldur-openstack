@@ -25,6 +25,7 @@ from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
 
+from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import ServiceBackend, ServiceBackendError
 
 from nodeconductor_openstack.openstack.models import Tenant
@@ -96,6 +97,25 @@ def handle_resource_not_found(resource):
             resource.error_message += ' (%s)' % message
     resource.save()
     logger.warning('%s %s (PK: %s) does not exist at backend.' % (
+        resource.__class__.__name__, resource, resource.pk))
+
+
+def handle_resource_update_success(resource):
+    """
+    Recover resource if its state is ERRED and clear error message.
+    """
+    update_fields = []
+    if resource.state == resource.States.ERRED:
+        resource.recover()
+        update_fields.append('state')
+
+    if resource.error_message:
+        resource.error_message = ''
+        update_fields.append('error_message')
+
+    if update_fields:
+        resource.save(update_fields=update_fields)
+    logger.warning('%s %s (PK: %s) was successfully updated.' % (
         resource.__class__.__name__, resource, resource.pk))
 
 
