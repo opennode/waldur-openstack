@@ -92,9 +92,9 @@ class OpenStackBackend(BaseOpenStackBackend):
                 imported_backend_tenant = self._backend_tenant_to_tenant(backend_tenant,
                                                                          nova_quotas, cinder_quotas, neutron_quotas)
                 update_pulled_fields(tenant, imported_backend_tenant, self.TENANT_UPDATE_FIELDS)
-                handle_resource_update_success(tenant)
                 for quota_name, limit in imported_backend_tenant._quota_limits.items():
                     tenant.set_quota_limit(quota_name, limit)
+                handle_resource_update_success(tenant)
 
     def _backend_tenant_to_tenant(self, backend_tenant, nova_quotas=None,
                                   cinder_quotas=None, neutron_quotas=None, **kwargs):
