@@ -5,4 +5,3 @@ from __future__ import absolute_import
 # and adding all tasks to the registry.
 
 from .base import *
-from .celerybeat import *

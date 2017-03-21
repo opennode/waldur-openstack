@@ -15,7 +15,8 @@ from novaclient import exceptions as nova_exceptions
 from nodeconductor.structure import log_backend_action
 
 from nodeconductor_openstack.openstack_base.backend import (
-    BaseOpenStackBackend, OpenStackBackendError, update_pulled_fields)
+    BaseOpenStackBackend, OpenStackBackendError,
+    update_pulled_fields, handle_resource_not_found, handle_resource_update_success)
 from . import models
 
 
@@ -25,8 +26,7 @@ logger = logging.getLogger(__name__)
 class OpenStackTenantBackend(BaseOpenStackBackend):
     VOLUME_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'device')
     SNAPSHOT_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
-    INSTANCE_UPDATE_FIELDS = ('name', 'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk',
-                              'runtime_state', 'error_message')
+    INSTANCE_UPDATE_FIELDS = ('name', 'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk', 'runtime_state')
 
     def __init__(self, settings):
         super(OpenStackTenantBackend, self).__init__(settings, settings.options['tenant_id'])
@@ -36,15 +36,73 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         return self.settings.options['external_network_id']
 
     def sync(self):
-        self._pull_flavors()
-        self._pull_images()
+        # pull service properties
+        self.pull_flavors()
+        self.pull_images()
         self.pull_floating_ips()
-        self._pull_security_groups()
-        self._pull_quotas()
-        self._pull_networks()
-        self._pull_subnets()
+        self.pull_security_groups()
+        self.pull_quotas()
+        self.pull_networks()
+        self.pull_subnets()
 
-    def _pull_flavors(self):
+        # pull resources
+        self.pull_volumes()
+        self.pull_snapshots()
+        self.pull_instances()
+
+    def pull_volumes(self):
+        backend_volumes = self.get_volumes()
+        volumes = models.Volume.objects.filter(
+            service_project_link__service__settings=self.settings,
+            state__in=[models.Volume.States.OK, models.Volume.States.ERRED]
+        )
+        backend_volumes_map = {backend_volume.backend_id: backend_volume for backend_volume in backend_volumes}
+        for volume in volumes:
+            try:
+                backend_volume = backend_volumes_map[volume.backend_id]
+            except KeyError:
+                handle_resource_not_found(volume)
+            else:
+                update_pulled_fields(volume, backend_volume, self.VOLUME_UPDATE_FIELDS)
+                handle_resource_update_success(volume)
+
+    def pull_snapshots(self):
+        backend_snapshots = self.get_snapshots()
+        snapshots = models.Snapshot.objects.filter(
+            service_project_link__service__settings=self.settings,
+            state__in=[models.Snapshot.States.OK, models.Snapshot.States.ERRED])
+        backend_snapshots_map = {backend_snapshot.backend_id: backend_snapshot
+                                 for backend_snapshot in backend_snapshots}
+        for snapshot in snapshots:
+            try:
+                backend_snapshot = backend_snapshots_map[snapshot.backend_id]
+            except KeyError:
+                handle_resource_not_found(snapshot)
+            else:
+                update_pulled_fields(snapshot, backend_snapshot, self.SNAPSHOT_UPDATE_FIELDS)
+                handle_resource_update_success(snapshot)
+
+    def pull_instances(self):
+        backend_instances = self.get_instances()
+        instances = models.Instance.objects.filter(
+            service_project_link__service__settings=self.settings,
+            state__in=[models.Instance.States.OK, models.Instance.States.ERRED],
+        )
+        backend_instances_map = {backend_instance.backend_id: backend_instance
+                                 for backend_instance in backend_instances}
+        for instance in instances:
+            try:
+                backend_instance = backend_instances_map[instance.backend_id]
+            except KeyError:
+                handle_resource_not_found(instance)
+            else:
+                update_pulled_fields(instance, backend_instance, self.INSTANCE_UPDATE_FIELDS)
+                self.pull_instance_security_groups(instance)
+                self.pull_instance_internal_ips(instance)
+                self.pull_instance_floating_ips(instance)
+                handle_resource_update_success(instance)
+
+    def pull_flavors(self):
         nova = self.nova_client
         try:
             flavors = nova.flavors.findall(is_public=True)
@@ -67,7 +125,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
             models.Flavor.objects.filter(backend_id__in=cur_flavors.keys()).delete()
 
-    def _pull_images(self):
+    def pull_images(self):
         glance = self.glance_client
         try:
             images = [image for image in glance.images.list() if image.is_public and not image.deleted]
@@ -112,7 +170,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
             models.FloatingIP.objects.filter(backend_id__in=cur_ips.keys()).exclude(is_booked=True).delete()
 
-    def _pull_security_groups(self):
+    def pull_security_groups(self):
         nova = self.nova_client
         try:
             security_groups = nova.security_groups.list()
@@ -158,13 +216,13 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
         return rule
 
-    def _pull_quotas(self):
+    def pull_quotas(self):
         for quota_name, limit in self.get_tenant_quotas_limits(self.tenant_id).items():
             self.settings.set_quota_limit(quota_name, limit)
         for quota_name, usage in self.get_tenant_quotas_usage(self.tenant_id).items():
             self.settings.set_quota_usage(quota_name, usage, fail_silently=True)
 
-    def _pull_networks(self):
+    def pull_networks(self):
         neutron = self.neutron_client
         try:
             networks = neutron.list_networks(tenant_id=self.tenant_id)['networks']
@@ -190,7 +248,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
             models.Network.objects.filter(backend_id__in=cur_networks.keys()).delete()
 
-    def _pull_subnets(self):
+    def pull_subnets(self):
         neutron = self.neutron_client
         try:
             subnets = neutron.list_subnets(tenant_id=self.tenant_id)['subnets']
