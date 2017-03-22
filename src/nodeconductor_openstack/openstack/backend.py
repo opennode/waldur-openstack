@@ -289,6 +289,8 @@ class OpenStackBackend(BaseOpenStackBackend):
                 state=models.Tenant.States.OK,
                 service_project_link__service__settings=self.settings).prefetch_related('floating_ips')
         tenant_mappings = {tenant.backend_id: tenant for tenant in tenants}
+        if not tenant_mappings:
+            return
 
         try:
             backend_floating_ips = neutron.list_floatingips(
@@ -377,6 +379,8 @@ class OpenStackBackend(BaseOpenStackBackend):
                 service_project_link__service__settings=self.settings,
             ).prefetch_related('security_groups')
         tenant_mappings = {tenant.backend_id: tenant for tenant in tenants}
+        if not tenant_mappings:
+            return
 
         try:
             backend_security_groups = neutron.list_security_groups(
@@ -454,6 +458,9 @@ class OpenStackBackend(BaseOpenStackBackend):
         backend_rules = backend_security_group['security_group_rules']
         cur_rules = {rule.backend_id: rule for rule in security_group.rules.all()}
         for backend_rule in backend_rules:
+            # Currently we support only rules for incoming traffic
+            if backend_rule['direction'] != 'ingress':
+                continue
             cur_rules.pop(backend_rule['id'], None)
             security_group.rules.update_or_create(
                 backend_id=backend_rule['id'],
@@ -475,6 +482,8 @@ class OpenStackBackend(BaseOpenStackBackend):
                 service_project_link__service__settings=self.settings,
             ).prefetch_related('networks')
         tenant_mappings = {tenant.backend_id: tenant for tenant in tenants}
+        if not tenant_mappings:
+            return
 
         try:
             backend_networks = neutron.list_networks(tenant_id=tenant_mappings.keys())['networks']
@@ -533,6 +542,8 @@ class OpenStackBackend(BaseOpenStackBackend):
                 service_project_link__service__settings=self.settings,
             ).prefetch_related('subnets')
         network_mappings = {network.backend_id: network for network in networks}
+        if not tenant_mappings:
+            return
 
         try:
             backend_subnets = neutron.list_subnets(network_id=network_mappings.keys())['subnets']
