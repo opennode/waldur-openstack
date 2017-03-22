@@ -542,7 +542,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 service_project_link__service__settings=self.settings,
             ).prefetch_related('subnets')
         network_mappings = {network.backend_id: network for network in networks}
-        if not tenant_mappings:
+        if not network_mappings:
             return
 
         try:
