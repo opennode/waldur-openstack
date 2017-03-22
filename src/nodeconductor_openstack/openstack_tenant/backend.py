@@ -27,6 +27,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
     VOLUME_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'device')
     SNAPSHOT_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
     INSTANCE_UPDATE_FIELDS = ('name', 'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk', 'runtime_state')
+    INTERNAL_IP_UPDATE_FIELDS = ('ip4_address', 'mac_address')
 
     def __init__(self, settings):
         super(OpenStackTenantBackend, self).__init__(settings, settings.options['tenant_id'])
@@ -49,6 +50,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         self.pull_volumes()
         self.pull_snapshots()
         self.pull_instances()
+        self.pull_internal_ips()
 
     def pull_volumes(self):
         backend_volumes = self.get_volumes()
@@ -97,8 +99,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 handle_resource_not_found(instance)
             else:
                 update_pulled_fields(instance, backend_instance, self.INSTANCE_UPDATE_FIELDS)
+                # XXX: can be optimized after https://goo.gl/BZKo8Y will be resolved.
                 self.pull_instance_security_groups(instance)
-                self.pull_instance_internal_ips(instance)
                 self.pull_instance_floating_ips(instance)
                 handle_resource_update_success(instance)
 
@@ -909,25 +911,96 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        # remove stale internal IPs
-        instance.internal_ips_set.exclude(backend_id__in=[ip['id'] for ip in backend_internal_ips]).delete()
-
         # add or update exist internal IPs
+        internal_ips = {ip.backend_id: ip for ip in instance.internal_ips_set.all()}
         for backend_internal_ip in backend_internal_ips:
-            backend_subnet_id = backend_internal_ip['fixed_ips'][0]['subnet_id']
-            try:
-                subnet = models.SubNet.objects.get(settings=self.settings, backend_id=backend_subnet_id)
-            except models.SubNet.DoesNotExist:
-                # subnet was not pulled yet. Internal IP will be pulled with subnet later.
+            imported_internal_ip = self._backend_internal_ip_to_internal_ip(backend_internal_ip, instance=instance)
+            internal_ip = internal_ips.pop(imported_internal_ip.backend_id, None)
+            if internal_ip is not None:
+                update_pulled_fields(internal_ip, imported_internal_ip, self.INTERNAL_IP_UPDATE_FIELDS)
                 continue
-            instance.internal_ips_set.update_or_create(
-                backend_id=backend_internal_ip['id'],
-                defaults={
-                    'subnet': subnet,
-                    'mac_address': backend_internal_ip['mac_address'],
-                    'ip4_address': backend_internal_ip['fixed_ips'][0]['ip_address'],
-                }
-            )
+
+            try:
+                subnet = models.SubNet.objects.get(
+                    settings=self.settings,
+                    backend_id=imported_internal_ip._subnet_backend_id,
+                )
+            except models.SubNet.DoesNotExist:
+                logger.info('Failed to create internal IP with backend ID %s: '
+                            'subnet with backend ID %s does not exist in the database.',
+                            imported_internal_ip.backend_id, imported_internal_ip._subnet_backend_id)
+            else:
+                imported_internal_ip.subnet = subnet
+                imported_internal_ip.save()
+
+        # remove stale internal IPs
+        instance.internal_ips_set.filter(backend_id__in=internal_ips.keys()).delete()
+
+    def pull_internal_ips(self, instances=None):
+        # we assume that instance can be connected to subnet only once.
+        neutron = self.neutron_client
+
+        if instances is None:
+            instances = models.Instance.objects.filter(
+                state=models.Instance.States.OK,
+                service_project_link__service__settings=self.settings,
+            ).exclude(backend_id='').prefetch_related('internal_ips_set')
+        instance_mappings = {instance.backend_id: instance for instance in instances}
+        if not instance_mappings:
+            return
+
+        try:
+            backend_internal_ips = neutron.list_ports(device_id=instance_mappings.keys())['ports']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        internal_ip_uuids = []
+        with transaction.atomic():
+            for backend_internal_ip in backend_internal_ips:
+                imported_internal_ip = self._backend_internal_ip_to_internal_ip(backend_internal_ip)
+                instance = instance_mappings[imported_internal_ip._instance_backend_id]
+
+                try:
+                    internal_ip = instance.internal_ips_set.get(backend_id=imported_internal_ip.backend_id)
+                except models.InternalIP.DoesNotExist:
+                    try:
+                        subnet = models.SubNet.objects.get(
+                            settings=self.settings,
+                            backend_id=imported_internal_ip._subnet_backend_id,
+                        )
+                    except models.SubNet.DoesNotExist:
+                        logger.info('Failed to create internal IP with backend ID %s: '
+                                    'subnet with backend ID %s does not exist in the database.',
+                                    imported_internal_ip.backend_id, imported_internal_ip._subnet_backend_id)
+                        continue
+                    else:
+                        imported_internal_ip.instance = instance
+                        imported_internal_ip.subnet = subnet
+                        internal_ip = imported_internal_ip.save()
+                else:
+                    update_pulled_fields(internal_ip, imported_internal_ip, self.INTERNAL_IP_UPDATE_FIELDS)
+
+                internal_ip_uuids.append(internal_ip.uuid)
+
+            # remove stale internal IPs
+            models.InternalIP.objects.exclude(uuid__in=internal_ip_uuids).delete()
+
+    def _backend_internal_ip_to_internal_ip(self, backend_internal_ip, **kwargs):
+        internal_ip = models.InternalIP(
+            backend_id=backend_internal_ip['id'],
+            mac_address=backend_internal_ip['mac_address'],
+            ip4_address=backend_internal_ip['fixed_ips'][0]['ip_address'],
+        )
+
+        for field, value in kwargs.items():
+            setattr(internal_ip, field, value)
+
+        if 'instance' not in kwargs:
+            internal_ip._instance_backend_id = backend_internal_ip['device_id']
+        if 'subnet' not in kwargs:
+            internal_ip._subnet_backend_id = backend_internal_ip['fixed_ips'][0]['subnet_id']
+
+        return internal_ip
 
     @log_backend_action()
     def push_instance_internal_ips(self, instance):
