@@ -121,13 +121,14 @@ class TenantResourceAdmin(structure_admin.ResourceAdmin):
 
 class NetworkAdmin(structure_admin.ResourceAdmin):
     list_display_links = None
-    list_display = ('name', 'is_external', 'type', 'state')
+    list_display = ('is_external', 'type') + structure_admin.ResourceAdmin.list_display
     fields = ('name', 'tenant', 'is_external', 'type', 'segmentation_id', 'state')
 
 
 class SubNetAdmin(structure_admin.ResourceAdmin):
     list_display_links = None
-    list_display = ('name', 'network', 'gateway_ip', 'state')
+    list_display = ('network', 'gateway_ip') + structure_admin.ResourceAdmin.list_display
+
     fields = ('name', 'network', 'cidr', 'gateway_ip', 'allocation_pools',
               'ip_version', 'enable_dhcp', 'dns_nameservers', 'state')
 
