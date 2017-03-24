@@ -119,31 +119,26 @@ class TenantResourceAdmin(structure_admin.ResourceAdmin):
     get_tenant.allow_tags = True
 
 
-class NetworkAdmin(admin.ModelAdmin):
+class NetworkAdmin(structure_admin.ResourceAdmin):
     list_display_links = None
     list_display = ('name', 'is_external', 'type', 'state')
     fields = ('name', 'tenant', 'is_external', 'type', 'segmentation_id', 'state')
 
 
-class SubNetAdmin(admin.ModelAdmin):
+class SubNetAdmin(structure_admin.ResourceAdmin):
     list_display_links = None
     list_display = ('name', 'network', 'gateway_ip', 'state')
     fields = ('name', 'network', 'cidr', 'gateway_ip', 'allocation_pools',
               'ip_version', 'enable_dhcp', 'dns_nameservers', 'state')
 
 
-class SecurityGroupAdmin(admin.ModelAdmin):
-    list_display_links = None
-    fields = list_display = ('name', 'tenant', 'state')
-
-
 admin.site.register(models.Network, NetworkAdmin)
-admin.site.register(models.SecurityGroup, SecurityGroupAdmin)
 admin.site.register(models.SubNet, SubNetAdmin)
+admin.site.register(models.SecurityGroup, structure_admin.ResourceAdmin)
 
 admin.site.register(models.Tenant, TenantAdmin)
 admin.site.register(models.Flavor, FlavorAdmin)
 admin.site.register(models.Image, ImageAdmin)
 admin.site.register(models.OpenStackService, structure_admin.ServiceAdmin)
 admin.site.register(models.OpenStackServiceProjectLink, ServiceProjectLinkAdmin)
-admin.site.register(models.FloatingIP)
+admin.site.register(models.FloatingIP, structure_admin.ResourceAdmin)
