@@ -274,7 +274,7 @@ class ServiceSettingsCertificationHandlerTest(TestCase):
 
         service_settings.certifications.add(new_certification)
         self.assertEqual(tenant_service.settings.certifications.count(), 1)
-        service_settings.certifications.clegar()
+        service_settings.certifications.clear()
 
         self.assertEqual(service_settings.certifications.count(), 0)
         self.assertEquals(tenant_service.settings.certifications.count(), 0)
