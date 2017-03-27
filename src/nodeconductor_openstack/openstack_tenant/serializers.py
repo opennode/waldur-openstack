@@ -470,17 +470,26 @@ class NestedFloatingIPSerializer(core_serializers.AugmentedSerializerMixin,
 
 
 def _validate_instance_internal_ips(internal_ips, settings):
-    """ - make sure that internal_ips belong to specified setting
-        - make sure that internal_ips does not connect to the same subnet twice
+    """ - make sure that internal_ips belong to specified setting;
+        - make sure that internal_ips does not connect to the same subnet twice;
     """
     subnets = [internal_ip.subnet for internal_ip in internal_ips]
     for subnet in subnets:
         if subnet.settings != settings:
-            raise serializers.ValidationError(
-                'Subnet %s does not belong to the same service settings as service project link.' % subnet)
+            message = 'Subnet %s does not belong to the same service settings as service project link.' % subnet
+            raise serializers.ValidationError({'internal_ips_set': message})
     duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
     if duplicates:
         raise serializers.ValidationError('It is impossible to connect to subnet %s twice.' % duplicates[0])
+    
+
+def _validate_instance_security_groups(security_groups, settings):
+    """ Make sure that security_group belong to specified setting.
+    """
+    for security_group in security_groups:
+        if security_group.settings != settings:
+            error_template = 'Security group %s does not belong to the same service settings as service project link.'
+            raise serializers.ValidationError({'security_groups': error_template % security_group.name})
 
 
 def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instance_subnets):
@@ -495,9 +504,10 @@ def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instanc
             continue
         if floating_ip.is_booked:
             raise serializers.ValidationError(
-                'Floating IP %s is already booked for another instance creation' % floating_ip)
+                {'floating_ips': 'Floating IP %s is already booked for another instance creation' % floating_ip})
         if not floating_ip.internal_ip and floating_ip.runtime_state != 'DOWN':
-            raise serializers.ValidationError('Floating IP %s runtime state should be DOWN.' % floating_ip)
+            raise serializers.ValidationError(
+                {'floating_ips': 'Floating IP %s runtime state should be DOWN.' % floating_ip})
         if floating_ip.settings != settings:
             message = (
                 'Floating IP %s does not belong to the same service settings as service project link.' % floating_ip)
@@ -582,7 +592,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     def get_fields(self):
         fields = super(InstanceSerializer, self).get_fields()
-        floating_ip_field = fields.get('floating_ip')
+        floating_ip_field = fields.get('floating_ips')
         if floating_ip_field:
             floating_ip_field.query_params = {'runtime_state': 'DOWN'}
             floating_ip_field.value_field = 'url'
@@ -626,13 +636,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             raise serializers.ValidationError(
                 {'system_volume_size': 'System volume size has to be greater than %s' % image.min_disk})
 
-        for security_group in attrs.get('security_groups', []):
-            if security_group.settings != settings:
-                raise serializers.ValidationError(
-                    'Security group {} does not belong to the same service settings as service project link.'.format(
-                        security_group.name))
-
         internal_ips = attrs.get('internal_ips_set', [])
+        _validate_instance_security_groups(attrs.get('security_groups', []), settings)
         _validate_instance_internal_ips(internal_ips, settings)
         subnets = [internal_ip.subnet for internal_ip in internal_ips]
         _validate_instance_floating_ips(attrs.get('floating_ips', []), settings, subnets)
@@ -916,10 +921,14 @@ class InstanceFloatingIPsUpdateSerializer(serializers.Serializer):
 class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
     name = serializers.CharField(
         required=False, help_text='New instance name. Leave blank to use source instance name.')
+    security_groups = NestedSecurityGroupSerializer(
+        queryset=models.SecurityGroup.objects.all(), many=True, required=False)
+    internal_ips_set = NestedInternalIPSerializer(many=True, required=False)
+    floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
 
     class Meta(object):
         model = models.BackupRestoration
-        fields = ('uuid', 'instance', 'created', 'flavor', 'name')
+        fields = ('uuid', 'instance', 'created', 'flavor', 'name', 'floating_ips', 'security_groups', 'internal_ips_set')
         read_only_fields = ('url', 'uuid', 'instance', 'created', 'backup')
         extra_kwargs = dict(
             instance={'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
@@ -942,16 +951,34 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
                     'settings_uuid': backup.service_project_link.service.settings.uuid,
                     'disk__gte': system_volume.size,
                 }
+
+            floating_ip_field = fields.get('floating_ips')
+            if floating_ip_field:
+                floating_ip_field.query_params = {'runtime_state': 'DOWN'}
+                floating_ip_field.value_field = 'url'
+                floating_ip_field.display_name_field = 'address'
+
         return fields
 
     def validate(self, attrs):
         flavor = attrs['flavor']
         backup = self.context['view'].get_object()
         system_volume = backup.instance.volumes.get(bootable=True)
-        if flavor.settings != backup.instance.service_project_link.service.settings:
+        settings = backup.instance.service_project_link.service.settings
+
+        if flavor.settings != settings:
             raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
         if flavor.disk < system_volume.size:
             raise serializers.ValidationError({'flavor': 'Flavor disk size should match system volume size.'})
+
+        _validate_instance_security_groups(attrs.get('security_groups', []), settings)
+
+        internal_ips = attrs.get('internal_ips_set', [])
+        _validate_instance_internal_ips(internal_ips, settings)
+
+        subnets = [internal_ip.subnet for internal_ip in internal_ips]
+        _validate_instance_floating_ips(attrs.get('floating_ips', []), settings, subnets)
+
         return attrs
 
     @transaction.atomic
@@ -975,6 +1002,13 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
             user_data=metadata.get('user_data', ''),
             disk=sum([snapshot.size for snapshot in backup.snapshots.all()]),
         )
+
+        instance.internal_ips_set.add(*validated_data.pop('internal_ips_set', []), bulk=False)
+        instance.security_groups.add(*validated_data.pop('security_groups', []))
+
+        for floating_ip, subnet in validated_data.pop('floating_ips', []):
+            _connect_floating_ip_to_instance(floating_ip, subnet, instance)
+
         instance.increase_backend_quotas_usage()
         validated_data['instance'] = instance
         backup_restoration = super(BackupRestorationSerializer, self).create(validated_data)
