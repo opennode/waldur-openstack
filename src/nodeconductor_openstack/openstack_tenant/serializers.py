@@ -1074,6 +1074,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             'description': instance.description,
             'min_ram': instance.min_ram,
             'min_disk': instance.min_disk,
+            'size': instance.size,
             'key_name': instance.key_name,
             'key_fingerprint': instance.key_fingerprint,
             'user_data': instance.user_data,
