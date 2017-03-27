@@ -5,8 +5,8 @@ from django.core import exceptions as django_exceptions
 from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import models as structure_models
 
-from ..openstack import models as openstack_models
-from . import log, models
+from ..openstack import models as openstack_models, apps as openstack_apps
+from . import log, models, apps
 
 
 def _log_scheduled_action(resource, action, action_details):
@@ -320,3 +320,26 @@ resource_handlers = (
     NetworkHandler(),
     SubNetHandler(),
 )
+
+
+def sync_tenant_service_certificates_with_openstacktenant(sender, instance, action, **kwargs):
+    """
+    Copies certifications links in original service settings to derived openstack tenant service settings.
+    Handling works only for OpenStack service settings and ignored for all others.
+    """
+    service_settings = instance
+    if (action not in ['post_add', 'post_remove', 'post_clear'] or
+                service_settings.type != openstack_apps.OpenStackConfig.service_name):
+        return
+
+    try:
+        services = models.OpenStackTenantService.objects.filter(
+            settings__backend_url=service_settings.backend_url,
+            settings__domain=service_settings.domain,
+            settings__type=apps.OpenStackTenantConfig.service_name)
+    except models.OpenStackTenantService.DoesNotExist:
+        return
+    else:
+        for service in services:
+            service.settings.certifications.clear()
+            service.settings.certifications.add(*service_settings.certifications.all())

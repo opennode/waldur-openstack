@@ -3,12 +3,12 @@ from __future__ import unicode_literals
 from django.test import TestCase
 
 from nodeconductor.core.models import StateMixin
-from nodeconductor_openstack.openstack.tests import factories as openstack_factories
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.tests import factories as structure_factories
+from nodeconductor_openstack.openstack.tests import factories as openstack_factories
 
 from .. import factories
-from ... import models
+from ... import models, apps
 
 
 class SecurityGroupHandlerTest(TestCase):
@@ -232,3 +232,49 @@ class SubNetHandlerTest(TestCase):
 
         openstack_subnet.delete()
         self.assertEqual(models.SubNet.objects.count(), 0)
+
+
+class ServiceSettingsCertificationHandlerTest(TestCase):
+
+    def test_openstack_tenant_service_certifications_are_update_when_tenant_settings_certification_are_added(self):
+        service_project_link = openstack_factories.OpenStackServiceProjectLinkFactory()
+        service_settings = service_project_link.service.settings
+        service_settings.domain = 'test_domain'
+        service_settings.backend_url = 'backend_url'
+        service_settings.save()
+        tenant_service1 = factories.OpenStackTenantServiceFactory(
+            settings__backend_url=service_settings.backend_url,
+            settings__domain=service_settings.domain,
+            settings__type=apps.OpenStackTenantConfig.service_name)
+        tenant_service2 = factories.OpenStackTenantServiceFactory(
+            settings__backend_url=service_settings.backend_url,
+            settings__domain=service_settings.domain,
+            settings__type=apps.OpenStackTenantConfig.service_name)
+        self.assertEqual(tenant_service1.settings.certifications.count(), 0)
+        self.assertEqual(tenant_service2.settings.certifications.count(), 0)
+        new_certification = structure_factories.ServiceCertificationFactory()
+
+        service_settings.certifications.add(new_certification)
+
+        self.assertTrue(tenant_service1.settings.certifications.filter(pk__in=[new_certification.pk]).exists())
+        self.assertTrue(tenant_service2.settings.certifications.filter(pk__in=[new_certification.pk]).exists())
+
+    def test_openstack_tenant_service_certifications_are_removed_when_tenant_settings_certifications_are_removed(self):
+        service_project_link = openstack_factories.OpenStackServiceProjectLinkFactory()
+        service_settings = service_project_link.service.settings
+        service_settings.domain = 'test_domain'
+        service_settings.backend_url = 'backend_url'
+        service_settings.save()
+        tenant_service = factories.OpenStackTenantServiceFactory(
+            settings__backend_url=service_settings.backend_url,
+            settings__domain=service_settings.domain,
+            settings__type=apps.OpenStackTenantConfig.service_name)
+        self.assertEqual(tenant_service.settings.certifications.count(), 0)
+        new_certification = structure_factories.ServiceCertificationFactory()
+
+        service_settings.certifications.add(new_certification)
+        self.assertEqual(tenant_service.settings.certifications.count(), 1)
+        service_settings.certifications.clegar()
+
+        self.assertEqual(service_settings.certifications.count(), 0)
+        self.assertEquals(tenant_service.settings.certifications.count(), 0)
