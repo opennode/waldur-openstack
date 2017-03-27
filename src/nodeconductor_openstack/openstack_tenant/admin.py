@@ -99,11 +99,11 @@ class BaseScheduleForm(forms.ModelForm):
         return self.cleaned_data['timezone']
 
 
-class BaseScheduleAdmin(admin.ModelAdmin):
+class BaseScheduleAdmin(structure_admin.ResourceAdmin):
     form = BaseScheduleForm
     readonly_fields = ('next_trigger_at',)
-    list_filter = ('is_active',)
-    list_display = ('uuid', 'next_trigger_at', 'is_active', 'timezone')
+    list_filter = ('is_active',) + structure_admin.ResourceAdmin.list_filter
+    list_display = ('uuid', 'next_trigger_at', 'is_active', 'timezone') + structure_admin.ResourceAdmin.list_display
 
 
 class BackupScheduleAdmin(BaseScheduleAdmin):
