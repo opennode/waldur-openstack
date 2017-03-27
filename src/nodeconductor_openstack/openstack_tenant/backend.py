@@ -788,31 +788,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    def _wait_for_instance_status(self, instance, nova, complete_status,
-                                  error_status=None, retries=300, poll_interval=3):
-        complete_state_predicate = lambda o: o.status == complete_status
-        if error_status is not None:
-            error_state_predicate = lambda o: o.status == error_status
-        else:
-            error_state_predicate = lambda _: False
-
-        for _ in range(retries):
-            obj = nova.servers.get(instance.backend_id)
-            logger.debug('Instance %s status: "%s"' % (obj, obj.status))
-            if instance.runtime_state != obj.status:
-                instance.runtime_state = obj.status
-                instance.save(update_fields=['runtime_state'])
-
-            if complete_state_predicate(obj):
-                return True
-
-            if error_state_predicate(obj):
-                return False
-
-            time.sleep(poll_interval)
-        else:
-            return False
-
     @log_backend_action()
     def update_instance(self, instance):
         nova = self.nova_client
@@ -909,6 +884,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def pull_created_instance_internal_ips(self, instance):
+        """
+        This method updates already existing internal IPs of the instance
+        which where created in advance during instance provisioning.
+        """
         neutron = self.neutron_client
         try:
             backend_internal_ips = neutron.list_ports(device_id=instance.backend_id)['ports']
