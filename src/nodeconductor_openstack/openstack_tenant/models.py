@@ -225,7 +225,7 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
 
     @property
     def size(self):
-        return self.volumes.aggregate(models.Sum('size'))['size']
+        return self.volumes.aggregate(models.Sum('size'))['size__sum']
 
     @classmethod
     def get_url_name(cls):

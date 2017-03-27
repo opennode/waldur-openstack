@@ -12,6 +12,13 @@ from .. import factories, fixtures
 from ... import models
 
 
+class InstanceTest(TestCase):
+    def test_instance_size_is_sum_of_volumes_size(self):
+        fixture = fixtures.OpenStackTenantFixture()
+        expected_size = sum(fixture.instance.volumes.all().values_list('size', flat=True))
+        self.assertEqual(fixture.instance.size, expected_size)
+
+
 class BackupScheduleTest(TestCase):
     def setUp(self):
         self.openstack_tenant_fixture = fixtures.OpenStackTenantFixture()
