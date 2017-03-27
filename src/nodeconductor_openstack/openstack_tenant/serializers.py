@@ -940,6 +940,8 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
         fields = super(BackupRestorationSerializer, self).get_fields()
         view = self.context.get('view')  # On docs generation context does not contain "view".
         if view and view.action == 'restore':
+            backup = self.instance
+            settings = backup.instance.service_project_link.service.settings
             fields['flavor'].display_name_field = 'name'
             fields['flavor'].view_name = 'openstacktenant-flavor-detail'
             # View doesn't have object during schema generation
@@ -954,9 +956,29 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
             floating_ip_field = fields.get('floating_ips')
             if floating_ip_field:
-                floating_ip_field.query_params = {'runtime_state': 'DOWN'}
-                floating_ip_field.value_field = 'url'
+                floating_ip_field.view_name = 'openstacktenant-fip-detail'
+                floating_ip_field.query_params = {
+                    'settings_uuid': settings.uuid,
+                    'runtime_state': 'DOWN',
+                    'is_booked': False,
+                }
                 floating_ip_field.display_name_field = 'address'
+
+            internal_ips_set_field = fields.get('internal_ips_set')
+            if internal_ips_set_field:
+                internal_ips_set_field.query_params = {
+                    'settings_uuid': settings.uuid,
+                }
+                internal_ips_set_field.view_name = 'openstacktenant-subnet-detail'
+                internal_ips_set_field.display_name_field = 'name'
+
+            security_groups_field = fields.get('security_groups')
+            if security_groups_field:
+                security_groups_field.query_params = {
+                    'settings_uuid': settings.uuid,
+                }
+                security_groups_field.view_name = 'openstacktenant-sgp-detail'
+                security_groups_field.display_name_field = 'name'
 
         return fields
 
