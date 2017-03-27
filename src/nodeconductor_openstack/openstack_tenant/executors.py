@@ -313,6 +313,8 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
             ))
 
         # Pull instance internal IPs
+        # pull_instance_internal_ips method cannot be used, because it requires backend_id to update
+        # existing internal IPs. However, internal IPs of the created instance does not have backend_ids.
         _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'pull_created_instance_internal_ips'))
 
         # Pull instance security groups
