@@ -591,7 +591,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
     @log_backend_action()
     def create_instance(self, instance, backend_flavor_id=None, public_key=None):
         nova = self.nova_client
-        neutron = self.neutron_client
 
         try:
             backend_flavor = nova.flavors.get(backend_flavor_id)
@@ -648,41 +647,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 server_create_parameters['userdata'] = instance.user_data
 
             server = nova.servers.create(**server_create_parameters)
-
             instance.backend_id = server.id
             instance.save()
-
-            if not self._wait_for_instance_status(instance, nova, 'ACTIVE', 'ERROR'):
-                logger.error(
-                    "Failed to provision instance %s: timed out waiting "
-                    "for instance to become online",
-                    instance.uuid)
-                raise OpenStackBackendError("Timed out waiting for instance %s to provision" % instance.uuid)
-
-            # nova does not return enough information about internal IPs on creation,
-            # we need to pull it additionally from neutron
-            for internal_ip in instance.internal_ips_set.all():
-                backend_internal_ip = neutron.list_ports(
-                    device_id=instance.backend_id, network_id=internal_ip.subnet.network.backend_id)['ports'][0]
-                internal_ip.backend_id = backend_internal_ip['id']
-                internal_ip.ip4_address = backend_internal_ip['fixed_ips'][0]['ip_address']
-                internal_ip.mac_address = backend_internal_ip['mac_address']
-                internal_ip.save()
-
-            backend_security_groups = server.list_security_group()
-            for bsg in backend_security_groups:
-                if instance.security_groups.filter(name=bsg.name).exists():
-                    continue
-                try:
-                    security_group = models.SecurityGroup.objects.get(name=bsg.name, settings=self.settings)
-                except models.SecurityGroup.DoesNotExist:
-                    logger.error(
-                        'Security group "%s" does not exist, but instance %s (PK: %s) has it.' %
-                        (bsg.name, instance, instance.pk)
-                    )
-                else:
-                    instance.security_groups.add(security_group)
-
         except (nova_exceptions.ClientException, neutron_exceptions.NeutronClientException) as e:
             logger.exception("Failed to provision instance %s", instance.uuid)
             six.reraise(OpenStackBackendError, e)
@@ -822,31 +788,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    def _wait_for_instance_status(self, instance, nova, complete_status,
-                                  error_status=None, retries=300, poll_interval=3):
-        complete_state_predicate = lambda o: o.status == complete_status
-        if error_status is not None:
-            error_state_predicate = lambda o: o.status == error_status
-        else:
-            error_state_predicate = lambda _: False
-
-        for _ in range(retries):
-            obj = nova.servers.get(instance.backend_id)
-            logger.debug('Instance %s status: "%s"' % (obj, obj.status))
-            if instance.runtime_state != obj.status:
-                instance.runtime_state = obj.status
-                instance.save(update_fields=['runtime_state'])
-
-            if complete_state_predicate(obj):
-                return True
-
-            if error_state_predicate(obj):
-                return False
-
-            time.sleep(poll_interval)
-        else:
-            return False
-
     @log_backend_action()
     def update_instance(self, instance):
         nova = self.nova_client
@@ -940,6 +881,30 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             if update_fields is None:
                 update_fields = self.INSTANCE_UPDATE_FIELDS
             update_pulled_fields(instance, imported_instance, update_fields)
+
+    @log_backend_action()
+    def pull_created_instance_internal_ips(self, instance):
+        """
+        This method updates already existing internal IPs of the instance
+        which where created in advance during instance provisioning.
+        """
+        neutron = self.neutron_client
+        try:
+            backend_internal_ips = neutron.list_ports(device_id=instance.backend_id)['ports']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        subnet_to_ip_mappings = {ip.subnet.backend_id: ip for ip in instance.internal_ips_set.all()}
+
+        for backend_ip in backend_internal_ips:
+            imported_internal_ip = self._backend_internal_ip_to_internal_ip(backend_ip)
+            internal_ip = subnet_to_ip_mappings.get(imported_internal_ip._subnet_backend_id)
+            if internal_ip is None:
+                logger.warning('Internal IP object does not exist in database for instance %s '
+                               'in subnet with backend ID %s', instance.uuid, imported_internal_ip._subnet_backend_id)
+            else:
+                update_pulled_fields(internal_ip, imported_internal_ip,
+                                     self.INTERNAL_IP_UPDATE_FIELDS + ('backend_id',))
 
     @log_backend_action()
     def pull_instance_internal_ips(self, instance):

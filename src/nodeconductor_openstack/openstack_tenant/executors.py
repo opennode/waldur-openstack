@@ -5,7 +5,7 @@ from celery import chain
 from nodeconductor.core import executors as core_executors, tasks as core_tasks, utils as core_utils
 from nodeconductor_openstack.openstack import tasks as openstack_tasks
 
-from . import tasks
+from . import tasks, models
 
 
 class VolumeCreateExecutor(core_executors.CreateExecutor):
@@ -296,6 +296,14 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         _tasks.append(core_tasks.BackendMethodTask().si(
             serialized_instance, 'create_instance', **kwargs).set(countdown=10))
 
+        # Wait for instance creation
+        _tasks.append(tasks.PollRuntimeStateTask().si(
+            serialized_instance,
+            backend_pull_method='pull_instance_runtime_state',
+            success_state=models.Instance.RuntimeStates.ACTIVE,
+            erred_state=models.Instance.RuntimeStates.ERROR,
+        ))
+
         # Update volumes runtime state and device name
         for serialized_volume in serialized_volumes:
             _tasks.append(core_tasks.BackendMethodTask().si(
@@ -303,6 +311,14 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
                 backend_method='pull_volume',
                 update_fields=['runtime_state', 'device']
             ))
+
+        # Pull instance internal IPs
+        # pull_instance_internal_ips method cannot be used, because it requires backend_id to update
+        # existing internal IPs. However, internal IPs of the created instance does not have backend_ids.
+        _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'pull_created_instance_internal_ips'))
+
+        # Pull instance security groups
+        _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'pull_instance_security_groups'))
 
         # Create non-exist floating IPs
         for floating_ip in instance.floating_ips.filter(backend_id=''):
