@@ -3,10 +3,10 @@ from __future__ import unicode_literals
 
 from django.db import migrations
 
+from nodeconductor_openstack.openstack_tenant.models import Backup
+
 
 def add_backup_size_to_metadata(apps, schema_editor):
-    Backup = apps.get_model('openstack_tenant', 'Backup')
-
     for backup in Backup.objects.iterator():
         backup.metadata['size'] = backup.instance.size
         backup.save()
