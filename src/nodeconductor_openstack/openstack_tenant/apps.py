@@ -107,7 +107,7 @@ class OpenStackTenantConfig(AppConfig):
         )
 
         signals.m2m_changed.connect(
-            handlers.sync_tenant_service_certificates_with_openstacktenant,
+            handlers.sync_certificates_between_openstack_service_with_openstacktenant_service,
             sender=ServiceSettings.certifications.through,
-            dispatch_uid='nodeconductor_assembly_waldur.packages.sync_tenant_service_certificates_with_openstacktenant',
+            dispatch_uid='openstack.handlers.sync_certificates_between_openstack_service_with_openstacktenant_service',
         )

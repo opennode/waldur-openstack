@@ -322,7 +322,7 @@ resource_handlers = (
 )
 
 
-def sync_tenant_service_certificates_with_openstacktenant(sender, instance, action, **kwargs):
+def sync_certificates_between_openstack_service_with_openstacktenant_service(sender, instance, action, **kwargs):
     """
     Copies certifications links in original service settings to derived openstack tenant service settings.
     Handling works only for OpenStack service settings and ignored for all others.
