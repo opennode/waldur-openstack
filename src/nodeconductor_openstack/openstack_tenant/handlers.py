@@ -332,14 +332,9 @@ def sync_certificates_between_openstack_service_with_openstacktenant_service(sen
                 service_settings.type != openstack_apps.OpenStackConfig.service_name):
         return
 
-    try:
-        services = models.OpenStackTenantService.objects.filter(
-            settings__backend_url=service_settings.backend_url,
-            settings__domain=service_settings.domain,
-            settings__type=apps.OpenStackTenantConfig.service_name)
-    except models.OpenStackTenantService.DoesNotExist:
-        return
-    else:
-        for service in services:
-            service.settings.certifications.clear()
-            service.settings.certifications.add(*service_settings.certifications.all())
+    tenant = openstack_models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
+    openstack_settings = structure_models.ServiceSettings.objects.filter(scope__in=tenant)
+
+    for settings in openstack_settings:
+        settings.certifications.clear()
+        settings.certifications.add(*service_settings.certifications.all())
