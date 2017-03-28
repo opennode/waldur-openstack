@@ -1,11 +1,12 @@
 from __future__ import unicode_literals
 
 from django.core import exceptions as django_exceptions
+from django.db import transaction
 
 from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import models as structure_models
 
-from ..openstack import models as openstack_models
+from ..openstack import models as openstack_models, apps as openstack_apps
 from . import log, models
 
 
@@ -320,3 +321,22 @@ resource_handlers = (
     NetworkHandler(),
     SubNetHandler(),
 )
+
+
+def sync_certificates_between_openstack_service_with_openstacktenant_service(sender, instance, action, **kwargs):
+    """
+    Copies certifications links in original service settings to derived openstack tenant service settings.
+    Handling works only for OpenStack service settings and ignored for all others.
+    """
+    service_settings = instance
+    if (action not in ['post_add', 'post_remove', 'post_clear'] or
+                service_settings.type != openstack_apps.OpenStackConfig.service_name):
+        return
+
+    tenants = openstack_models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
+    openstack_settings = structure_models.ServiceSettings.objects.filter(scope__in=tenants)
+
+    with transaction.atomic():
+        for settings in openstack_settings:
+            settings.certifications.clear()
+            settings.certifications.add(*service_settings.certifications.all())

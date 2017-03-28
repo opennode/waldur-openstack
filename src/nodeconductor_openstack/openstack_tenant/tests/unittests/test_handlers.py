@@ -3,9 +3,9 @@ from __future__ import unicode_literals
 from django.test import TestCase
 
 from nodeconductor.core.models import StateMixin
-from nodeconductor_openstack.openstack.tests import factories as openstack_factories
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.tests import factories as structure_factories
+from nodeconductor_openstack.openstack.tests import factories as openstack_factories
 
 from .. import factories
 from ... import models
@@ -232,3 +232,31 @@ class SubNetHandlerTest(TestCase):
 
         openstack_subnet.delete()
         self.assertEqual(models.SubNet.objects.count(), 0)
+
+
+class ServiceSettingsCertificationHandlerTest(TestCase):
+
+    def test_openstack_tenant_service_certifications_are_update_when_tenant_settings_certification_are_added(self):
+        tenant = openstack_factories.TenantFactory()
+        tenant_service1 = factories.OpenStackTenantServiceFactory(settings__scope=tenant)
+        tenant_service2 = factories.OpenStackTenantServiceFactory(settings__scope=tenant)
+        self.assertEqual(tenant_service1.settings.certifications.count(), 0)
+        self.assertEqual(tenant_service2.settings.certifications.count(), 0)
+        new_certification = structure_factories.ServiceCertificationFactory()
+
+        tenant.service_project_link.service.settings.certifications.add(new_certification)
+
+        self.assertTrue(tenant_service1.settings.certifications.filter(pk__in=[new_certification.pk]).exists())
+        self.assertTrue(tenant_service2.settings.certifications.filter(pk__in=[new_certification.pk]).exists())
+
+    def test_openstack_tenant_service_certifications_are_removed_if_tenant_settings_certifications_are_removed(self):
+        tenant = openstack_factories.TenantFactory()
+        tenant_service = factories.OpenStackTenantServiceFactory(settings__scope=tenant)
+        new_certification = structure_factories.ServiceCertificationFactory()
+
+        tenant.service_project_link.service.settings.certifications.add(new_certification)
+        self.assertEqual(tenant_service.settings.certifications.count(), 1)
+        tenant.service_project_link.service.settings.certifications.clear()
+
+        self.assertEqual(tenant.service_project_link.service.settings.certifications.count(), 0)
+        self.assertEquals(tenant_service.settings.certifications.count(), 0)
