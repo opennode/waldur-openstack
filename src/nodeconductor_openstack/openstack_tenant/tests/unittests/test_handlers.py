@@ -260,3 +260,43 @@ class ServiceSettingsCertificationHandlerTest(TestCase):
 
         self.assertEqual(tenant.service_project_link.service.settings.certifications.count(), 0)
         self.assertEquals(tenant_service.settings.certifications.count(), 0)
+
+
+class CopyCertificationsTest(TestCase):
+
+    def test_openstack_tenant_settings_certifications_are_copied_from_openstack_settings(self):
+        tenant = openstack_factories.TenantFactory()
+        certifications = structure_factories.ServiceCertificationFactory.create_batch(2)
+        tenant.service_project_link.service.settings.certifications.add(*certifications)
+
+        settings = factories.OpenStackTenantServiceSettingsFactory(scope=tenant)
+
+        certifications_pk = [c.pk for c in certifications]
+        self.assertEqual(settings.certifications.filter(pk__in=certifications_pk).count(), 2)
+
+    def test_openstack_tenant_settings_certifications_are_not_copied_on_update(self):
+        tenant = openstack_factories.TenantFactory()
+        certification = structure_factories.ServiceCertificationFactory()
+        tenant.service_project_link.service.settings.certifications.add(certification)
+        settings = factories.OpenStackTenantServiceSettingsFactory(scope=tenant)
+        self.assertEquals(settings.certifications.count(), 1)
+
+        settings.name = 'new_name'
+        settings.save()
+
+        self.assertEquals(settings.certifications.count(), 1)
+        self.assertEquals(settings.certifications.first().pk, certification.pk)
+
+    def test_openstack_tenant_settings_certifications_are_not_copied_if_scope_is_not_tenant(self):
+        instance = factories.InstanceFactory()
+        certification = structure_factories.ServiceCertificationFactory()
+        instance.service_project_link.service.settings.certifications.add(certification)
+        
+        settings = factories.OpenStackTenantServiceSettingsFactory(scope=instance)
+
+        self.assertFalse(settings.certifications.exists())
+
+    def test_openstack_tenant_settings_certifications_are_not_copied_if_scope_is_None(self):
+        settings = factories.OpenStackTenantServiceSettingsFactory(scope=None)
+
+        self.assertFalse(settings.certifications.exists())

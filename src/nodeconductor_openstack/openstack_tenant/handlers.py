@@ -7,7 +7,7 @@ from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import models as structure_models
 
 from ..openstack import models as openstack_models, apps as openstack_apps
-from . import log, models
+from . import log, models, apps
 
 
 def _log_scheduled_action(resource, action, action_details):
@@ -344,3 +344,18 @@ def sync_certificates_between_openstack_service_with_openstacktenant_service(sen
         for settings in openstack_settings:
             settings.certifications.clear()
             settings.certifications.add(*service_settings.certifications.all())
+
+
+def copy_certifications_from_openstack_service_to_openstacktenant_service(sender, instance, created=False, **kwargs):
+    if not created or instance.type != apps.OpenStackTenantConfig.service_name:
+        return
+
+    tenant = instance.scope
+    if not isinstance(tenant, openstack_models.Tenant):
+        return
+
+    admin_settings = tenant.service_project_link.service.settings
+
+    with transaction.atomic():
+        instance.certifications.clear()
+        instance.certifications.add(*admin_settings.certifications.all())
