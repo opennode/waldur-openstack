@@ -207,7 +207,7 @@ class BackupRestorationTest(test.APITransactionTestCase):
         self.assertIn('floating_ips', response.data)
 
     def test_floating_ip_is_not_associated_with_an_instance_if_floating_ip_is_not_in_DOWN_state(self):
-        floating_ip = factories.FloatingIPFactory(settings=self.service_settings)
+        floating_ip = factories.FloatingIPFactory(settings=self.service_settings, runtime_state='ACTIVE')
         subnet = factories.SubNetFactory(settings=self.service_settings)
         payload = self._get_valid_payload(
             floating_ips=[
