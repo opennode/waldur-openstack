@@ -12,11 +12,12 @@ def copy_certifications_from_openstack_settings_to_openstack_tenant_settings(app
     openstack_tenant_settings = ServiceSettings.objects.filter(type='OpenStackTenant')
 
     for settings in openstack_tenant_settings.iterator():
+        # skip all settings linked to different type than tenant content type.
         if settings.content_type_id != tenant_content_type.id:
             continue
 
         try:
-            # GenericRelation is not available in migration, thus tenant has to be access directly through object_id
+            # GenericRelation is not available in migration, thus tenant has to be accessed directly through object_id
             tenant = Tenant.objects.get(pk=settings.object_id)
         except Tenant.DoesNotExist:
             continue
