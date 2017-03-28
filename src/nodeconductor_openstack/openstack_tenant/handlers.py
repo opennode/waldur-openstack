@@ -351,7 +351,7 @@ def copy_certifications_from_openstack_service_to_openstacktenant_service(sender
         return
 
     tenant = instance.scope
-    if not tenant:
+    if not isinstance(tenant, openstack_models.Tenant):
         return
 
     admin_settings = tenant.service_project_link.service.settings
