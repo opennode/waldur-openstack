@@ -640,7 +640,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 key_name=backend_public_key.name if backend_public_key is not None else None,
                 security_groups=security_group_ids,
             )
-            availability_zone = self.settings.options['availability_zone']
+            availability_zone = self.settings.options.get('availability_zone')
             if availability_zone:
                 server_create_parameters['availability_zone'] = availability_zone
             if instance.user_data:
