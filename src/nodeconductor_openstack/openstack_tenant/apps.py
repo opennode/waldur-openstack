@@ -111,3 +111,9 @@ class OpenStackTenantConfig(AppConfig):
             sender=ServiceSettings.certifications.through,
             dispatch_uid='openstack.handlers.sync_certificates_between_openstack_service_with_openstacktenant_service',
         )
+
+        signals.post_save.connect(
+            handlers.copy_certifications_from_openstack_service_to_openstacktenant_service,
+            sender=ServiceSettings,
+            dispatch_uid='openstack.handlers.copy_certifications_from_openstack_service_to_openstacktenant_service',
+        )
