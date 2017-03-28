@@ -8,7 +8,7 @@ from nodeconductor.structure.tests import factories as structure_factories
 from nodeconductor_openstack.openstack.tests import factories as openstack_factories
 
 from .. import factories
-from ... import models, apps
+from ... import models
 
 
 class SecurityGroupHandlerTest(TestCase):

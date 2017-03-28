@@ -6,7 +6,7 @@ from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import models as structure_models
 
 from ..openstack import models as openstack_models, apps as openstack_apps
-from . import log, models, apps
+from . import log, models
 
 
 def _log_scheduled_action(resource, action, action_details):
