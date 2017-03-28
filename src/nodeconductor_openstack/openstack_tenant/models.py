@@ -261,7 +261,7 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
         return FloatingIP.objects.filter(internal_ip__instance=self)
 
 
-class Backup(structure_models.NewResource):
+class Backup(structure_models.SubResource):
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='backups', on_delete=models.PROTECT)
     instance = models.ForeignKey(Instance, related_name='backups', on_delete=models.PROTECT)
