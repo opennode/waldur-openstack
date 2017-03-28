@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 from django.core import exceptions as django_exceptions
+from django.db import transaction
 
 from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import models as structure_models
@@ -332,9 +333,10 @@ def sync_certificates_between_openstack_service_with_openstacktenant_service(sen
                 service_settings.type != openstack_apps.OpenStackConfig.service_name):
         return
 
-    tenant = openstack_models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
-    openstack_settings = structure_models.ServiceSettings.objects.filter(scope__in=tenant)
+    tenants = openstack_models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
+    openstack_settings = structure_models.ServiceSettings.objects.filter(scope__in=tenants)
 
-    for settings in openstack_settings:
-        settings.certifications.clear()
-        settings.certifications.add(*service_settings.certifications.all())
+    with transaction.atomic():
+        for settings in openstack_settings:
+            settings.certifications.clear()
+            settings.certifications.add(*service_settings.certifications.all())
