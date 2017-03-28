@@ -334,6 +334,10 @@ def sync_certificates_between_openstack_service_with_openstacktenant_service(sen
         return
 
     tenants = openstack_models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
+
+    if not tenants:
+        return
+
     openstack_settings = structure_models.ServiceSettings.objects.filter(scope__in=tenants)
 
     with transaction.atomic():
