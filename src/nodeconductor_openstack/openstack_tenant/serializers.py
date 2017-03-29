@@ -1064,6 +1064,12 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
     )
     metadata = core_fields.JsonField(read_only=True)
     instance_name = serializers.ReadOnlyField(source='instance.name')
+    instance_security_groups = NestedSecurityGroupSerializer(
+        queryset=models.SecurityGroup.objects.all(), many=True, source='instance.security_groups')
+    instance_internal_ips_set = NestedInternalIPSerializer(many=True, source='instance.internal_ips_set')
+    instance_floating_ips = NestedFloatingIPSerializer(
+        queryset=models.FloatingIP.objects.all(), many=True, source='instance.floating_ips')
+
     restorations = BackupRestorationSerializer(many=True, read_only=True)
     backup_schedule_uuid = serializers.ReadOnlyField(source='backup_schedule.uuid')
 
@@ -1071,7 +1077,8 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Backup
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'kept_until', 'metadata', 'instance', 'instance_name', 'restorations',
-            'backup_schedule', 'backup_schedule_uuid')
+            'backup_schedule', 'backup_schedule_uuid',
+            'instance_security_groups', 'instance_internal_ips_set', 'instance_floating_ips')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'instance', 'service_project_link', 'backup_schedule')
         extra_kwargs = {
@@ -1079,6 +1086,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             'instance': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
             'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-backup-schedule-detail'},
         }
+        protected_fields = ('instance_security_groups', 'instance_internal_ips_set', 'instance_floating_ips')
 
     @transaction.atomic
     def create(self, validated_data):
