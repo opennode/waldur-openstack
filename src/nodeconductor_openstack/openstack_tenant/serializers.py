@@ -1065,10 +1065,11 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
     metadata = core_fields.JsonField(read_only=True)
     instance_name = serializers.ReadOnlyField(source='instance.name')
     instance_security_groups = NestedSecurityGroupSerializer(
-        queryset=models.SecurityGroup.objects.all(), many=True, source='instance.security_groups')
-    instance_internal_ips_set = NestedInternalIPSerializer(many=True, source='instance.internal_ips_set')
+        queryset=models.SecurityGroup.objects.all(), many=True, required=False,  source='instance.security_groups')
+    instance_internal_ips_set = NestedInternalIPSerializer(
+        many=True, required=False, source='instance.internal_ips_set')
     instance_floating_ips = NestedFloatingIPSerializer(
-        queryset=models.FloatingIP.objects.all(), many=True, source='instance.floating_ips')
+        queryset=models.FloatingIP.objects.all(), many=True, required=False, source='instance.floating_ips')
 
     restorations = BackupRestorationSerializer(many=True, read_only=True)
     backup_schedule_uuid = serializers.ReadOnlyField(source='backup_schedule.uuid')
