@@ -1,11 +1,11 @@
 import datetime
 import hashlib
-import pickle
+import pickle  # nosec
 import six
 import logging
 
 from django.core.cache import cache
-from django.utils import six, timezone
+from django.utils import timezone
 from requests import ConnectionError
 
 from keystoneauth1.identity import v3
@@ -25,7 +25,6 @@ from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
 
-from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import ServiceBackend, ServiceBackendError
 
 from nodeconductor_openstack.openstack.models import Tenant
@@ -50,7 +49,9 @@ class OpenStackBackendError(ServiceBackendError):
         args = list(args)
         for i, arg in enumerate(args):
             try:
-                pickle.loads(pickle.dumps(arg))
+                # pickle is used to check celery internal errors serialization,
+                # it is safe from security point of view
+                pickle.loads(pickle.dumps(arg))  # nosec
             except (pickle.PickleError, TypeError):
                 args[i] = six.text_type(arg)
 
