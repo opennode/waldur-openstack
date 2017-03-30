@@ -1078,7 +1078,8 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Backup
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'kept_until', 'metadata', 'instance', 'instance_name', 'restorations',
-            'backup_schedule', 'backup_schedule_uuid')
+            'backup_schedule', 'backup_schedule_uuid',
+            'instance_security_groups', 'instance_internal_ips_set', 'instance_floating_ips')
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
             'instance', 'service_project_link', 'backup_schedule')
         extra_kwargs = {
