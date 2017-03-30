@@ -33,6 +33,17 @@ class BackupUsageTest(test.APITransactionTestCase):
         response = self.client.post(url, data={'name': 'test backup'})
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
+    def test_user_can_backup_instance_with_only_two_volumes(self):
+        instance = factories.InstanceFactory(
+            state=models.Instance.States.OK,
+            runtime_state=models.Instance.RuntimeStates.SHUTOFF,
+        )
+        instance.volumes.first().delete()
+        url = factories.InstanceFactory.get_url(instance, action='backup')
+
+        response = self.client.post(url, data={'name': 'test backup'})
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+
     def test_backup_delete(self):
         backup = factories.BackupFactory(state=models.Backup.States.OK)
         url = factories.BackupFactory.get_url(backup)
