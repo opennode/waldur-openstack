@@ -50,9 +50,6 @@ class OpenStackService(structure_models.Service):
     def get_url_name(cls):
         return 'openstack'
 
-    def is_admin_tenant(self):
-        return self.settings.get_option('is_admin')
-
 
 class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
@@ -214,7 +211,6 @@ class Tenant(structure_models.PrivateCloud):
             password=self.user_password,
             options={
                 'tenant_name': self.name,
-                'is_admin': False,
                 'availability_zone': self.availability_zone,
                 'external_network_id': self.external_network_id
             }

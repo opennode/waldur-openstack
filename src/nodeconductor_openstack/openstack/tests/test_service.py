@@ -209,7 +209,6 @@ class CreateServiceTest(BaseServiceTest):
             'username': 'user',
             'password': 'secret',
             'tenant_name': 'admin',
-            'is_admin': 'True',
         }
 
     def _get_valid_payload(self, service):

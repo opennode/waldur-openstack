@@ -37,7 +37,6 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
         'tenant_name': '',
-        'is_admin': 'Configure service with admin privileges',
         'availability_zone': 'Default availability zone for provisioned instances',
         'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
         'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
@@ -49,14 +48,10 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
         required_fields = 'backend_url', 'username', 'password', 'tenant_name'
-        fields = structure_serializers.BaseServiceSerializer.Meta.fields + ('is_admin_tenant',)
         extra_field_options = {
             'backend_url': {
                 'label': 'API URL',
                 'default_value': 'http://keystone.example.com:5000/v2.0',
-            },
-            'is_admin': {
-                'default_value': 'True',
             },
             'username': {
                 'default_value': 'admin',
@@ -77,20 +72,15 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         }
 
     def _validate_settings(self, settings):
-        if settings.get_option('is_admin'):
-            backend = settings.get_backend()
-            try:
-                if not backend.check_admin_tenant():
-                    raise serializers.ValidationError({
-                        'non_field_errors': 'Provided credentials are not for admin tenant.'
-                    })
-            except OpenStackBackendError:
+        backend = settings.get_backend()
+        try:
+            if not backend.check_admin_tenant():
                 raise serializers.ValidationError({
-                    'non_field_errors': 'Unable to validate credentials.'
+                    'non_field_errors': 'Provided credentials are not for admin tenant.'
                 })
-        elif settings.get_option('tenant_name') == 'admin':
+        except OpenStackBackendError:
             raise serializers.ValidationError({
-                'tenant_name': 'Invalid tenant name for non-admin service.'
+                'non_field_errors': 'Unable to validate credentials.'
             })
 
 
@@ -346,11 +336,6 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
 
     def create(self, validated_data):
         service_project_link = validated_data['service_project_link']
-        if not service_project_link.service.is_admin_tenant():
-            raise serializers.ValidationError({
-                'non_field_errors': 'Tenant import is only possible for admin service.'
-            })
-
         backend = self.context['service'].get_backend()
         backend_id = validated_data['backend_id']
 
@@ -475,10 +460,6 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
     def create(self, validated_data):
         spl = validated_data['service_project_link']
-        if not spl.service.is_admin_tenant():
-            raise serializers.ValidationError({
-                'non_field_errors': 'Tenant provisioning is only possible for admin service.'
-            })
         # get availability zone from service settings if it is not defined
         if not validated_data.get('availability_zone'):
             validated_data['availability_zone'] = spl.service.settings.get_option('availability_zone') or ''
