@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 class OpenStackBackend(BaseOpenStackBackend):
     DEFAULTS = {
         'tenant_name': 'admin',
-        'is_admin': True,
     }
     TENANT_UPDATE_FIELDS = ('name', 'description', 'error_message', 'runtime_state')
     FLOATING_IP_UPDATE_FIELDS = ('name', 'description', 'address', 'backend_network_id', 'runtime_state')
@@ -683,10 +682,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
 
     def get_resources_for_import(self, resource_type=None):
-        if self.settings.get_option('is_admin'):
-            return self.get_tenants_for_import()
-        else:
-            return []
+        return self.get_tenants_for_import()
 
     def get_tenants_for_import(self):
         keystone = self.keystone_admin_client
