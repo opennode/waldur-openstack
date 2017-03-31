@@ -457,7 +457,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         """ Administrator can create tenant only using not shared service settings """
         spl = super(TenantSerializer, self).validate_service_project_link(spl)
         user = self.context['request'].user
-        message = _('You do not have permissions to create tenant in this project using selected service')
+        message = _('You do not have permissions to create tenant in this project using selected service.')
         if spl.service.settings.shared and not structure_permissions._has_owner_access(user, spl.project.customer):
             raise serializers.ValidationError(message)
         if not spl.service.settings.shared and not structure_permissions._has_admin_access(user, spl.project):
