@@ -9,13 +9,14 @@ from django.core import validators
 from django.contrib.auth import password_validation
 from django.db import transaction
 from django.template.defaultfilters import slugify
+from django.utils.translation import ugettext_lazy as _
 from netaddr import IPNetwork
 from rest_framework import serializers
 
 from nodeconductor.core import utils as core_utils, serializers as core_serializers
 from nodeconductor.core.fields import JsonField
 from nodeconductor.quotas import serializers as quotas_serializers
-from nodeconductor.structure import serializers as structure_serializers
+from nodeconductor.structure import serializers as structure_serializers, permissions as structure_permissions
 from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import models
@@ -451,6 +452,17 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         if settings.backend_url:
             parsed = urlparse.urlparse(settings.backend_url)
             return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
+
+    def validate_service_project_link(self, spl):
+        """ Administrator can create tenant only using not shared service settings """
+        spl = super(TenantSerializer, self).validate_service_project_link(spl)
+        user = self.context['request'].user
+        message = _('You do not have permissions to create tenant in this project using selected service')
+        if spl.service.settings.shared and not structure_permissions._has_owner_access(user, spl.project.customer):
+            raise serializers.ValidationError(message)
+        if not spl.service.settings.shared and not structure_permissions._has_admin_access(user, spl.project):
+            raise serializers.ValidationError(message)
+        return spl
 
     def validate(self, attrs):
         if self.instance is not None:

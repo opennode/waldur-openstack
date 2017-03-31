@@ -19,6 +19,7 @@ class BaseTenantActionsTest(test.APITransactionTestCase):
         self.tenant = self.fixture.tenant
 
 
+@ddt
 class TenantCreateTest(BaseTenantActionsTest):
     def setUp(self):
         super(TenantCreateTest, self).setUp()
@@ -27,6 +28,24 @@ class TenantCreateTest(BaseTenantActionsTest):
             'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(self.fixture.openstack_spl),
         }
         self.url = factories.TenantFactory.get_list_url()
+
+    @data('admin', 'manager', 'staff', 'owner')
+    def test_can_create_tenant(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.post(self.url, data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(models.Tenant.objects.filter(name=self.valid_data['name']).exists())
+
+    @data('global_support', 'user')
+    def test_cannot_create_tenant(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.post(self.url, data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(models.Tenant.objects.filter(name=self.valid_data['name']).exists())
 
     def test_cannot_create_tenant_with_service_settings_username(self):
         self.client.force_authenticate(self.fixture.staff)
@@ -97,13 +116,38 @@ class TenantPullTest(BaseTenantActionsTest):
         return factories.TenantFactory.get_url(self.tenant, 'pull')
 
 
+@ddt
 @patch('nodeconductor_openstack.openstack.executors.TenantDeleteExecutor.execute')
 class TenantDeleteTest(BaseTenantActionsTest):
-    def test_staff_can_delete_tenant(self, mocked_task):
-        self.client.force_authenticate(self.fixture.staff)
+
+    @data('staff', 'owner', 'admin', 'manager')
+    def test_can_delete_tenant(self, user, mocked_task):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
         response = self.client.delete(self.get_url())
+
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         mocked_task.assert_called_once_with(self.tenant, async=True, force=False)
+
+    @data('admin', 'manager')
+    def test_cannot_delete_tenant_from_shared_settings(self, user, mocked_task):
+        self.fixture.openstack_service_settings.shared = True
+        self.fixture.openstack_service_settings.save()
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.delete(self.get_url())
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(mocked_task.call_count, 0)
+
+    @data('global_support')
+    def test_cannot_delete_tenant(self, user, mocked_task):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.delete(self.get_url())
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(mocked_task.call_count, 0)
 
     def get_url(self):
         return factories.TenantFactory.get_url(self.tenant)
@@ -254,6 +298,16 @@ class TenantChangePasswordTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.user_password, self.new_password)
+
+    @data('admin', 'manager')
+    def test_cannot_change_password_if_tenant_belong_to_shared_settings(self, user):
+        self.fixture.openstack_service_settings.shared = True
+        self.fixture.openstack_service_settings.save()
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.post(self.url, {'user_password': self.new_password})
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     @data('global_support', 'customer_support', 'project_support')
     def test_user_cannot_change_tenant_user_password(self, user):
