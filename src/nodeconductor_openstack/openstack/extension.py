@@ -87,6 +87,9 @@ class OpenStackExtension(NodeConductorExtension):
                 'ALLOCATION_POOL_END': '{first_octet}.{second_octet}.{third_octet}.200',
             },
             'DEFAULT_BLACKLISTED_USERNAMES': ['admin', 'service'],
+            # If this flag is true - manager can execute actions that will
+            # change cost of the project: delete tenants, change their configuration
+            'MANAGER_CAN_MANAGE_TENANTS': False,
         }
 
     @staticmethod

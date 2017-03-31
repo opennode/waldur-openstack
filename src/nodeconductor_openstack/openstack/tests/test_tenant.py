@@ -1,4 +1,5 @@
 from ddt import data, ddt
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from mock import patch
 
@@ -37,6 +38,17 @@ class TenantCreateTest(BaseTenantActionsTest):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(models.Tenant.objects.filter(name=self.valid_data['name']).exists())
+
+    @data('admin', 'manager', 'owner')
+    def test_cannot_create_tenant_with_shared_service_settings(self, user):
+        self.fixture.openstack_service_settings.shared = True
+        self.fixture.openstack_service_settings.save()
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.post(self.url, data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(models.Tenant.objects.filter(name=self.valid_data['name']).exists())
 
     @data('global_support', 'user')
     def test_cannot_create_tenant(self, user):
@@ -139,6 +151,19 @@ class TenantDeleteTest(BaseTenantActionsTest):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(mocked_task.call_count, 0)
+
+    def test_manager_can_delete_tenant_from_shared_settings_with_permission_from_settings(self, mocked_task):
+        self.fixture.openstack_service_settings.shared = True
+        self.fixture.openstack_service_settings.save()
+        openstack_settings = settings.NODECONDUCTOR_OPENSTACK.copy()
+        openstack_settings['MANAGER_CAN_MANAGE_TENANTS'] = True
+        self.client.force_authenticate(user=self.fixture.manager)
+
+        with self.settings(NODECONDUCTOR_OPENSTACK=openstack_settings):
+            response = self.client.delete(self.get_url())
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        mocked_task.assert_called_once_with(self.tenant, async=True, force=False)
 
     @data('global_support')
     def test_cannot_delete_tenant(self, user, mocked_task):
@@ -298,16 +323,6 @@ class TenantChangePasswordTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.user_password, self.new_password)
-
-    @data('admin', 'manager')
-    def test_cannot_change_password_if_tenant_belong_to_shared_settings(self, user):
-        self.fixture.openstack_service_settings.shared = True
-        self.fixture.openstack_service_settings.save()
-        self.client.force_authenticate(getattr(self.fixture, user))
-
-        response = self.client.post(self.url, {'user_password': self.new_password})
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     @data('global_support', 'customer_support', 'project_support')
     def test_user_cannot_change_tenant_user_password(self, user):

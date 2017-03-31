@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.utils import six
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, decorators, response, permissions, status, serializers as rf_serializers
@@ -251,22 +252,22 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     filter_class = structure_filters.BaseResourceFilter
 
     create_executor = executors.TenantCreateExecutor
+    update_executor = executors.TenantUpdateExecutor
     pull_executor = executors.TenantPullExecutor
 
-    def is_owner_or_settings_are_not_shared(request, view, obj=None):
-        """ Administrator has permission to perform action only if tenant belong to shared service """
+    def delete_permission_check(request, view, obj=None):
         if not obj:
             return
         if obj.service_project_link.service.settings.shared:
-            structure_permissions.is_owner(request, view, obj)
+            if settings.NODECONDUCTOR_OPENSTACK['MANAGER_CAN_MANAGE_TENANTS']:
+                structure_permissions.is_manager(request, view, obj)
+            else:
+                structure_permissions.is_owner(request, view, obj)
         else:
             structure_permissions.is_administrator(request, view, obj)
 
-    update_executor = executors.TenantUpdateExecutor
-    update_permissions = partial_update_permissions = [is_owner_or_settings_are_not_shared]
-
     delete_executor = executors.TenantDeleteExecutor
-    destroy_permissions = [is_owner_or_settings_are_not_shared]
+    destroy_permissions = [delete_permission_check]
 
     @decorators.detail_route(methods=['post'])
     def create_service(self, request, uuid=None):
@@ -449,7 +450,6 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         executors.TenantChangeUserPasswordExecutor.execute(self.get_object())
         return response.Response({'status': 'Password update has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
 
-    change_password_permissions = [is_owner_or_settings_are_not_shared]
     change_password_serializer_class = serializers.TenantChangePasswordSerializer
     change_password_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
