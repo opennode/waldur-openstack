@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.utils import six
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, decorators, response, permissions, status, serializers as rf_serializers
@@ -252,8 +253,21 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
 
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
-    delete_executor = executors.TenantDeleteExecutor
     pull_executor = executors.TenantPullExecutor
+
+    def delete_permission_check(request, view, obj=None):
+        if not obj:
+            return
+        if obj.service_project_link.service.settings.shared:
+            if settings.NODECONDUCTOR_OPENSTACK['MANAGER_CAN_MANAGE_TENANTS']:
+                structure_permissions.is_manager(request, view, obj)
+            else:
+                structure_permissions.is_owner(request, view, obj)
+        else:
+            structure_permissions.is_administrator(request, view, obj)
+
+    delete_executor = executors.TenantDeleteExecutor
+    destroy_permissions = [delete_permission_check]
 
     @decorators.detail_route(methods=['post'])
     def create_service(self, request, uuid=None):
