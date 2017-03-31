@@ -1101,6 +1101,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         instance.decrease_backend_quotas_usage()
+        for volume in instance.volumes.all():
+            volume.decrease_backend_quotas_usage()
 
     @log_backend_action('check is instance deleted')
     def is_instance_deleted(self, instance):
@@ -1112,14 +1114,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             return True
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def pull_instance_volumes(self, instance):
-        for volume in instance.volumes.all():
-            if self.is_volume_deleted(volume):
-                with transaction.atomic():
-                    volume.decrease_backend_quotas_usage()
-                    volume.delete()
 
     @log_backend_action()
     def start_instance(self, instance):
