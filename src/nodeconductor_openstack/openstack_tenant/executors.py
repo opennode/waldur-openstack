@@ -406,10 +406,6 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
                 serialized_instance,
                 backend_check_method='is_instance_deleted',
             ),
-            core_tasks.BackendMethodTask().si(
-                serialized_instance,
-                backend_method='pull_instance_volumes',
-            ),
         ]
         # pull related floating IPs state after instance deletion
         for index, floating_ip in enumerate(instance.floating_ips):
