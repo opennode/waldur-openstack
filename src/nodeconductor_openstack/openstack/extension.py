@@ -87,6 +87,9 @@ class OpenStackExtension(NodeConductorExtension):
                 'ALLOCATION_POOL_END': '{first_octet}.{second_octet}.{third_octet}.200',
             },
             'DEFAULT_BLACKLISTED_USERNAMES': ['admin', 'service'],
+            # If this flag is true - manager can execute actions that will
+            # change cost of the project: delete tenants, change their configuration
+            'MANAGER_CAN_MANAGE_TENANTS': False,
         }
 
     @staticmethod
@@ -97,14 +100,3 @@ class OpenStackExtension(NodeConductorExtension):
     def rest_urls():
         from .urls import register_in
         return register_in
-
-    @staticmethod
-    def celery_tasks():
-        from datetime import timedelta
-        return {
-            'openstack-pull-tenants': {
-                'task': 'openstack.TenantListPullTask',
-                'schedule': timedelta(minutes=30),
-                'args': (),
-            },
-        }

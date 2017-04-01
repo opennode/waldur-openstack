@@ -49,4 +49,7 @@ PERMISSION_LOGICS = (
     ('openstack.Image', StaffPermissionLogic(any_permission=True)),
     ('openstack.IpMapping', StaffPermissionLogic(any_permission=True)),
     ('openstack.FloatingIP', StaffPermissionLogic(any_permission=True)),
+    ('openstack.SubNet', StaffPermissionLogic(any_permission=True)),
+    ('openstack.Network', StaffPermissionLogic(any_permission=True)),
+    ('openstack.SecurityGroup', StaffPermissionLogic(any_permission=True)),
 )

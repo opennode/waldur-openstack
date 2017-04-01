@@ -1,11 +1,11 @@
 import datetime
 import hashlib
-import pickle
+import pickle  # nosec
 import six
 import logging
 
 from django.core.cache import cache
-from django.utils import six, timezone
+from django.utils import timezone
 from requests import ConnectionError
 
 from keystoneauth1.identity import v3
@@ -49,7 +49,9 @@ class OpenStackBackendError(ServiceBackendError):
         args = list(args)
         for i, arg in enumerate(args):
             try:
-                pickle.loads(pickle.dumps(arg))
+                # pickle is used to check celery internal errors serialization,
+                # it is safe from security point of view
+                pickle.loads(pickle.dumps(arg))  # nosec
             except (pickle.PickleError, TypeError):
                 args[i] = six.text_type(arg)
 
@@ -65,9 +67,9 @@ class OpenStackAuthorizationFailed(OpenStackBackendError):
 
 
 def update_pulled_fields(instance, imported_instance, fields):
-    """ Update instance fields based on imported from backend data.
-
-        Save changes to DB only one or more fields were changed.
+    """
+    Update instance fields based on imported from backend data.
+    Save changes to DB only one or more fields were changed.
     """
     modified = False
     for field in fields:
@@ -75,11 +77,47 @@ def update_pulled_fields(instance, imported_instance, fields):
         current_value = getattr(instance, field)
         if current_value != pulled_value:
             setattr(instance, field, pulled_value)
-            logger.info("%s's with uuid %s %s field updated from value '%s' to value '%s'",
-                        instance.__class__.__name__, instance.uuid.hex, field, current_value, pulled_value)
+            logger.info("%s's with PK %s %s field updated from value '%s' to value '%s'",
+                        instance.__class__.__name__, instance.pk, field, current_value, pulled_value)
             modified = True
     if modified:
         instance.save()
+
+
+def handle_resource_not_found(resource):
+    """
+    Set resource state to ERRED and append/create "not found" error message.
+    """
+    resource.set_erred()
+    resource.runtime_state = ''
+    message = 'Does not exist at backend.'
+    if message not in resource.error_message:
+        if not resource.error_message:
+            resource.error_message = message
+        else:
+            resource.error_message += ' (%s)' % message
+    resource.save()
+    logger.warning('%s %s (PK: %s) does not exist at backend.' % (
+        resource.__class__.__name__, resource, resource.pk))
+
+
+def handle_resource_update_success(resource):
+    """
+    Recover resource if its state is ERRED and clear error message.
+    """
+    update_fields = []
+    if resource.state == resource.States.ERRED:
+        resource.recover()
+        update_fields.append('state')
+
+    if resource.error_message:
+        resource.error_message = ''
+        update_fields.append('error_message')
+
+    if update_fields:
+        resource.save(update_fields=update_fields)
+    logger.warning('%s %s (PK: %s) was successfully updated.' % (
+        resource.__class__.__name__, resource, resource.pk))
 
 
 class OpenStackSession(dict):

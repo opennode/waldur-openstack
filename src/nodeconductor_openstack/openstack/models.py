@@ -50,9 +50,6 @@ class OpenStackService(structure_models.Service):
     def get_url_name(cls):
         return 'openstack'
 
-    def is_admin_tenant(self):
-        return self.settings.get_option('is_admin')
-
 
 class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
@@ -92,7 +89,7 @@ class Image(structure_models.ServiceProperty):
         return 'openstack-image'
 
 
-class SecurityGroup(structure_models.NewResource):
+class SecurityGroup(structure_models.SubResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='security_groups')
     tenant = models.ForeignKey('Tenant', related_name='security_groups')
@@ -137,7 +134,7 @@ class IpMapping(core_models.UuidMixin):
 
 
 @python_2_unicode_compatible
-class FloatingIP(core_models.RuntimeStateMixin, structure_models.NewResource):
+class FloatingIP(core_models.RuntimeStateMixin, structure_models.SubResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='floating_ips')
     tenant = models.ForeignKey('Tenant', related_name='floating_ips')
@@ -214,7 +211,6 @@ class Tenant(structure_models.PrivateCloud):
             password=self.user_password,
             options={
                 'tenant_name': self.name,
-                'is_admin': False,
                 'availability_zone': self.availability_zone,
                 'external_network_id': self.external_network_id
             }
@@ -225,7 +221,7 @@ class Tenant(structure_models.PrivateCloud):
         )
 
 
-class Network(core_models.RuntimeStateMixin, structure_models.NewResource):
+class Network(core_models.RuntimeStateMixin, structure_models.SubResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='networks', on_delete=models.PROTECT)
     tenant = models.ForeignKey(Tenant, related_name='networks')
@@ -247,7 +243,7 @@ class Network(core_models.RuntimeStateMixin, structure_models.NewResource):
         self.tenant.add_quota_usage(self.tenant.Quotas.network_count, -1)
 
 
-class SubNet(structure_models.NewResource):
+class SubNet(structure_models.SubResource):
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='subnets', on_delete=models.PROTECT)
     network = models.ForeignKey(Network, related_name='subnets')

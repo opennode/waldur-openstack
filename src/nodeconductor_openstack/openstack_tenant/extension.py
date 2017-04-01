@@ -25,11 +25,6 @@ class OpenStackTenantExtension(NodeConductorExtension):
     def celery_tasks():
         from datetime import timedelta
         return {
-            'openstacktenant-pull-resources': {
-                'task': 'openstack_tenant.PullResources',
-                'schedule': timedelta(minutes=30),
-                'args': (),
-            },
             'openstacktenant-schedule-backups': {
                 'task': 'openstack_tenant.ScheduleBackups',
                 'schedule': timedelta(minutes=10),

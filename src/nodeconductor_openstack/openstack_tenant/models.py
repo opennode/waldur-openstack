@@ -225,7 +225,7 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
 
     @property
     def size(self):
-        return self.volumes.aggregate(models.Sum('size'))['size']
+        return self.volumes.aggregate(models.Sum('size'))['size__sum']
 
     @classmethod
     def get_url_name(cls):
@@ -261,7 +261,7 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
         return FloatingIP.objects.filter(internal_ip__instance=self)
 
 
-class Backup(structure_models.NewResource):
+class Backup(structure_models.SubResource):
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='backups', on_delete=models.PROTECT)
     instance = models.ForeignKey(Instance, related_name='backups', on_delete=models.PROTECT)

@@ -105,3 +105,15 @@ class OpenStackTenantConfig(AppConfig):
             sender=Tenant,
             dispatch_uid='openstack.handlers.update_service_settings_password',
         )
+
+        signals.m2m_changed.connect(
+            handlers.sync_certificates_between_openstack_service_with_openstacktenant_service,
+            sender=ServiceSettings.certifications.through,
+            dispatch_uid='openstack.handlers.sync_certificates_between_openstack_service_with_openstacktenant_service',
+        )
+
+        signals.post_save.connect(
+            handlers.copy_certifications_from_openstack_service_to_openstacktenant_service,
+            sender=ServiceSettings,
+            dispatch_uid='openstack.handlers.copy_certifications_from_openstack_service_to_openstacktenant_service',
+        )
