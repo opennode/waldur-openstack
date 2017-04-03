@@ -939,20 +939,17 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
     def get_fields(self):
         fields = super(BackupRestorationSerializer, self).get_fields()
         view = self.context.get('view')  # On docs generation context does not contain "view".
-        if view and view.action == 'restore':
+        if view and view.action == 'restore' and self.instance:
             backup = self.instance
             settings = backup.instance.service_project_link.service.settings
             fields['flavor'].display_name_field = 'name'
             fields['flavor'].view_name = 'openstacktenant-flavor-detail'
-            # View doesn't have object during schema generation
-            if hasattr(view, 'lookup_field') and view.lookup_field in view.kwargs:
-                backup = view.get_object()
-                # It is assumed that valid OpenStack Instance has exactly one bootable volume
-                system_volume = backup.instance.volumes.get(bootable=True)
-                fields['flavor'].query_params = {
-                    'settings_uuid': backup.service_project_link.service.settings.uuid,
-                    'disk__gte': system_volume.size,
-                }
+            # It is assumed that valid OpenStack Instance has exactly one bootable volume
+            system_volume = backup.instance.volumes.get(bootable=True)
+            fields['flavor'].query_params = {
+                'settings_uuid': backup.service_project_link.service.settings.uuid,
+                'disk__gte': system_volume.size,
+            }
 
             floating_ip_field = fields.get('floating_ips')
             if floating_ip_field:
