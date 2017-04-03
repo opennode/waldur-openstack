@@ -28,6 +28,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
         'tenant_id': 'Tenant ID in OpenStack',
         'availability_zone': 'Default availability zone for provisioned instances',
+        'flavor_exclude_regex': 'Flavors matching this regex expression will not be pulled from the backend.',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
