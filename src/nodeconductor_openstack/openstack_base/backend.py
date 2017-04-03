@@ -4,6 +4,7 @@ import pickle  # nosec
 import six
 import logging
 
+from django.conf import settings as django_settings
 from django.core.cache import cache
 from django.utils import timezone
 from requests import ConnectionError
@@ -234,6 +235,8 @@ class OpenStackClient(object):
 
 
 class BaseOpenStackBackend(ServiceBackend):
+    # used for flavors pull operation
+    FLAVOR_EXCLUDE_REGEX = django_settings.NODECONDUCTOR_OPENSTACK.get('FLAVOR_EXCLUDE_REGEX', '')
 
     def __init__(self, settings, tenant_id=None):
         self.settings = settings
