@@ -119,7 +119,7 @@ class Migration(migrations.Migration):
                 ('longitude', models.FloatField(null=True, blank=True)),
                 ('key_name', models.CharField(max_length=50, blank=True)),
                 ('key_fingerprint', models.CharField(max_length=47, blank=True)),
-                ('user_data', models.TextField(help_text='Additional data that will be added to instance on provisioning', blank=True, validators=[nodeconductor.structure.models.validate_yaml])),
+                ('user_data', models.TextField(help_text='Additional data that will be added to instance on provisioning', blank=True)),
                 ('cores', models.PositiveSmallIntegerField(default=0, help_text='Number of cores in a VM')),
                 ('ram', models.PositiveIntegerField(default=0, help_text='Memory size in MiB')),
                 ('disk', models.PositiveIntegerField(default=0, help_text='Disk size in MiB')),
