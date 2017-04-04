@@ -359,3 +359,16 @@ def copy_certifications_from_openstack_service_to_openstacktenant_service(sender
     with transaction.atomic():
         instance.certifications.clear()
         instance.certifications.add(*admin_settings.certifications.all())
+
+
+def copy_flavor_exclude_regex_to_openstacktenant_service_settings(sender, instance, created=False, **kwargs):
+    if not created or instance.type != apps.OpenStackTenantConfig.service_name:
+        return
+
+    tenant = instance.scope
+    if not isinstance(tenant, openstack_models.Tenant):
+        return
+
+    admin_settings = tenant.service_project_link.service.settings
+    instance.options['flavor_exclude_regex'] = admin_settings.options.get('flavor_exclude_regex', '')
+    instance.save(update_fields=['options'])

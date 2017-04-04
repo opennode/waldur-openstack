@@ -1,6 +1,6 @@
 import json
 import logging
-import time
+import re
 
 from django.db import transaction
 from django.utils import six, timezone, dateparse
@@ -111,9 +111,16 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
+        flavor_exclude_regex = self.settings.options.get('flavor_exclude_regex', '')
+        name_pattern = re.compile(flavor_exclude_regex) if flavor_exclude_regex else None
         with transaction.atomic():
             cur_flavors = self._get_current_properties(models.Flavor)
             for backend_flavor in flavors:
+                if name_pattern is not None and name_pattern.match(backend_flavor.name) is not None:
+                    logger.debug('Skipping pull of %s flavor as it matches %s regex pattern.',
+                                 backend_flavor.name, flavor_exclude_regex)
+                    continue
+
                 cur_flavors.pop(backend_flavor.id, None)
                 models.Flavor.objects.update_or_create(
                     settings=self.settings,
