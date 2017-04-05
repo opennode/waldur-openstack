@@ -14,6 +14,7 @@ def _instance_data(user, instance=None):
     image = factories.ImageFactory(settings=instance.service_project_link.service.settings)
     flavor = factories.FlavorFactory(settings=instance.service_project_link.service.settings)
     ssh_public_key = structure_factories.SshPublicKeyFactory(user=user)
+    subnet = factories.SubNetFactory(settings=instance.service_project_link.service.settings)
     return {
         'name': 'test_host',
         'description': 'test description',
@@ -23,6 +24,7 @@ def _instance_data(user, instance=None):
             instance.service_project_link),
         'ssh_public_key': structure_factories.SshPublicKeyFactory.get_url(ssh_public_key),
         'system_volume_size': max(image.min_disk, 1024),
+        'internal_ips_set': [{'subnet': factories.SubNetFactory.get_url(subnet)}],
     }
 
 

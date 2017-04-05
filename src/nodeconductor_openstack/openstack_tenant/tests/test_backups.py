@@ -149,19 +149,18 @@ class BackupRestorationTest(test.APITransactionTestCase):
         self.service_settings.options = {'external_network_id': 'id'}
         self.service_settings.save()
         self.valid_flavor = factories.FlavorFactory(disk=self.disk_size + 10, settings=self.service_settings)
-        self.invalid_flavor = factories.FlavorFactory(disk=self.disk_size - 10, settings=self.service_settings)
+        self.subnet = factories.SubNetFactory(settings=self.service_settings)
 
     def test_flavor_disk_size_should_match_system_volume_size(self):
-        response = self.client.post(self.url, {
-            'flavor': factories.FlavorFactory.get_url(self.valid_flavor)
-        })
+        response = self.client.post(self.url, self._get_valid_payload())
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_if_flavor_disk_size_lesser_then_system_volume_size_validation_fails(self):
-        response = self.client.post(self.url, {
-            'flavor': factories.FlavorFactory.get_url(self.invalid_flavor)
-        })
+        invalid_flavor = factories.FlavorFactory(disk=self.disk_size - 10, settings=self.service_settings)
+        response = self.client.post(self.url, self._get_valid_payload(
+            flavor=factories.FlavorFactory.get_url(invalid_flavor))
+        )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
         self.assertEqual(response.data['flavor'], ['Flavor disk size should match system volume size.'])
@@ -246,12 +245,11 @@ class BackupRestorationTest(test.APITransactionTestCase):
 
     def test_floating_ip_is_associated_with_an_instance(self):
         floating_ip = factories.FloatingIPFactory(settings=self.service_settings, runtime_state='DOWN')
-        subnet = factories.SubNetFactory(settings=self.service_settings)
         payload = self._get_valid_payload(
             floating_ips=[
                 {'url': factories.FloatingIPFactory.get_url(floating_ip),
-                 'subnet': factories.SubNetFactory.get_url(subnet)}],
-            internal_ips_set=[{'subnet': factories.SubNetFactory.get_url(subnet)}])
+                 'subnet': factories.SubNetFactory.get_url(self.subnet)}],
+        )
 
         response = self.client.post(self.url, payload)
 
@@ -272,8 +270,7 @@ class BackupRestorationTest(test.APITransactionTestCase):
         self.assertIn('internal_ips_set', response.data)
 
     def test_internal_ips_have_been_associated_with_instance(self):
-        subnet = factories.SubNetFactory(settings=self.service_settings)
-        payload = self._get_valid_payload(internal_ips_set=[{'subnet': factories.SubNetFactory.get_url(subnet)}])
+        payload = self._get_valid_payload()
 
         response = self.client.post(self.url, payload)
 
@@ -281,12 +278,14 @@ class BackupRestorationTest(test.APITransactionTestCase):
         instance = models.Instance.objects.get(name=payload['name'])
         self.assertEqual(instance.internal_ips_set.count(), 1)
         self.assertEqual(instance.subnets.count(), 1)
-        self.assertEqual(instance.subnets.first().uuid.hex, subnet.uuid.hex)
+        self.assertEqual(instance.subnets.first().uuid.hex, self.subnet.uuid.hex)
         self.assertEqual(instance.flavor_name, self.valid_flavor.name)
 
     def _get_valid_payload(self, **options):
         payload = {
             'name': 'instance name',
-            'flavor': factories.FlavorFactory.get_url(self.valid_flavor)}
+            'flavor': factories.FlavorFactory.get_url(self.valid_flavor),
+            'internal_ips_set': [{'subnet': factories.SubNetFactory.get_url(self.subnet)}],
+        }
         payload.update(options)
         return payload
