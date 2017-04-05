@@ -474,6 +474,9 @@ def _validate_instance_internal_ips(internal_ips, settings):
     """ - make sure that internal_ips belong to specified setting;
         - make sure that internal_ips does not connect to the same subnet twice;
     """
+    if not internal_ips:
+        raise serializers.ValidationError(
+            {'internal_ips_set': 'Instance should be connected to at least one network.'})
     subnets = [internal_ip.subnet for internal_ip in internal_ips]
     for subnet in subnets:
         if subnet.settings != settings:
@@ -482,7 +485,7 @@ def _validate_instance_internal_ips(internal_ips, settings):
     duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
     if duplicates:
         raise serializers.ValidationError('It is impossible to connect to subnet %s twice.' % duplicates[0])
-    
+
 
 def _validate_instance_security_groups(security_groups, settings):
     """ Make sure that security_group belong to specified setting.
