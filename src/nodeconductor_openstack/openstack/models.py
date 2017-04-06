@@ -79,6 +79,11 @@ class Flavor(LoggableMixin, structure_models.ServiceProperty):
     def get_url_name(cls):
         return 'openstack-flavor'
 
+    @classmethod
+    def get_backend_fields(cls):
+        readonly_fields = super(Flavor, cls).get_backend_fields()
+        return readonly_fields + ('cores', 'ram', 'disk')
+
 
 class Image(structure_models.ServiceProperty):
     min_disk = models.PositiveIntegerField(default=0, help_text='Minimum disk size in MiB')
@@ -87,6 +92,10 @@ class Image(structure_models.ServiceProperty):
     @classmethod
     def get_url_name(cls):
         return 'openstack-image'
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Image, cls).get_backend_fields() + ('min_disk', 'min_ram')
 
 
 class SecurityGroup(structure_models.SubResource):
@@ -112,6 +121,10 @@ class SecurityGroup(structure_models.SubResource):
     def change_backend_quotas_usage_on_rules_update(self, old_rules_count, validate=True):
         count = self.rules.count() - old_rules_count
         self.tenant.add_quota_usage(self.tenant.Quotas.security_group_rule_count, count, validate=validate)
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(SecurityGroup, cls).get_backend_fields() + ('name', 'description')
 
 
 class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):
@@ -152,6 +165,11 @@ class FloatingIP(core_models.RuntimeStateMixin, structure_models.SubResource):
 
     def __str__(self):
         return '%s:%s (%s)' % (self.address, self.runtime_state, self.service_project_link)
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(FloatingIP, cls).get_backend_fields() + ('name', 'description', 'address', 'backend_network_id',
+                                                              'runtime_state')
 
     def increase_backend_quotas_usage(self, validate=True):
         self.tenant.add_quota_usage(self.tenant.Quotas.floating_ip_count, 1, validate=validate)
@@ -220,6 +238,10 @@ class Tenant(structure_models.PrivateCloud):
             customer=customer
         )
 
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Tenant, cls).get_backend_fields() + ('name', 'description', 'error_message', 'runtime_state')
+
 
 class Network(core_models.RuntimeStateMixin, structure_models.SubResource):
     service_project_link = models.ForeignKey(
@@ -241,6 +263,11 @@ class Network(core_models.RuntimeStateMixin, structure_models.SubResource):
 
     def decrease_backend_quotas_usage(self):
         self.tenant.add_quota_usage(self.tenant.Quotas.network_count, -1)
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Network, cls).get_backend_fields() + ('name', 'description', 'is_external', 'type',
+                                                           'segmentation_id', 'runtime_state')
 
 
 class SubNet(structure_models.SubResource):
@@ -266,3 +293,8 @@ class SubNet(structure_models.SubResource):
 
     def decrease_backend_quotas_usage(self):
         self.network.tenant.add_quota_usage(self.network.tenant.Quotas.subnet_count, -1)
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(SubNet, cls).get_backend_fields() + ('name', 'description', 'allocation_pools', 'cidr',
+                                                          'ip_version', 'enable_dhcp', 'gateway_ip', 'dns_nameservers')

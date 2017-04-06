@@ -10,17 +10,17 @@ from nodeconductor.structure import admin as structure_admin
 from . import executors, models
 
 
-class FlavorAdmin(admin.ModelAdmin):
+class FlavorAdmin(structure_admin.BackendModelAdmin):
     list_filter = ('settings',)
     list_display = ('name', 'settings', 'cores', 'ram', 'disk')
 
 
-class ImageAdmin(admin.ModelAdmin):
+class ImageAdmin(structure_admin.BackendModelAdmin):
     list_filter = ('settings', )
     list_display = ('name', 'settings', 'min_disk', 'min_ram')
 
 
-class FloatingIPAdmin(admin.ModelAdmin):
+class FloatingIPAdmin(structure_admin.BackendModelAdmin):
     list_filter = ('settings',)
     list_display = ('address', 'settings', 'runtime_state', 'backend_network_id', 'is_booked')
 
@@ -33,7 +33,7 @@ class SecurityGroupRule(admin.TabularInline):
     can_delete = False
 
 
-class SecurityGroupAdmin(admin.ModelAdmin):
+class SecurityGroupAdmin(structure_admin.BackendModelAdmin):
     inlines = [SecurityGroupRule]
     list_filter = ('settings',)
     list_display = ('name', 'settings')
