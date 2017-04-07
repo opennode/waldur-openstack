@@ -4,6 +4,8 @@ from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
 from iptools.ipv4 import validate_cidr
 
+from nodeconductor.core import models as core_models
+
 
 @python_2_unicode_compatible
 class BaseSecurityGroupRule(models.Model):
@@ -76,7 +78,7 @@ class BaseSecurityGroupRule(models.Model):
 
 
 @python_2_unicode_compatible
-class Port(models.Model):
+class Port(core_models.BackendModelMixin, models.Model):
     # TODO: Use dedicated field: https://github.com/django-macaddress/django-macaddress
     mac_address = models.CharField(max_length=32, blank=True)
     ip4_address = models.GenericIPAddressField(null=True, blank=True, protocol='IPv4')
@@ -88,3 +90,7 @@ class Port(models.Model):
 
     def __str__(self):
         return self.ip4_address or self.ip6_address or 'Not initialized'
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Port, cls).get_backend_fields() + ('ip4_address', 'ip6_address', 'mac_address')

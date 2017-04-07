@@ -25,12 +25,6 @@ class OpenStackBackend(BaseOpenStackBackend):
     DEFAULTS = {
         'tenant_name': 'admin',
     }
-    TENANT_UPDATE_FIELDS = ('name', 'description', 'error_message', 'runtime_state')
-    FLOATING_IP_UPDATE_FIELDS = ('name', 'description', 'address', 'backend_network_id', 'runtime_state')
-    SECURITY_GROUP_UPDATE_FIELDS = ('name', 'description')
-    NETWORK_UPDATE_FIELDS = ('name', 'description', 'is_external', 'type', 'segmentation_id', 'runtime_state')
-    SUBNET_UPDATE_FIELDS = ('name', 'description', 'allocation_pools', 'cidr', 'ip_version',
-                            'enable_dhcp', 'gateway_ip', 'dns_nameservers')
 
     def check_admin_tenant(self):
         try:
@@ -91,7 +85,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 neutron_quotas = neutron_quotas_mapping.get(tenant.backend_id, {})
                 imported_backend_tenant = self._backend_tenant_to_tenant(backend_tenant,
                                                                          nova_quotas, cinder_quotas, neutron_quotas)
-                update_pulled_fields(tenant, imported_backend_tenant, self.TENANT_UPDATE_FIELDS)
+                update_pulled_fields(tenant, imported_backend_tenant, models.Tenant.get_backend_fields())
                 for quota_name, limit in imported_backend_tenant._quota_limits.items():
                     tenant.set_quota_limit(quota_name, limit)
                 handle_resource_update_success(tenant)
@@ -320,7 +314,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                     # Don't update user defined name.
                     if floating_ip.address != floating_ip.name:
                         imported_floating_ip.name = floating_ip.name
-                    update_pulled_fields(floating_ip, imported_floating_ip, self.FLOATING_IP_UPDATE_FIELDS)
+                    update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
                     handle_resource_update_success(floating_ip)
 
                 floating_ip_uuids.append(floating_ip.uuid)
@@ -356,7 +350,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                 # Don't update user defined name.
                 if floating_ip.address != floating_ip.name:
                     imported_floating_ip.name = floating_ip.name
-                update_pulled_fields(floating_ip, imported_floating_ip, self.FLOATING_IP_UPDATE_FIELDS)
+                update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
                 handle_resource_update_success(floating_ip)
 
             for floating_ip in tenant.floating_ips.filter(backend_id__in=floating_ips.keys()):
@@ -409,7 +403,8 @@ class OpenStackBackend(BaseOpenStackBackend):
                     imported_security_group.save()
                     security_group = imported_security_group
                 else:
-                    update_pulled_fields(security_group, imported_security_group, self.SECURITY_GROUP_UPDATE_FIELDS)
+                    update_pulled_fields(security_group, imported_security_group,
+                                         models.SecurityGroup.get_backend_fields())
                     handle_resource_update_success(security_group)
 
                 security_group_uuids.append(security_group.uuid)
@@ -440,7 +435,8 @@ class OpenStackBackend(BaseOpenStackBackend):
                     imported_security_group.save()
                     security_group = imported_security_group
                 else:
-                    update_pulled_fields(security_group, imported_security_group, self.SECURITY_GROUP_UPDATE_FIELDS)
+                    update_pulled_fields(security_group, imported_security_group,
+                                         models.SecurityGroup.get_backend_fields())
                     handle_resource_update_success(security_group)
 
                 self._extract_security_group_rules(security_group, backend_security_group)
@@ -511,7 +507,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                     imported_network.save()
                     network = imported_network
                 else:
-                    update_pulled_fields(network, imported_network, self.NETWORK_UPDATE_FIELDS)
+                    update_pulled_fields(network, imported_network, models.Network.get_backend_fields())
                     handle_resource_update_success(network)
 
                 network_uuids.append(network.uuid)
@@ -571,7 +567,7 @@ class OpenStackBackend(BaseOpenStackBackend):
                     imported_subnet.save()
                     subnet = imported_subnet
                 else:
-                    update_pulled_fields(subnet, imported_subnet, self.SUBNET_UPDATE_FIELDS)
+                    update_pulled_fields(subnet, imported_subnet, models.SubNet.get_backend_fields())
                     handle_resource_update_success(subnet)
 
                 subnet_uuids.append(subnet.uuid)
@@ -1230,7 +1226,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         network.refresh_from_db()
         if network.modified < import_time:
-            update_pulled_fields(network, imported_network, self.NETWORK_UPDATE_FIELDS)
+            update_pulled_fields(network, imported_network, models.Network.get_backend_fields())
 
     @log_backend_action()
     def create_subnet(self, subnet):
@@ -1321,7 +1317,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
 
         imported_floating_ip = self._backend_floating_ip_to_floating_ip(backend_floating_ip, floating_ip.tenant)
-        update_pulled_fields(floating_ip, imported_floating_ip, self.FLOATING_IP_UPDATE_FIELDS)
+        update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
 
     @log_backend_action('delete floating ip')
     def delete_floating_ip(self, floating_ip):

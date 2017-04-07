@@ -51,6 +51,10 @@ class Flavor(LoggableMixin, structure_models.ServiceProperty):
     def get_url_name(cls):
         return 'openstacktenant-flavor'
 
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Flavor, cls).get_backend_fields() + ('cores', 'ram', 'disk')
+
 
 class Image(structure_models.ServiceProperty):
     min_disk = models.PositiveIntegerField(default=0, help_text='Minimum disk size in MiB')
@@ -59,6 +63,10 @@ class Image(structure_models.ServiceProperty):
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-image'
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Image, cls).get_backend_fields() + ('min_disk', 'min_ram')
 
 
 class SecurityGroup(core_models.DescribableMixin, structure_models.ServiceProperty):
@@ -97,6 +105,10 @@ class FloatingIP(structure_models.ServiceProperty):
     def increase_backend_quotas_usage(self, validate=True):
         self.settings.add_quota_usage(self.settings.Quotas.floating_ip_count, 1, validate=validate)
 
+    @classmethod
+    def get_backend_fields(cls):
+        return super(FloatingIP, cls).get_backend_fields() + ('address', 'runtime_state', 'backend_network_id')
+
 
 class Volume(structure_models.Storage):
     service_project_link = models.ForeignKey(
@@ -131,6 +143,11 @@ class Volume(structure_models.Storage):
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-volume'
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Volume, cls).get_backend_fields() + ('name', 'description', 'size', 'metadata', 'type', 'bootable',
+                                                          'runtime_state', 'device')
 
 
 class Snapshot(structure_models.Storage):
@@ -167,6 +184,11 @@ class Snapshot(structure_models.Storage):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.snapshots, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Snapshot, cls).get_backend_fields() + ('name', 'description', 'size', 'metadata', 'source_volume',
+                                                            'runtime_state')
 
 
 class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
@@ -259,6 +281,11 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
     @property
     def floating_ips(self):
         return FloatingIP.objects.filter(internal_ip__instance=self)
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(Instance, cls).get_backend_fields() + ('flavor_name', 'flavor_disk', 'ram', 'cores', 'disk',
+                                                            'runtime_state')
 
 
 class Backup(structure_models.SubResource):
