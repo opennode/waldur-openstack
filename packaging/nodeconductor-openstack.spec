@@ -1,7 +1,7 @@
 Name: nodeconductor-openstack
 Summary: OpenStack plugin for NodeConductor
 Group: Development/Libraries
-Version: 0.22.0
+Version: 0.22.1
 Release: 1.el7
 License: MIT
 Url: http://nodeconductor.com
@@ -45,6 +45,9 @@ rm -rf %{buildroot}
 %{python_sitelib}/*
 
 %changelog
+* Fri Apr 7 2017 Jenkins <jenkins@opennodecloud.com> - 0.22.1-1.el7
+- New upstream release
+
 * Fri Mar 31 2017 Jenkins <jenkins@opennodecloud.com> - 0.22.0-1.el7
 - New upstream release
 
