@@ -1,6 +1,6 @@
 import json
 import logging
-import time
+import re
 
 from django.db import transaction
 from django.utils import six, timezone, dateparse
@@ -13,10 +13,10 @@ from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
 
 from nodeconductor.structure import log_backend_action
-
 from nodeconductor_openstack.openstack_base.backend import (
     BaseOpenStackBackend, OpenStackBackendError,
     update_pulled_fields, handle_resource_not_found, handle_resource_update_success)
+
 from . import models
 
 
@@ -24,11 +24,6 @@ logger = logging.getLogger(__name__)
 
 
 class OpenStackTenantBackend(BaseOpenStackBackend):
-    VOLUME_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'type', 'bootable', 'runtime_state', 'device')
-    SNAPSHOT_UPDATE_FIELDS = ('name', 'description', 'size', 'metadata', 'source_volume', 'runtime_state')
-    INSTANCE_UPDATE_FIELDS = ('name', 'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk', 'runtime_state')
-    FLOATING_IP_UPDATE_FIELDS = ('name', 'address', 'runtime_state', 'backend_network_id')
-    INTERNAL_IP_UPDATE_FIELDS = ('ip4_address', 'ip6_address', 'mac_address')
 
     def __init__(self, settings):
         super(OpenStackTenantBackend, self).__init__(settings, settings.options['tenant_id'])
@@ -66,7 +61,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             except KeyError:
                 handle_resource_not_found(volume)
             else:
-                update_pulled_fields(volume, backend_volume, self.VOLUME_UPDATE_FIELDS)
+                update_pulled_fields(volume, backend_volume, models.Volume.get_backend_fields())
                 handle_resource_update_success(volume)
 
     def pull_snapshots(self):
@@ -82,7 +77,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             except KeyError:
                 handle_resource_not_found(snapshot)
             else:
-                update_pulled_fields(snapshot, backend_snapshot, self.SNAPSHOT_UPDATE_FIELDS)
+                update_pulled_fields(snapshot, backend_snapshot, models.Snapshot.get_backend_fields())
                 handle_resource_update_success(snapshot)
 
     def pull_instances(self):
@@ -99,7 +94,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             except KeyError:
                 handle_resource_not_found(instance)
             else:
-                update_pulled_fields(instance, backend_instance, self.INSTANCE_UPDATE_FIELDS)
+                update_pulled_fields(instance, backend_instance, models.Instance.get_backend_fields())
                 # XXX: can be optimized after https://goo.gl/BZKo8Y will be resolved.
                 self.pull_instance_security_groups(instance)
                 handle_resource_update_success(instance)
@@ -111,9 +106,16 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
+        flavor_exclude_regex = self.settings.options.get('flavor_exclude_regex', '')
+        name_pattern = re.compile(flavor_exclude_regex) if flavor_exclude_regex else None
         with transaction.atomic():
             cur_flavors = self._get_current_properties(models.Flavor)
             for backend_flavor in flavors:
+                if name_pattern is not None and name_pattern.match(backend_flavor.name) is not None:
+                    logger.debug('Skipping pull of %s flavor as it matches %s regex pattern.',
+                                 backend_flavor.name, flavor_exclude_regex)
+                    continue
+
                 cur_flavors.pop(backend_flavor.id, None)
                 models.Flavor.objects.update_or_create(
                     settings=self.settings,
@@ -185,7 +187,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     imported_floating_ip.name = floating_ip.name
 
                 # update Floating IP
-                update_pulled_fields(floating_ip, imported_floating_ip, self.FLOATING_IP_UPDATE_FIELDS)
+                update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
 
         # Remove stale Floating IPs
         models.FloatingIP.objects.filter(settings=self.settings, backend_id__in=floating_ip_mappings.keys()).delete()
@@ -454,7 +456,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         volume.refresh_from_db()
         if volume.modified < import_time:
             if not update_fields:
-                update_fields = self.VOLUME_UPDATE_FIELDS
+                update_fields = models.Volume.get_backend_fields()
 
             update_pulled_fields(volume, imported_volume, update_fields)
 
@@ -544,7 +546,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         snapshot.refresh_from_db()
         if snapshot.modified < import_time:
             if update_fields is None:
-                update_fields = self.SNAPSHOT_UPDATE_FIELDS
+                update_fields = models.Snapshot.get_backend_fields()
             update_pulled_fields(snapshot, imported_snapshot, update_fields)
 
     @log_backend_action()
@@ -716,7 +718,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 # Don't update user defined name.
                 if floating_ip.address != floating_ip.name:
                     imported_floating_ip.name = floating_ip.name
-                update_pulled_fields(floating_ip, imported_floating_ip, self.FLOATING_IP_UPDATE_FIELDS)
+                update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
 
             instance.floating_ips.filter(backend_id__in=floating_ip_mappings.keys()).update(internal_ip=None)
 
@@ -879,7 +881,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         instance.refresh_from_db()
         if instance.modified < import_time:
             if update_fields is None:
-                update_fields = self.INSTANCE_UPDATE_FIELDS
+                update_fields = models.Instance.get_backend_fields()
             update_pulled_fields(instance, imported_instance, update_fields)
 
     @log_backend_action()
@@ -904,7 +906,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                                'in subnet with backend ID %s', instance.uuid, imported_internal_ip._subnet_backend_id)
             else:
                 update_pulled_fields(internal_ip, imported_internal_ip,
-                                     self.INTERNAL_IP_UPDATE_FIELDS + ('backend_id',))
+                                     models.InternalIP.get_backend_fields() + ('backend_id',))
 
     @log_backend_action()
     def pull_instance_internal_ips(self, instance):
@@ -932,7 +934,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     internal_ip.instance = instance
                     internal_ip.save()
                 else:
-                    update_pulled_fields(internal_ip, imported_internal_ip, self.INTERNAL_IP_UPDATE_FIELDS)
+                    update_pulled_fields(internal_ip, imported_internal_ip, models.InternalIP.get_backend_fields())
 
             # remove stale internal IPs
             instance.internal_ips_set.filter(backend_id__in=internal_ip_mappings.keys()).delete()
@@ -974,7 +976,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     internal_ip.instance = instance
                     internal_ip.save()
                 else:
-                    update_pulled_fields(internal_ip, imported_internal_ip, self.INTERNAL_IP_UPDATE_FIELDS)
+                    update_pulled_fields(internal_ip, imported_internal_ip, models.InternalIP.get_backend_fields())
 
             # remove stale internal IPs
             models.InternalIP.objects.filter(
@@ -1101,6 +1103,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         instance.decrease_backend_quotas_usage()
+        for volume in instance.volumes.all():
+            volume.decrease_backend_quotas_usage()
 
     @log_backend_action('check is instance deleted')
     def is_instance_deleted(self, instance):
@@ -1112,14 +1116,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             return True
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
-
-    @log_backend_action()
-    def pull_instance_volumes(self, instance):
-        for volume in instance.volumes.all():
-            if self.is_volume_deleted(volume):
-                with transaction.atomic():
-                    volume.decrease_backend_quotas_usage()
-                    volume.delete()
 
     @log_backend_action()
     def start_instance(self, instance):

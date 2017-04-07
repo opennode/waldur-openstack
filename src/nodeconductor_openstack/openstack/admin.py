@@ -91,12 +91,12 @@ class TenantAdmin(structure_admin.ResourceAdmin):
     pull = Pull()
 
 
-class FlavorAdmin(admin.ModelAdmin):
+class FlavorAdmin(structure_admin.BackendModelAdmin):
     list_filter = ('settings',)
     list_display = ('name', 'settings', 'cores', 'ram', 'disk')
 
 
-class ImageAdmin(admin.ModelAdmin):
+class ImageAdmin(structure_admin.BackendModelAdmin):
     list_filter = ('settings', )
     list_display = ('name', 'min_disk', 'min_ram')
 

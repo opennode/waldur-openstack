@@ -44,6 +44,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
         'access_url': 'Publicly accessible OpenStack dashboard URL',
         'dns_nameservers': 'Default value for new subnets DNS name servers. Should be defined as list.',
+        'flavor_exclude_regex': 'Flavors matching this regex expression will not be pulled from the backend.',
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
