@@ -200,7 +200,7 @@ class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
         project_path = 'snapshot__service_project_link__project'
 
 
-class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMixin, structure_models.NewResource):
+class Instance(structure_models.VirtualMachine):
 
     class RuntimeStates(object):
         # All possible OpenStack Instance states on backend.
@@ -286,6 +286,10 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
     def get_backend_fields(cls):
         return super(Instance, cls).get_backend_fields() + ('flavor_name', 'flavor_disk', 'ram', 'cores', 'disk',
                                                             'runtime_state')
+
+    @classmethod
+    def get_active_state(cls):
+        return Instance.RuntimeStates.ACTIVE
 
 
 class Backup(structure_models.SubResource):
