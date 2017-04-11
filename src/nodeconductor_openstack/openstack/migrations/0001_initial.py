@@ -162,8 +162,8 @@ class Migration(migrations.Migration):
                 ('customer', models.ForeignKey(verbose_name='organization', to='structure.Customer')),
             ],
             options={
-                'verbose_name': 'OpenStack service',
-                'verbose_name_plural': 'OpenStack services',
+                'verbose_name': 'OpenStack provider',
+                'verbose_name_plural': 'OpenStack providers',
             },
             bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),
@@ -176,8 +176,8 @@ class Migration(migrations.Migration):
             ],
             options={
                 'abstract': False,
-                'verbose_name': 'OpenStack service project link',
-                'verbose_name_plural': 'OpenStack service project links',
+                'verbose_name': 'OpenStack provider project link',
+                'verbose_name_plural': 'OpenStack provider project links',
             },
             bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),

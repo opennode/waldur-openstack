@@ -22,8 +22,8 @@ class OpenStackTenantService(structure_models.Service):
 
     class Meta:
         unique_together = ('customer', 'settings')
-        verbose_name = 'OpenStackTenant service'
-        verbose_name_plural = 'OpenStackTenant services'
+        verbose_name = 'OpenStackTenant provider'
+        verbose_name_plural = 'OpenStackTenant providers'
 
     @classmethod
     def get_url_name(cls):
@@ -34,8 +34,8 @@ class OpenStackTenantServiceProjectLink(structure_models.ServiceProjectLink):
     service = models.ForeignKey(OpenStackTenantService)
 
     class Meta(structure_models.ServiceProjectLink.Meta):
-        verbose_name = 'OpenStackTenant service project link'
-        verbose_name_plural = 'OpenStackTenant service project links'
+        verbose_name = 'OpenStackTenant provider project link'
+        verbose_name_plural = 'OpenStackTenant provider project links'
 
     @classmethod
     def get_url_name(cls):
