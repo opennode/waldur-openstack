@@ -65,6 +65,7 @@ class VolumeFilter(structure_filters.BaseResourceFilter):
 class SnapshotFilter(structure_filters.BaseResourceFilter):
     source_volume_uuid = django_filters.UUIDFilter(name='source_volume__uuid')
     source_volume = core_filters.URLFilter(view_name='openstacktenant-volume-detail', name='source_volume__uuid')
+    backup_uuid = django_filters.UUIDFilter(name='backups__uuid')
 
     snapshot_schedule = core_filters.URLFilter(
         view_name='openstacktenant-snapshot-schedule-detail', name='snapshot_schedule__uuid')
