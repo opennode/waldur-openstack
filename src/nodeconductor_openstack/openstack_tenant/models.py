@@ -204,7 +204,7 @@ class Instance(structure_models.VirtualMachine):
 
     class RuntimeStates(object):
         # All possible OpenStack Instance states on backend.
-        # See http://developer.openstack.org/api-ref-compute-v2.html
+        # See https://docs.openstack.org/developer/nova/vmstates.html
         ACTIVE = 'ACTIVE'
         BUILDING = 'BUILDING'
         DELETED = 'DELETED'
@@ -288,8 +288,12 @@ class Instance(structure_models.VirtualMachine):
                                                             'runtime_state')
 
     @classmethod
-    def get_active_state(cls):
+    def get_online_state(cls):
         return Instance.RuntimeStates.ACTIVE
+
+    @classmethod
+    def get_offline_state(cls):
+        return Instance.RuntimeStates.SHUTOFF
 
 
 class Backup(structure_models.SubResource):
