@@ -351,7 +351,7 @@ class BaseOpenStackBackend(ServiceBackend):
             volumes = cinder.volumes.list()
             snapshots = cinder.volume_snapshots.list()
             instances = nova.servers.list()
-            security_groups = nova.security_groups.list()
+            security_groups = neutron.list_security_groups()['security_groups']
             floating_ips = neutron.list_floatingips(tenant_id=tenant_backend_id)['floatingips']
             networks = neutron.list_networks(tenant_id=tenant_backend_id)['networks']
             subnets = neutron.list_subnets(tenant_id=tenant_backend_id)['subnets']
@@ -381,8 +381,37 @@ class BaseOpenStackBackend(ServiceBackend):
             Tenant.Quotas.snapshots: len(snapshots),
             Tenant.Quotas.instances: len(instances),
             Tenant.Quotas.security_group_count: len(security_groups),
-            Tenant.Quotas.security_group_rule_count: len(sum([sg.rules for sg in security_groups], [])),
+            Tenant.Quotas.security_group_rule_count: len(sum([sg['security_group_rules']
+                                                              for sg in security_groups], [])),
             Tenant.Quotas.floating_ip_count: len(floating_ips),
             Tenant.Quotas.network_count: len(networks),
             Tenant.Quotas.subnet_count: len(subnets),
         }
+
+    def _normalize_security_group_rule(self, rule):
+        if rule['protocol'] is None:
+            rule['protocol'] = ''
+
+        if rule['remote_ip_prefix'] is None:
+            rule['remote_ip_prefix'] = '0.0.0.0/0'
+
+        return rule
+
+    def _extract_security_group_rules(self, security_group, backend_security_group):
+        backend_rules = backend_security_group['security_group_rules']
+        cur_rules = {rule.backend_id: rule for rule in security_group.rules.all()}
+        for backend_rule in backend_rules:
+            # Currently we support only rules for incoming traffic
+            if backend_rule['direction'] != 'ingress':
+                continue
+            cur_rules.pop(backend_rule['id'], None)
+            backend_rule = self._normalize_security_group_rule(backend_rule)
+            security_group.rules.update_or_create(
+                backend_id=backend_rule['id'],
+                defaults={
+                    'from_port': backend_rule['port_range_min'],
+                    'to_port': backend_rule['port_range_max'],
+                    'protocol': backend_rule['protocol'],
+                    'cidr': backend_rule['remote_ip_prefix'],
+                })
+        security_group.rules.filter(backend_id__in=cur_rules.keys()).delete()

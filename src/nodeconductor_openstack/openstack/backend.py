@@ -161,34 +161,15 @@ class OpenStackBackend(BaseOpenStackBackend):
         return {p.backend_id: p for p in model.objects.filter(settings=self.settings)}
 
     def _are_rules_equal(self, backend_rule, nc_rule):
-        if backend_rule['from_port'] != nc_rule.from_port:
+        if backend_rule['port_range_min'] != nc_rule.from_port:
             return False
-        if backend_rule['to_port'] != nc_rule.to_port:
+        if backend_rule['port_range_max'] != nc_rule.to_port:
             return False
-        if backend_rule['ip_protocol'] != nc_rule.protocol:
+        if backend_rule['protocol'] != nc_rule.protocol:
             return False
-        if backend_rule['ip_range'].get('cidr', '') != nc_rule.cidr:
+        if backend_rule['remote_ip_prefix'] != nc_rule.cidr:
             return False
         return True
-
-    def _are_security_groups_equal(self, backend_security_group, nc_security_group):
-        if backend_security_group.name != nc_security_group.name:
-            return False
-        if len(backend_security_group.rules) != nc_security_group.rules.count():
-            return False
-        for backend_rule, nc_rule in zip(backend_security_group.rules, nc_security_group.rules.all()):
-            if not self._are_rules_equal(backend_rule, nc_rule):
-                return False
-        return True
-
-    def _normalize_security_group_rule(self, rule):
-        if rule['ip_protocol'] is None:
-            rule['ip_protocol'] = ''
-
-        if 'cidr' not in rule['ip_range']:
-            rule['ip_range']['cidr'] = '0.0.0.0/0'
-
-        return rule
 
     def pull_flavors(self):
         nova = self.nova_admin_client
@@ -456,25 +437,6 @@ class OpenStackBackend(BaseOpenStackBackend):
             setattr(security_group, field, value)
 
         return security_group
-
-    def _extract_security_group_rules(self, security_group, backend_security_group):
-        backend_rules = backend_security_group['security_group_rules']
-        cur_rules = {rule.backend_id: rule for rule in security_group.rules.all()}
-        for backend_rule in backend_rules:
-            # Currently we support only rules for incoming traffic
-            if backend_rule['direction'] != 'ingress':
-                continue
-            cur_rules.pop(backend_rule['id'], None)
-            security_group.rules.update_or_create(
-                backend_id=backend_rule['id'],
-                defaults={
-                    'from_port': backend_rule['port_range_min'],
-                    'to_port': backend_rule['port_range_max'],
-                    'protocol': backend_rule['protocol'] if backend_rule['protocol'] is not None else '',
-                    'cidr': backend_rule['remote_ip_prefix']
-                    if backend_rule['remote_ip_prefix'] is not None else '0.0.0.0/0',
-                })
-        security_group.rules.filter(backend_id__in=cur_rules.keys()).delete()
 
     def pull_networks(self, tenants=None):
         neutron = self.neutron_client
@@ -816,20 +778,20 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def delete_tenant_security_groups(self, tenant):
-        nova = self.nova_client
+        neutron = self.neutron_client
 
         try:
-            sgroups = nova.security_groups.list()
-        except nova_exceptions.ClientException as e:
+            sgroups = neutron.list_security_groups(tenant_id=tenant.backend_id)['security_groups']
+        except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
         for sgroup in sgroups:
-            logger.info("Deleting security group %s from tenant %s", sgroup.id, tenant.backend_id)
+            logger.info("Deleting security group %s from tenant %s", sgroup['id'], tenant.backend_id)
             try:
-                sgroup.delete()
-            except nova_exceptions.NotFound:
-                logger.debug("Security group %s is already gone from tenant %s", sgroup.id, tenant.backend_id)
-            except nova_exceptions.ClientException as e:
+                neutron.delete_security_group(sgroup['id'])
+            except neutron_exceptions.NotFound:
+                logger.debug("Security group %s is already gone from tenant %s", sgroup['id'], tenant.backend_id)
+            except neutron_exceptions.NeutronClientException as e:
                 six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
@@ -948,16 +910,21 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def push_security_group_rules(self, security_group):
-        nova = self.nova_client
-        backend_security_group = nova.security_groups.get(group_id=security_group.backend_id)
+        neutron = self.neutron_client
+
+        try:
+            backend_security_group = neutron.show_security_group(security_group.backend_id)['security_group']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
         backend_rules = {
             rule['id']: self._normalize_security_group_rule(rule)
-            for rule in backend_security_group.rules
+            for rule in backend_security_group['security_group_rules']
         }
 
         # list of nc rules, that do not exist in openstack
         nonexistent_rules = []
-        # list of nc rules, that have wrong parameters in in openstack
+        # list of nc rules, that have wrong parameters in openstack
         unsynchronized_rules = []
         # list of os rule ids, that exist in openstack and do not exist in nc
         extra_rule_ids = backend_rules.keys()
@@ -975,8 +942,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         for backend_rule_id in extra_rule_ids:
             logger.debug('About to delete security group rule with id %s in backend', backend_rule_id)
             try:
-                nova.security_group_rules.delete(backend_rule_id)
-            except nova_exceptions.ClientException:
+                neutron.delete_security_group_rule(backend_rule_id)
+            except neutron_exceptions.NeutronClientException:
                 logger.exception('Failed to remove rule with id %s from security group %s in backend',
                                  backend_rule_id, security_group)
             else:
@@ -986,8 +953,8 @@ class OpenStackBackend(BaseOpenStackBackend):
         for nc_rule in unsynchronized_rules:
             logger.debug('About to delete security group rule with id %s', nc_rule.backend_id)
             try:
-                nova.security_group_rules.delete(nc_rule.backend_id)
-            except nova_exceptions.ClientException:
+                neutron.delete_security_group_rule(nc_rule.backend_id)
+            except neutron_exceptions.NeutronClientException:
                 logger.exception('Failed to remove rule with id %s from security group %s in backend',
                                  nc_rule.backend_id, security_group)
             else:
@@ -1004,14 +971,16 @@ class OpenStackBackend(BaseOpenStackBackend):
                 else:
                     nc_rule_protocol = nc_rule.protocol
 
-                nova.security_group_rules.create(
-                    parent_group_id=security_group.backend_id,
-                    ip_protocol=nc_rule_protocol,
-                    from_port=nc_rule.from_port,
-                    to_port=nc_rule.to_port,
-                    cidr=nc_rule.cidr,
-                )
-            except nova_exceptions.ClientException as e:
+                neutron.create_security_group_rule({'security_group_rule': {
+                    'security_group_id': security_group.backend_id,
+                    # XXX: Currently only security groups for incoming traffic can be created
+                    'direction': 'ingress',
+                    'protocol': nc_rule_protocol,
+                    'port_range_min': nc_rule.from_port,
+                    'port_range_max': nc_rule.to_port,
+                    'remote_ip_prefix': nc_rule.cidr,
+                }})
+            except neutron_exceptions.NeutronClientException as e:
                 logger.exception('Failed to create rule %s for security group %s in backend',
                                  nc_rule, security_group)
                 six.reraise(OpenStackBackendError, e)
@@ -1020,34 +989,35 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action()
     def create_security_group(self, security_group):
-        nova = self.nova_client
+        neutron = self.neutron_client
         try:
-            backend_security_group = nova.security_groups.create(
-                name=security_group.name, description=security_group.description)
-            security_group.backend_id = backend_security_group.id
-            security_group.save()
+            backend_security_group = neutron.create_security_group({'security_group': {
+                'name': security_group.name,
+                'description': security_group.description,
+            }})['security_group']
+            security_group.backend_id = backend_security_group['id']
+            security_group.save(update_fields=['backend_id'])
             self.push_security_group_rules(security_group)
-        except nova_exceptions.ClientException as e:
+        except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action()
     def delete_security_group(self, security_group):
-        nova = self.nova_client
+        neutron = self.neutron_client
         try:
-            nova.security_groups.delete(security_group.backend_id)
-        except nova_exceptions.ClientException as e:
+            neutron.delete_security_group(security_group.backend_id)
+        except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
         security_group.decrease_backend_quotas_usage()
 
     @log_backend_action()
     def update_security_group(self, security_group):
-        nova = self.nova_client
+        neutron = self.neutron_client
+        data = {'name': security_group.name, 'description': security_group.description}
         try:
-            backend_security_group = nova.security_groups.find(id=security_group.backend_id)
-            nova.security_groups.update(
-                backend_security_group, name=security_group.name, description=security_group.description)
+            neutron.update_security_group(security_group.backend_id, {'security_group': data})
             self.push_security_group_rules(security_group)
-        except nova_exceptions.ClientException as e:
+        except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
     @log_backend_action('create external network for tenant')
