@@ -2,7 +2,7 @@ from django.utils import six
 from rest_framework import decorators, response, status, exceptions, serializers as rf_serializers
 
 from nodeconductor.core import exceptions as core_exceptions, validators as core_validators
-from nodeconductor.structure import views as structure_views
+from nodeconductor.structure import views as structure_views, filters as structure_filters
 
 from . import models, serializers, filters, executors
 
@@ -287,6 +287,9 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     queryset = models.Instance.objects.all()
     serializer_class = serializers.InstanceSerializer
     filter_class = filters.InstanceFilter
+    filter_backends = structure_views.ResourceViewSet.filter_backends + (
+        structure_filters.StartTimeFilter,
+    )
     pull_executor = executors.InstancePullExecutor
     pull_serializer_class = rf_serializers.Serializer
 
