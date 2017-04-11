@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AlterModelOptions(
             name='openstacktenantservice',
-            options={'verbose_name': 'OpenStackTenant service', 'verbose_name_plural': 'OpenStackTenant services'},
+            options={'verbose_name': 'OpenStackTenant provider', 'verbose_name_plural': 'OpenStackTenant providers'},
         ),
     ]

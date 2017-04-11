@@ -39,8 +39,8 @@ class Migration(migrations.Migration):
             ],
             options={
                 'abstract': False,
-                'verbose_name': 'OpenStackTenant service project link',
-                'verbose_name_plural': 'OpenStackTenant service project links',
+                'verbose_name': 'OpenStackTenant provider project link',
+                'verbose_name_plural': 'OpenStackTenant provider project links',
             },
             bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),

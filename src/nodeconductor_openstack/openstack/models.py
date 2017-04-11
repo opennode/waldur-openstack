@@ -28,8 +28,8 @@ class OpenStackService(structure_models.Service):
 
     class Meta:
         unique_together = ('customer', 'settings')
-        verbose_name = 'OpenStack service'
-        verbose_name_plural = 'OpenStack services'
+        verbose_name = 'OpenStack provider'
+        verbose_name_plural = 'OpenStack providers'
 
     class Quotas(QuotaModelMixin.Quotas):
         tenant_count = CounterQuotaField(
@@ -56,8 +56,8 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
     service = models.ForeignKey(OpenStackService)
 
     class Meta(structure_models.ServiceProjectLink.Meta):
-        verbose_name = 'OpenStack service project link'
-        verbose_name_plural = 'OpenStack service project links'
+        verbose_name = 'OpenStack provider project link'
+        verbose_name_plural = 'OpenStack provider project links'
 
     @classmethod
     def get_url_name(cls):
