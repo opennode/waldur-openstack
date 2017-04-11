@@ -210,50 +210,26 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         return floating_ip
 
     def pull_security_groups(self):
-        nova = self.nova_client
+        neutron = self.neutron_client
         try:
-            security_groups = nova.security_groups.list()
-        except nova_exceptions.ClientException as e:
+            security_groups = neutron.list_security_groups(tenant_id=self.tenant_id)['security_groups']
+        except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
         with transaction.atomic():
             cur_security_groups = self._get_current_properties(models.SecurityGroup)
             for backend_security_group in security_groups:
-                cur_security_groups.pop(backend_security_group.id, None)
+                cur_security_groups.pop(backend_security_group['id'], None)
                 security_group, _ = models.SecurityGroup.objects.update_or_create(
                     settings=self.settings,
-                    backend_id=backend_security_group.id,
+                    backend_id=backend_security_group['id'],
                     defaults={
-                        'name': backend_security_group.name,
-                        'description': backend_security_group.description,
+                        'name': backend_security_group['name'],
+                        'description': backend_security_group['description'],
                     })
-                self._pull_security_group_rules(security_group, backend_security_group)
+                self._extract_security_group_rules(security_group, backend_security_group)
 
             models.SecurityGroup.objects.filter(backend_id__in=cur_security_groups.keys()).delete()
-
-    def _pull_security_group_rules(self, security_group, backend_security_group):
-        backend_rules = [self._normalize_security_group_rule(r) for r in backend_security_group.rules]
-        cur_rules = {rule.backend_id: rule for rule in security_group.rules.all()}
-        for backend_rule in backend_rules:
-            cur_rules.pop(backend_rule['id'], None)
-            security_group.rules.update_or_create(
-                backend_id=backend_rule['id'],
-                defaults={
-                    'from_port': backend_rule['from_port'],
-                    'to_port': backend_rule['to_port'],
-                    'protocol': backend_rule['ip_protocol'],
-                    'cidr': backend_rule['ip_range']['cidr'],
-                })
-        security_group.rules.filter(backend_id__in=cur_rules.keys()).delete()
-
-    def _normalize_security_group_rule(self, rule):
-        if rule['ip_protocol'] is None:
-            rule['ip_protocol'] = ''
-
-        if 'cidr' not in rule['ip_range']:
-            rule['ip_range']['cidr'] = '0.0.0.0/0'
-
-        return rule
 
     def pull_quotas(self):
         for quota_name, limit in self.get_tenant_quotas_limits(self.tenant_id).items():

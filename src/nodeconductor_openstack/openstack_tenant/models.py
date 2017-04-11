@@ -22,8 +22,8 @@ class OpenStackTenantService(structure_models.Service):
 
     class Meta:
         unique_together = ('customer', 'settings')
-        verbose_name = 'OpenStackTenant service'
-        verbose_name_plural = 'OpenStackTenant services'
+        verbose_name = 'OpenStackTenant provider'
+        verbose_name_plural = 'OpenStackTenant providers'
 
     @classmethod
     def get_url_name(cls):
@@ -34,8 +34,8 @@ class OpenStackTenantServiceProjectLink(structure_models.ServiceProjectLink):
     service = models.ForeignKey(OpenStackTenantService)
 
     class Meta(structure_models.ServiceProjectLink.Meta):
-        verbose_name = 'OpenStackTenant service project link'
-        verbose_name_plural = 'OpenStackTenant service project links'
+        verbose_name = 'OpenStackTenant provider project link'
+        verbose_name_plural = 'OpenStackTenant provider project links'
 
     @classmethod
     def get_url_name(cls):
@@ -200,11 +200,11 @@ class SnapshotRestoration(core_models.UuidMixin, TimeStampedModel):
         project_path = 'snapshot__service_project_link__project'
 
 
-class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMixin, structure_models.NewResource):
+class Instance(structure_models.VirtualMachine):
 
     class RuntimeStates(object):
         # All possible OpenStack Instance states on backend.
-        # See http://developer.openstack.org/api-ref-compute-v2.html
+        # See https://docs.openstack.org/developer/nova/vmstates.html
         ACTIVE = 'ACTIVE'
         BUILDING = 'BUILDING'
         DELETED = 'DELETED'
@@ -286,6 +286,14 @@ class Instance(structure_models.VirtualMachineMixin, core_models.RuntimeStateMix
     def get_backend_fields(cls):
         return super(Instance, cls).get_backend_fields() + ('flavor_name', 'flavor_disk', 'ram', 'cores', 'disk',
                                                             'runtime_state')
+
+    @classmethod
+    def get_online_state(cls):
+        return Instance.RuntimeStates.ACTIVE
+
+    @classmethod
+    def get_offline_state(cls):
+        return Instance.RuntimeStates.SHUTOFF
 
 
 class Backup(structure_models.SubResource):
