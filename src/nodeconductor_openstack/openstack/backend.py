@@ -976,8 +976,8 @@ class OpenStackBackend(BaseOpenStackBackend):
                     # XXX: Currently only security groups for incoming traffic can be created
                     'direction': 'ingress',
                     'protocol': nc_rule_protocol,
-                    'port_range_min': nc_rule.from_port,
-                    'port_range_max': nc_rule.to_port,
+                    'port_range_min': nc_rule.from_port if nc_rule.from_port != -1 else None,
+                    'port_range_max': nc_rule.to_port if nc_rule.to_port != -1 else None,
                     'remote_ip_prefix': nc_rule.cidr,
                 }})
             except neutron_exceptions.NeutronClientException as e:

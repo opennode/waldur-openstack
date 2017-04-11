@@ -395,6 +395,12 @@ class BaseOpenStackBackend(ServiceBackend):
         if rule['remote_ip_prefix'] is None:
             rule['remote_ip_prefix'] = '0.0.0.0/0'
 
+        if rule['port_range_min'] is None:
+            rule['port_range_min'] = -1
+
+        if rule['port_range_max'] is None:
+            rule['port_range_max'] = -1
+
         return rule
 
     def _extract_security_group_rules(self, security_group, backend_security_group):
