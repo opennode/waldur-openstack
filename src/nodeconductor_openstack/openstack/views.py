@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.utils import six
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import viewsets, decorators, response, permissions, status, serializers as rf_serializers
+from rest_framework import viewsets, decorators, response, status, serializers as rf_serializers
 from rest_framework.exceptions import ValidationError
 
 from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
@@ -222,7 +222,6 @@ class IpMappingViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.IpMappingSerializer
     lookup_field = 'uuid'
     filter_backends = (structure_filters.GenericRoleFilter, DjangoFilterBackend)
-    permission_classes = (permissions.IsAuthenticated, permissions.DjangoObjectPermissions)
     filter_class = filters.IpMappingFilter
 
 
