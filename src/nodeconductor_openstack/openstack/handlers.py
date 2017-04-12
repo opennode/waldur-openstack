@@ -6,7 +6,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
-from nodeconductor.structure import filters as structure_filters, models as structure_models
+from nodeconductor.structure import filters as structure_filters
+from nodeconductor.structure import permissions as structure_permissions
 
 from .log import event_logger
 from .models import SecurityGroup, SecurityGroupRule, Tenant
@@ -72,7 +73,7 @@ def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
     tenants = Tenant.objects.filter(**{sender.__name__.lower(): structure})
     ssh_keys = core_models.SshPublicKey.objects.filter(user=user)
     for tenant in tenants:
-        if user.has_perm('openstack.change_tenant', tenant):
+        if structure_permissions._has_admin_access(user, tenant.project):
             continue  # no need to delete ssh keys if user still have permissions for tenant.
         serialized_tenant = core_utils.serialize_instance(tenant)
         for key in ssh_keys:
@@ -86,7 +87,7 @@ def remove_ssh_key_from_all_tenants_on_it_deletion(sender, instance, **kwargs):
     user = ssh_key.user
     tenants = structure_filters.filter_queryset_for_user(Tenant.objects.all(), user)
     for tenant in tenants:
-        if not user.has_perm('openstack.change_tenant', tenant):
+        if not structure_permissions._has_admin_access(user, tenant.project):
             continue
         serialized_tenant = core_utils.serialize_instance(tenant)
         core_tasks.BackendMethodTask().delay(
