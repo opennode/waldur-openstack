@@ -330,12 +330,10 @@ class Instance(structure_models.VirtualMachine):
 
         self.service_project_link.add_quota_usage(self.service_project_link.Quotas.ram, -self.ram)
         self.service_project_link.add_quota_usage(self.service_project_link.Quotas.vcpu, -self.cores)
-        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.storage, -self.disk)
 
         openstack_spl = self.service_project_link.service.settings.scope.service_project_link
         openstack_spl.add_quota_usage(openstack_spl.Quotas.ram, -self.ram)
         openstack_spl.add_quota_usage(openstack_spl.Quotas.vcpu, -self.cores)
-        openstack_spl.add_quota_usage(openstack_spl.Quotas.storage, -self.disk)
 
     @property
     def floating_ips(self):
