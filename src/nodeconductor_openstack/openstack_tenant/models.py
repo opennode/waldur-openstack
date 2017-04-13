@@ -133,8 +133,8 @@ class Volume(structure_models.Storage):
     def increase_backend_quotas_usage(self, validate=True):
         """
         Quotas have to be increased in the following order: 
-        1) Package template quotas stored in service_project_link.service.settings
-        2) Service project link quotas
+        1) service_project_link.service.settings quotas.
+        2) Service project link quotas.
         3) Tenant service project link quotas.
         """
         settings = self.service_project_link.service.settings
@@ -196,8 +196,8 @@ class Snapshot(structure_models.Storage):
     def increase_backend_quotas_usage(self, validate=True):
         """
         Quotas have to be increased in the following order: 
-        1) Package template quotas stored in service_project_link.service.settings
-        2) Service project link quotas
+        1) service_project_link.service.settings quotas.
+        2) Service project link quotas.
         3) Tenant service project link quotas.
         """
         settings = self.service_project_link.service.settings
@@ -305,9 +305,9 @@ class Instance(structure_models.VirtualMachine):
     def increase_backend_quotas_usage(self, validate=True):
         """
         Quotas have to be increased in the following order: 
-        1) Package template quotas stored in service_project_link.service.settings
-        2) Service project link quotas
-        3) Tenant service project link quotas.
+        1) service_project_link.service.settings quotas.
+        2) Service project link quotas.
+        3) Tenant service project link quotas if scope is present.
         """
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.instances, 1, validate=validate)
@@ -318,9 +318,11 @@ class Instance(structure_models.VirtualMachine):
         spl.add_quota_usage(spl.Quotas.ram, self.ram, validate=validate)
         spl.add_quota_usage(spl.Quotas.vcpu, self.cores, validate=validate)
 
-        openstack_spl = self.service_project_link.service.settings.scope.service_project_link
-        openstack_spl.add_quota_usage(openstack_spl.Quotas.ram, self.ram, validate=validate)
-        openstack_spl.add_quota_usage(openstack_spl.Quotas.vcpu, self.cores, validate=validate)
+        tenant = self.service_project_link.service.settings.scope
+        if tenant:
+            openstack_spl = tenant.service_project_link
+            openstack_spl.add_quota_usage(openstack_spl.Quotas.ram, self.ram, validate=validate)
+            openstack_spl.add_quota_usage(openstack_spl.Quotas.vcpu, self.cores, validate=validate)
 
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
@@ -331,9 +333,11 @@ class Instance(structure_models.VirtualMachine):
         self.service_project_link.add_quota_usage(self.service_project_link.Quotas.ram, -self.ram)
         self.service_project_link.add_quota_usage(self.service_project_link.Quotas.vcpu, -self.cores)
 
-        openstack_spl = self.service_project_link.service.settings.scope.service_project_link
-        openstack_spl.add_quota_usage(openstack_spl.Quotas.ram, -self.ram)
-        openstack_spl.add_quota_usage(openstack_spl.Quotas.vcpu, -self.cores)
+        tenant = self.service_project_link.service.settings.scope
+        if tenant:
+            openstack_spl = tenant.service_project_link
+            openstack_spl.add_quota_usage(openstack_spl.Quotas.ram, -self.ram)
+            openstack_spl.add_quota_usage(openstack_spl.Quotas.vcpu, -self.cores)
 
     @property
     def floating_ips(self):
