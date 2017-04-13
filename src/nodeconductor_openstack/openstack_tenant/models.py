@@ -30,10 +30,10 @@ class OpenStackTenantService(structure_models.Service):
         return 'openstacktenant'
 
 
-class OpenStackTenantServiceProjectLink(structure_models.ServiceProjectLink):
+class OpenStackTenantServiceProjectLink(structure_models.CloudServiceProjectLink):
     service = models.ForeignKey(OpenStackTenantService)
 
-    class Meta(structure_models.ServiceProjectLink.Meta):
+    class Meta(structure_models.CloudServiceProjectLink.Meta):
         verbose_name = 'OpenStackTenant provider project link'
         verbose_name_plural = 'OpenStackTenant provider project links'
 

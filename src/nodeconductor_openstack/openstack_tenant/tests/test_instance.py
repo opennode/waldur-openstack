@@ -80,7 +80,6 @@ class InstanceCreateTest(test.APITransactionTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-
     @data('instances')
     def test_quota_validation(self, quota_name):
         self.openstack_settings.quotas.filter(name=quota_name).update(limit=0)
