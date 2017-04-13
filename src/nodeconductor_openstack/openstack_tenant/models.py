@@ -285,7 +285,7 @@ class Instance(structure_models.VirtualMachine):
     @classmethod
     def get_backend_fields(cls):
         return super(Instance, cls).get_backend_fields() + ('flavor_name', 'flavor_disk', 'ram', 'cores', 'disk',
-                                                            'runtime_state', 'error_message')
+                                                            'runtime_state')
 
     @classmethod
     def get_online_state(cls):
