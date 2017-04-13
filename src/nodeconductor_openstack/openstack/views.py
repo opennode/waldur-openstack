@@ -217,14 +217,6 @@ class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetacl
     set_rules_serializer_class = serializers.SecurityGroupRuleUpdateSerializer
 
 
-class IpMappingViewSet(viewsets.ModelViewSet):
-    queryset = models.IpMapping.objects.all()
-    serializer_class = serializers.IpMappingSerializer
-    lookup_field = 'uuid'
-    filter_backends = (structure_filters.GenericRoleFilter, DjangoFilterBackend)
-    filter_class = filters.IpMappingFilter
-
-
 class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                            structure_views.ResourceViewSet)):
     queryset = models.FloatingIP.objects.all()
