@@ -1139,6 +1139,12 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             instance.runtime_state = backend_instance.status
             instance.save(update_fields=['runtime_state'])
 
+        if hasattr(backend_instance, 'fault'):
+            error_message = backend_instance.fault['message']
+            if instance.error_message != error_message:
+                instance.error_message = error_message
+                instance.save(update_fields=['error_message'])
+
     @log_backend_action()
     def confirm_instance_resize(self, instance):
         nova = self.nova_client
