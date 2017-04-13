@@ -1,6 +1,5 @@
 from django.test import TestCase
 from mock import patch
-from permission.utils.autodiscover import autodiscover
 
 from nodeconductor.core import utils as core_utils
 from nodeconductor.structure import models as structure_models
@@ -13,7 +12,6 @@ from .. import factories
 class SshKeysHandlersTest(TestCase):
 
     def setUp(self):
-        autodiscover()  # permissions could be not discovered in unittests
         self.user = structure_factories.UserFactory()
         self.ssh_key = structure_factories.SshPublicKeyFactory(user=self.user)
         self.tenant = factories.TenantFactory()
