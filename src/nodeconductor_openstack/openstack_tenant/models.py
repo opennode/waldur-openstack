@@ -12,8 +12,6 @@ from model_utils.models import TimeStampedModel
 from nodeconductor.core import models as core_models
 from nodeconductor.logging.loggers import LoggableMixin
 from nodeconductor.structure import models as structure_models, utils as structure_utils
-from nodeconductor.quotas.models import QuotaModelMixin
-from nodeconductor.quotas.fields import QuotaField
 
 from nodeconductor_openstack.openstack_base import models as openstack_base_models
 
@@ -38,11 +36,6 @@ class OpenStackTenantServiceProjectLink(structure_models.ServiceProjectLink):
     class Meta(structure_models.ServiceProjectLink.Meta):
         verbose_name = 'OpenStackTenant provider project link'
         verbose_name_plural = 'OpenStackTenant provider project links'
-
-    class Quotas(QuotaModelMixin.Quotas):
-        vcpu = QuotaField(default_limit=100)
-        ram = QuotaField(default_limit=256000)
-        storage = QuotaField(default_limit=5120000)
 
     @classmethod
     def get_url_name(cls):

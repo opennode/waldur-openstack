@@ -59,11 +59,6 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
         verbose_name = 'OpenStack provider project link'
         verbose_name_plural = 'OpenStack provider project links'
 
-    class Quotas(QuotaModelMixin.Quotas):
-        vcpu = QuotaField(default_limit=100)
-        ram = QuotaField(default_limit=256000)
-        storage = QuotaField(default_limit=5120000)
-
     @classmethod
     def get_url_name(cls):
         return 'openstack-spl'
