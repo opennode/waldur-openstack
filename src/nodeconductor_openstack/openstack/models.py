@@ -131,21 +131,6 @@ class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):
     security_group = models.ForeignKey(SecurityGroup, related_name='rules')
 
 
-class IpMapping(core_models.UuidMixin):
-
-    class Permissions(object):
-        project_path = 'project'
-        customer_path = 'project__customer'
-
-    public_ip = models.GenericIPAddressField(protocol='IPv4')
-    private_ip = models.GenericIPAddressField(protocol='IPv4')
-    project = models.ForeignKey(structure_models.Project, related_name='+')
-
-    @classmethod
-    def get_url_name(cls):
-        return 'openstack-ip-mapping'
-
-
 @python_2_unicode_compatible
 class FloatingIP(core_models.RuntimeStateMixin, structure_models.SubResource):
     service_project_link = models.ForeignKey(

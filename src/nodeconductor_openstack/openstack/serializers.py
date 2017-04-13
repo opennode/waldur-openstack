@@ -196,18 +196,6 @@ class ExternalNetworkSerializer(serializers.Serializer):
         return attrs
 
 
-class IpMappingSerializer(core_serializers.AugmentedSerializerMixin,
-                          serializers.HyperlinkedModelSerializer):
-
-    class Meta:
-        model = models.IpMapping
-        fields = ('url', 'uuid', 'public_ip', 'private_ip', 'project')
-        extra_kwargs = {
-            'url': {'lookup_field': 'uuid'},
-            'project': {'lookup_field': 'uuid', 'view_name': 'project-detail'}
-        }
-
-
 class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',

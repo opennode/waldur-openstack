@@ -21,18 +21,6 @@ class SecurityGroupFilter(structure_filters.BaseResourceFilter):
         model = models.SecurityGroup
 
 
-class IpMappingFilter(django_filters.FilterSet):
-    project = django_filters.UUIDFilter(name='project__uuid')
-
-    class Meta(object):
-        model = models.IpMapping
-        fields = [
-            'project',
-            'private_ip',
-            'public_ip',
-        ]
-
-
 class FloatingIPFilter(structure_filters.BaseResourceFilter):
     tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
     tenant = core_filters.URLFilter(view_name='openstack-tenant-detail', name='tenant__uuid')
