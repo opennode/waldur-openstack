@@ -12,6 +12,8 @@ from model_utils.models import TimeStampedModel
 from nodeconductor.core import models as core_models
 from nodeconductor.logging.loggers import LoggableMixin
 from nodeconductor.structure import models as structure_models, utils as structure_utils
+from nodeconductor.quotas.models import QuotaModelMixin
+from nodeconductor.quotas.fields import QuotaField
 
 from nodeconductor_openstack.openstack_base import models as openstack_base_models
 
@@ -36,6 +38,11 @@ class OpenStackTenantServiceProjectLink(structure_models.ServiceProjectLink):
     class Meta(structure_models.ServiceProjectLink.Meta):
         verbose_name = 'OpenStackTenant provider project link'
         verbose_name_plural = 'OpenStackTenant provider project links'
+
+    class Quotas(QuotaModelMixin.Quotas):
+        vcpu = QuotaField(default_limit=100)
+        ram = QuotaField(default_limit=256000)
+        storage = QuotaField(default_limit=5120000)
 
     @classmethod
     def get_url_name(cls):
@@ -131,14 +138,32 @@ class Volume(structure_models.Storage):
     tracker = FieldTracker()
 
     def increase_backend_quotas_usage(self, validate=True):
+        """
+        Quotas have to be increased in the following order: 
+        1) Package template quotas stored in service_project_link.service.settings
+        2) Service project link quotas
+        3) Tenant service project link quotas.
+        """
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.volumes, 1, validate=validate)
         settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
+
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.storage, self.size, validate=validate)
+
+        openstack_spl = self.service_project_link.service.settings.scope.service_project_link
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.storage, self.size, validate=validate)
 
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.volumes, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
+
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.storage, -self.size)
+
+        openstack_spl = self.service_project_link.service.settings.scope.service_project_link
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.storage, -self.size)
 
     @classmethod
     def get_url_name(cls):
@@ -176,14 +201,32 @@ class Snapshot(structure_models.Storage):
         return 'openstacktenant-snapshot'
 
     def increase_backend_quotas_usage(self, validate=True):
+        """
+        Quotas have to be increased in the following order: 
+        1) Package template quotas stored in service_project_link.service.settings
+        2) Service project link quotas
+        3) Tenant service project link quotas.
+        """
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.snapshots, 1, validate=validate)
         settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
+
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.storage, self.size, validate=validate)
+
+        openstack_spl = self.service_project_link.service.settings.scope.service_project_link
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.storage, self.size, validate=validate)
 
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.snapshots, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
+
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.storage, -self.size)
+
+        openstack_spl = self.service_project_link.service.settings.scope.service_project_link
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.storage, -self.size)
 
     @classmethod
     def get_backend_fields(cls):
@@ -267,16 +310,39 @@ class Instance(structure_models.VirtualMachine):
                 return structure_utils.get_coordinates_by_ip(hostname)
 
     def increase_backend_quotas_usage(self, validate=True):
+        """
+        Quotas have to be increased in the following order: 
+        1) Package template quotas stored in service_project_link.service.settings
+        2) Service project link quotas
+        3) Tenant service project link quotas.
+        """
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.instances, 1, validate=validate)
         settings.add_quota_usage(settings.Quotas.ram, self.ram, validate=validate)
         settings.add_quota_usage(settings.Quotas.vcpu, self.cores, validate=validate)
+
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.ram, self.ram, validate=validate)
+        spl.add_quota_usage(spl.Quotas.vcpu, self.cores, validate=validate)
+
+        openstack_spl = self.service_project_link.service.settings.scope.service_project_link
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.ram, self.ram, validate=validate)
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.vcpu, self.cores, validate=validate)
 
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.instances, -1)
         settings.add_quota_usage(settings.Quotas.ram, -self.ram)
         settings.add_quota_usage(settings.Quotas.vcpu, -self.cores)
+
+        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.ram, -self.ram)
+        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.vcpu, -self.cores)
+        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.storage, -self.disk)
+
+        openstack_spl = self.service_project_link.service.settings.scope.service_project_link
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.ram, -self.ram)
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.vcpu, -self.cores)
+        openstack_spl.add_quota_usage(openstack_spl.Quotas.storage, -self.disk)
 
     @property
     def floating_ips(self):

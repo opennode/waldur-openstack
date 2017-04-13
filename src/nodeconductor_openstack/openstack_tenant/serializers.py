@@ -215,8 +215,15 @@ class VolumeExtendSerializer(serializers.Serializer):
     @transaction.atomic
     def update(self, instance, validated_data):
         new_size = validated_data.get('disk_size')
-        instance.service_project_link.service.settings.add_quota_usage(
-            'storage', new_size - instance.size, validate=True)
+
+        settings = instance.service_project_link.service.settings
+        spl = instance.service_project_link
+        scope_spl = instance.service_project_link.service.settings.scope.service_project_link
+
+        # an order must be kept.
+        for quota_holder in [settings, spl, scope_spl]:
+            quota_holder.add_quota_usage(quota_holder.Quotas.storage, new_size - instance.size, validate=True)
+
         instance.size = new_size
         instance.save(update_fields=['size'])
         return instance
@@ -799,8 +806,13 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
         flavor = validated_data.get('flavor')
 
         settings = instance.service_project_link.service.settings
-        settings.add_quota_usage(settings.Quotas.ram, flavor.ram - instance.ram, validate=True)
-        settings.add_quota_usage(settings.Quotas.vcpu, flavor.cores - instance.cores, validate=True)
+        spl = instance.service_project_link
+        scope_spl = instance.service_project_link.service.settings.scope.service_project_link
+
+        # an order must be kept.
+        for quota_holder in [settings, spl, scope_spl]:
+            quota_holder.add_quota_usage(quota_holder.Quotas.ram, flavor.ram - instance.ram, validate=True)
+            quota_holder.add_quota_usage(quota_holder.Quotas.vcpu, flavor.cores - instance.cores, validate=True)
 
         instance.ram = flavor.ram
         instance.cores = flavor.cores
