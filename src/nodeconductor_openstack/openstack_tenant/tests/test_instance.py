@@ -55,6 +55,18 @@ class InstanceCreateTest(test.APITransactionTestCase):
         self.assertEqual(self.openstack_settings.quotas.get(name=Quotas.vcpu).usage, instance.cores)
         self.assertEqual(self.openstack_settings.quotas.get(name=Quotas.instances).usage, 1)
 
+        self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.ram).usage, instance.ram)
+        self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.storage).usage, instance.disk)
+        self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.vcpu).usage, instance.cores)
+
+    @data('storage', 'ram', 'vcpu')
+    def test_instance_cannot_be_created_if_service_project_link_quota_has_been_exceeded(self, quota):
+        payload = self.get_valid_data()
+        self.openstack_spl.set_quota_limit(quota, 0)
+        response = self.client.post(self.url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     @data('instances')
     def test_quota_validation(self, quota_name):
         self.openstack_settings.quotas.filter(name=quota_name).update(limit=0)

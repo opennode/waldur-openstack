@@ -131,21 +131,6 @@ class SecurityGroupRule(openstack_base_models.BaseSecurityGroupRule):
     security_group = models.ForeignKey(SecurityGroup, related_name='rules')
 
 
-class IpMapping(core_models.UuidMixin):
-
-    class Permissions(object):
-        project_path = 'project'
-        customer_path = 'project__customer'
-
-    public_ip = models.GenericIPAddressField(protocol='IPv4')
-    private_ip = models.GenericIPAddressField(protocol='IPv4')
-    project = models.ForeignKey(structure_models.Project, related_name='+')
-
-    @classmethod
-    def get_url_name(cls):
-        return 'openstack-ip-mapping'
-
-
 @python_2_unicode_compatible
 class FloatingIP(core_models.RuntimeStateMixin, structure_models.SubResource):
     service_project_link = models.ForeignKey(
@@ -212,31 +197,6 @@ class Tenant(structure_models.PrivateCloud):
 
     def get_log_fields(self):
         return super(Tenant, self).get_log_fields() + ('extra_configuration',)
-
-    def create_service(self, name):
-        """
-        Create non-admin service from this tenant.
-        """
-        admin_settings = self.service_project_link.service.settings
-        customer = self.service_project_link.project.customer
-        new_settings = structure_models.ServiceSettings.objects.create(
-            name=name,
-            scope=self,
-            customer=customer,
-            type=admin_settings.type,
-            backend_url=admin_settings.backend_url,
-            username=self.user_username,
-            password=self.user_password,
-            options={
-                'tenant_name': self.name,
-                'availability_zone': self.availability_zone,
-                'external_network_id': self.external_network_id
-            }
-        )
-        return OpenStackService.objects.create(
-            settings=new_settings,
-            customer=customer
-        )
 
     @classmethod
     def get_backend_fields(cls):
