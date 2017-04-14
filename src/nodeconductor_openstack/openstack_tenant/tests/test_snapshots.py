@@ -119,6 +119,14 @@ class SnapshotRestoreTest(test.APITransactionTestCase):
         self.assertEqual(snapshot.state, snapshot.States.OK)
         self.assertEqual(expected_volumes_amount, models.Volume.objects.count())
 
+    def test_restore_cannot_be_made_if_service_project_link_storage_quota_exceeds_its_limit(self):
+        self.fixture.spl.set_quota_limit('storage', 0)
+        self.client.force_authenticate(self.fixture.owner)
+
+        response = self._make_restore_request()
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
 
 @ddt
 class SnapshotRetrieveTest(test.APITransactionTestCase):

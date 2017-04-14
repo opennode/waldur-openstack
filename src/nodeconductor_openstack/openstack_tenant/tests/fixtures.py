@@ -8,20 +8,22 @@ from .. import models
 
 
 class OpenStackTenantFixture(ProjectFixture):
-    openstack_fixture = openstack_fixtures.OpenStackFixture()
 
     @cached_property
     def openstack_tenant_service_settings(self):
+        # has to be cached, otherwise all referenced objects are not going to be cached (e.g. scope).
+        openstack_fixture = openstack_fixtures.OpenStackFixture()
+
         return factories.OpenStackTenantServiceSettingsFactory(
-            name=self.openstack_fixture.tenant.name,
-            scope=self.openstack_fixture.tenant,
+            name=openstack_fixture.tenant.name,
+            scope=openstack_fixture.tenant,
             customer=self.customer,
-            backend_url=self.openstack_fixture.openstack_service_settings.backend_url,
-            username=self.openstack_fixture.tenant.user_username,
-            password=self.openstack_fixture.tenant.user_password,
+            backend_url=openstack_fixture.openstack_service_settings.backend_url,
+            username=openstack_fixture.tenant.user_username,
+            password=openstack_fixture.tenant.user_password,
             options={
-                'availability_zone': self.openstack_fixture.tenant.availability_zone,
-                'tenant_id': self.openstack_fixture.tenant.backend_id,
+                'availability_zone': openstack_fixture.tenant.availability_zone,
+                'tenant_id': openstack_fixture.tenant.backend_id,
             },
         )
 

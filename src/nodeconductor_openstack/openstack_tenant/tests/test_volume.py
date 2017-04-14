@@ -33,13 +33,23 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
         self.admined_volume.refresh_from_db()
         self.assertEqual(self.admined_volume.size, new_size)
 
-    def test_user_can_not_extend_volume_if_resulting_quota_usage_is_greater_then_limit(self):
+    def test_user_can_not_extend_volume_if_resulting_quota_usage_is_greater_than_limit(self):
         self.client.force_authenticate(user=self.admin)
         settings = self.admined_volume.service_project_link.service.settings
         settings.set_quota_usage('storage', self.admined_volume.size)
         settings.set_quota_limit('storage', self.admined_volume.size + 512)
 
-        new_size = self.admined_volume.size + 1024
+        self.assert_extend_request_returns_bad_request()
+
+    def test_user_can_not_extend_volume_if_quota_usage_becomes_greater_than_limit_in_service_project_link(self):
+        self.client.force_authenticate(user=self.admin)
+        self.admined_volume.service_project_link.set_quota_usage('storage', self.admined_volume.size)
+        self.admined_volume.service_project_link.set_quota_limit('storage', self.admined_volume.size + 512)
+
+        self.assert_extend_request_returns_bad_request()
+
+    def assert_extend_request_returns_bad_request(self, extend_by=1024):
+        new_size = self.admined_volume.size + extend_by
         url = factories.VolumeFactory.get_url(self.admined_volume, action='extend')
 
         response = self.client.post(url, {'disk_size': new_size})

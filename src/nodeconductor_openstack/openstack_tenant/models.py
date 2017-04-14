@@ -30,10 +30,10 @@ class OpenStackTenantService(structure_models.Service):
         return 'openstacktenant'
 
 
-class OpenStackTenantServiceProjectLink(structure_models.ServiceProjectLink):
+class OpenStackTenantServiceProjectLink(structure_models.CloudServiceProjectLink):
     service = models.ForeignKey(OpenStackTenantService)
 
-    class Meta(structure_models.ServiceProjectLink.Meta):
+    class Meta(structure_models.CloudServiceProjectLink.Meta):
         verbose_name = 'OpenStackTenant provider project link'
         verbose_name_plural = 'OpenStackTenant provider project links'
 
@@ -135,10 +135,16 @@ class Volume(structure_models.Storage):
         settings.add_quota_usage(settings.Quotas.volumes, 1, validate=validate)
         settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
 
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.storage, self.size, validate=validate)
+
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.volumes, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
+
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.storage, -self.size)
 
     @classmethod
     def get_url_name(cls):
@@ -180,10 +186,16 @@ class Snapshot(structure_models.Storage):
         settings.add_quota_usage(settings.Quotas.snapshots, 1, validate=validate)
         settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
 
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.storage, self.size, validate=validate)
+
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.snapshots, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
+
+        spl = self.service_project_link
+        spl.add_quota_usage(spl.Quotas.storage, -self.size)
 
     @classmethod
     def get_backend_fields(cls):
@@ -272,11 +284,17 @@ class Instance(structure_models.VirtualMachine):
         settings.add_quota_usage(settings.Quotas.ram, self.ram, validate=validate)
         settings.add_quota_usage(settings.Quotas.vcpu, self.cores, validate=validate)
 
+        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.ram, self.ram, validate=validate)
+        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.vcpu, self.cores, validate=validate)
+
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.instances, -1)
         settings.add_quota_usage(settings.Quotas.ram, -self.ram)
         settings.add_quota_usage(settings.Quotas.vcpu, -self.cores)
+
+        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.ram, -self.ram)
+        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.vcpu, -self.cores)
 
     @property
     def floating_ips(self):

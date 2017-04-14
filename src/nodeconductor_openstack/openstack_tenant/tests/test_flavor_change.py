@@ -2,7 +2,6 @@ from ddt import ddt, data
 from rest_framework import test, status
 
 from nodeconductor.structure.models import ProjectRole
-from nodeconductor.structure.tests import factories as structure_factories
 
 from ..models import Instance
 from . import factories, fixtures
@@ -90,15 +89,27 @@ class FlavorChangeInstanceTestCase(test.APITransactionTestCase):
                          'Instance should have been scheduled for flavor change')
 
     @data('admin', 'manager')
-    def test_user_with_access_cannot_change_flavor_of_stopped_instance_if_quota_would_be_exceeded(self, user):
+    def test_user_with_access_cannot_change_flavor_of_stopped_instance_if_spl_quota_would_be_exceeded(self, user):
         self.client.force_authenticate(user=getattr(self.fixture, user))
         settings = self.fixture.openstack_tenant_service_settings
-        settings.set_quota_limit('ram', 1024)
+        spl = self.fixture.spl
+
+        self._assert_bad_request_is_raised_if_vcpu_or_ram_quotas_exceed_quotas_holder_limit(settings, spl)
+
+    @data('admin', 'manager')
+    def test_user_with_access_cannot_change_flavor_of_stopped_instance_if_settings_quota_would_be_exceeded(self, user):
+        self.client.force_authenticate(user=getattr(self.fixture, user))
+        settings = self.fixture.openstack_tenant_service_settings
+
+        self._assert_bad_request_is_raised_if_vcpu_or_ram_quotas_exceed_quotas_holder_limit(settings, settings)
+
+    def _assert_bad_request_is_raised_if_vcpu_or_ram_quotas_exceed_quotas_holder_limit(self, settings, quotas_holder):
+        quotas_holder.set_quota_limit('ram', 1024)
 
         # check for ram
         big_ram_flavor = factories.FlavorFactory(
             settings=settings,
-            ram=settings.quotas.get(name='ram').limit + self.instance.ram + 1,
+            ram=quotas_holder.quotas.get(name='ram').limit + self.instance.ram + 1,
         )
         data = {'flavor': factories.FlavorFactory.get_url(big_ram_flavor)}
         response = self.client.post(factories.InstanceFactory.get_url(self.instance, action='change_flavor'), data)
@@ -107,7 +118,7 @@ class FlavorChangeInstanceTestCase(test.APITransactionTestCase):
         # check for vcpu
         many_core_flavor = factories.FlavorFactory(
             settings=settings,
-            cores=settings.quotas.get(name='vcpu').limit + self.instance.cores + 1,
+            cores=quotas_holder.quotas.get(name='vcpu').limit + self.instance.cores + 1,
         )
         data = {'flavor': factories.FlavorFactory.get_url(many_core_flavor)}
         response = self.client.post(factories.InstanceFactory.get_url(self.instance, action='change_flavor'), data)
