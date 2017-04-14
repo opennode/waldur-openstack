@@ -178,52 +178,11 @@ class TenantDeleteTest(BaseTenantActionsTest):
         return factories.TenantFactory.get_url(self.tenant)
 
 
-@ddt
-class TenantCreateServiceTest(BaseTenantActionsTest):
-
-    def setUp(self):
-        super(TenantCreateServiceTest, self).setUp()
-        self.settings = self.tenant.service_project_link.service.settings
-        self.url = factories.TenantFactory.get_url(self.tenant, 'create_service')
-
-    @data('owner', 'staff')
-    @patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute')
-    def test_can_create_service(self, user, mocked_execute):
-        self.client.force_authenticate(getattr(self.fixture, user))
-        service_settings_name = 'Valid service settings name'
-        response = self.client.post(self.url, {'name': service_settings_name})
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(mocked_execute.called)
-
-        self.assertTrue(OpenStackService.objects.filter(
-            customer=self.tenant.customer,
-            settings__name=service_settings_name,
-            settings__backend_url=self.settings.backend_url,
-            settings__username=self.tenant.user_username,
-            settings__password=self.tenant.user_password
-        ).exists())
-
-    @data('manager', 'admin')
-    def test_can_not_create_service(self, user):
-        self.client.force_authenticate(getattr(self.fixture, user))
-        response = self.client.post(self.url, {'name': 'Valid service'})
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_can_not_create_service_from_erred_tenant(self):
-        self.tenant.state = Tenant.States.ERRED
-        self.tenant.save()
-
-        self.client.force_authenticate(self.fixture.owner)
-        response = self.client.post(self.url, {'name': 'Valid service'})
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-
-
 class TenantActionsMetadataTest(BaseTenantActionsTest):
     def test_if_tenant_is_ok_actions_enabled(self):
         self.client.force_authenticate(self.fixture.staff)
         actions = self.get_actions()
-        for action in 'create_service', 'set_quotas':
-            self.assertTrue(actions[action]['enabled'])
+        self.assertTrue(actions['set_quotas']['enabled'])
 
     def test_if_tenant_is_not_ok_actions_disabled(self):
         self.tenant.state = Tenant.States.DELETING
@@ -231,8 +190,7 @@ class TenantActionsMetadataTest(BaseTenantActionsTest):
 
         self.client.force_authenticate(self.fixture.owner)
         actions = self.get_actions()
-        for action in 'create_service', 'set_quotas':
-            self.assertFalse(actions[action]['enabled'])
+        self.assertFalse(actions['set_quotas']['enabled'])
 
     def get_actions(self):
         url = factories.TenantFactory.get_url(self.tenant)

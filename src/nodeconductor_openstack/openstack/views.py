@@ -261,26 +261,6 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     destroy_permissions = [delete_permission_check]
 
     @decorators.detail_route(methods=['post'])
-    def create_service(self, request, uuid=None):
-        """Create non-admin service with credentials from the tenant"""
-
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        name = serializer.validated_data['name']
-
-        tenant = self.get_object()
-
-        service = tenant.create_service(name)
-        structure_executors.ServiceSettingsCreateExecutor.execute(service.settings, async=self.async_executor)
-
-        serializer = serializers.ServiceSerializer(service, context={'request': request})
-        return response.Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    create_service_permissions = [structure_permissions.is_owner]
-    create_service_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
-    create_service_serializer_class = serializers.ServiceNameSerializer
-
-    @decorators.detail_route(methods=['post'])
     def set_quotas(self, request, uuid=None):
         """
         A quota can be set for a particular tenant. Only staff users can do that.
