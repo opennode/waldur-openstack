@@ -51,11 +51,11 @@ class OpenStackService(structure_models.Service):
         return 'openstack'
 
 
-class OpenStackServiceProjectLink(structure_models.CloudServiceProjectLink):
+class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
     service = models.ForeignKey(OpenStackService)
 
-    class Meta(structure_models.CloudServiceProjectLink.Meta):
+    class Meta(structure_models.ServiceProjectLink.Meta):
         verbose_name = 'OpenStack provider project link'
         verbose_name_plural = 'OpenStack provider project links'
 

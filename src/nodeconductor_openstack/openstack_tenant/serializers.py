@@ -218,10 +218,9 @@ class VolumeExtendSerializer(serializers.Serializer):
 
         settings = instance.service_project_link.service.settings
         spl = instance.service_project_link
-        scope_spl = instance.service_project_link.service.settings.scope.service_project_link
 
         # an order must be kept.
-        for quota_holder in [settings, spl, scope_spl]:
+        for quota_holder in [settings, spl]:
             quota_holder.add_quota_usage(quota_holder.Quotas.storage, new_size - instance.size, validate=True)
 
         instance.size = new_size
@@ -807,10 +806,9 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 
         settings = instance.service_project_link.service.settings
         spl = instance.service_project_link
-        scope_spl = instance.service_project_link.service.settings.scope.service_project_link
 
         # an order must be kept.
-        for quota_holder in [settings, spl, scope_spl]:
+        for quota_holder in [settings, spl]:
             quota_holder.add_quota_usage(quota_holder.Quotas.ram, flavor.ram - instance.ram, validate=True)
             quota_holder.add_quota_usage(quota_holder.Quotas.vcpu, flavor.cores - instance.cores, validate=True)
 

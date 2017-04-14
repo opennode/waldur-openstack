@@ -48,14 +48,6 @@ class VolumeExtendTestCase(test.APITransactionTestCase):
 
         self.assert_extend_request_returns_bad_request()
 
-    def test_user_can_not_extend_volume_if_quota_usage_becomes_greater_than_limit_in_tenant_service_project_link(self):
-        self.client.force_authenticate(user=self.admin)
-        tenant_spl = self.admined_volume.service_project_link.service.settings.scope.service_project_link
-        tenant_spl.set_quota_usage('storage', self.admined_volume.size)
-        tenant_spl.set_quota_limit('storage', self.admined_volume.size + 512)
-
-        self.assert_extend_request_returns_bad_request()
-
     def assert_extend_request_returns_bad_request(self, extend_by=1024):
         new_size = self.admined_volume.size + extend_by
         url = factories.VolumeFactory.get_url(self.admined_volume, action='extend')

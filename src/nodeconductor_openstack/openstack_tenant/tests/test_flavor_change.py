@@ -97,14 +97,6 @@ class FlavorChangeInstanceTestCase(test.APITransactionTestCase):
         self._assert_bad_request_is_raised_if_vcpu_or_ram_quotas_exceed_quotas_holder_limit(settings, spl)
 
     @data('admin', 'manager')
-    def test_user_with_access_cannot_change_flavor_of_stopped_instance_if_scope_spl_quota_would_be_exceeded(self, user):
-        self.client.force_authenticate(user=getattr(self.fixture, user))
-        settings = self.fixture.openstack_tenant_service_settings
-        tenant_spl = settings.scope.service_project_link
-
-        self._assert_bad_request_is_raised_if_vcpu_or_ram_quotas_exceed_quotas_holder_limit(settings, tenant_spl)
-
-    @data('admin', 'manager')
     def test_user_with_access_cannot_change_flavor_of_stopped_instance_if_settings_quota_would_be_exceeded(self, user):
         self.client.force_authenticate(user=getattr(self.fixture, user))
         settings = self.fixture.openstack_tenant_service_settings
