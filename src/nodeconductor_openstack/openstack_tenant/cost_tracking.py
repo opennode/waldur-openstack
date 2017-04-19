@@ -16,10 +16,8 @@ class InstanceStrategy(CostTrackingStrategy):
 
     @classmethod
     def get_configuration(cls, instance):
-        States = models.Instance.States
-        RuntimeStates = models.Instance.RuntimeStates
         consumables = {}
-        if instance.state == States.OK and instance.runtime_state == RuntimeStates.ACTIVE:
+        if instance.state != models.Instance.States.ERRED:
             consumables[ConsumableItem(item_type=cls.Types.FLAVOR, key=instance.flavor_name)] = 1
         return consumables
 
