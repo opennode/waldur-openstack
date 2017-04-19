@@ -4,11 +4,12 @@ from nodeconductor.core import NodeConductorExtension
 class OpenStackTenantExtension(NodeConductorExtension):
 
     class Settings:
+        # wiki: https://opennode.atlassian.net/wiki/display/WD/OpenStack+plugin+configuration
         NODECONDUCTOR_OPENSTACK_TENANT = {
             'MAX_CONCURRENT_PROVISION': {
-                'OpenStack.Instance': 4,
-                'OpenStack.Volume': 4,
-                'OpenStack.Snapshot': 4,
+                'OpenStackTenant.Instance': 4,
+                'OpenStackTenant.Volume': 4,
+                'OpenStackTenant.Snapshot': 4,
             },
         }
 
