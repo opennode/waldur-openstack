@@ -126,6 +126,18 @@ class VolumeAttachTestCase(test.APITransactionTestCase):
         response = self.get_response()
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_user_can_attach_volume_to_instance_in_active_state(self):
+        self.volume.state = models.Volume.States.OK
+        self.volume.runtime_state = 'available'
+        self.volume.save()
+
+        self.instance.state = models.Instance.States.OK
+        self.instance.runtime_state = models.Instance.RuntimeStates.ACTIVE
+        self.instance.save()
+
+        response = self.get_response()
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
+
 
 class VolumeSnapshotTestCase(test.APITransactionTestCase):
     def setUp(self):
