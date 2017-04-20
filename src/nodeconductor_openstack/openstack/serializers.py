@@ -335,7 +335,10 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
             tenant = backend.import_tenant(backend_id, service_project_link)
         except OpenStackBackendError as e:
             raise serializers.ValidationError({
-                'backend_id': _('Can\'t import tenant with ID %s. Reason: %s') % (backend_id, e)
+                'backend_id': _('Can\'t import tenant with ID %(backend_id)s. Reason: %(reason)s') % {
+                    'backend_id': backend_id,
+                    'reason': e,
+                }
             })
         return tenant
 
@@ -379,7 +382,10 @@ class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSeriali
             return self.import_resource(backend, backend_id)
         except OpenStackBackendError as e:
             raise serializers.ValidationError({
-                'backend_id': _("Can't import resource with ID %s. Reason: %s") % (backend_id, e)
+                'backend_id': _("Can't import resource with ID %(backend_id)s. Reason: %(reason)s") % {
+                    'backend_id': backend_id,
+                    'reason': e,
+                }
             })
 
     def import_resource(self, backend, backend_id):
