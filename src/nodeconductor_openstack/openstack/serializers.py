@@ -31,20 +31,20 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                         structure_serializers.BaseServiceSerializer):
 
     SERVICE_ACCOUNT_FIELDS = {
-        'backend_url': 'Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)',
-        'username': 'Administrative user',
-        'domain': 'Domain name. If not defined default domain will be used.',
+        'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)'),
+        'username': _('Administrative user'),
+        'domain': _('Domain name. If not defined default domain will be used.'),
         'password': '',
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
         'tenant_name': '',
-        'availability_zone': 'Default availability zone for provisioned instances',
-        'external_network_id': 'ID of OpenStack external network that will be connected to tenants',
-        'latitude': 'Latitude of the datacenter (e.g. 40.712784)',
-        'longitude': 'Longitude of the datacenter (e.g. -74.005941)',
-        'access_url': 'Publicly accessible OpenStack dashboard URL',
-        'dns_nameservers': 'Default value for new subnets DNS name servers. Should be defined as list.',
-        'flavor_exclude_regex': 'Flavors matching this regex expression will not be pulled from the backend.',
+        'availability_zone': _('Default availability zone for provisioned instances'),
+        'external_network_id': _('ID of OpenStack external network that will be connected to tenants'),
+        'latitude': _('Latitude of the datacenter (e.g. 40.712784)'),
+        'longitude': _('Longitude of the datacenter (e.g. -74.005941)'),
+        'access_url': _('Publicly accessible OpenStack dashboard URL'),
+        'dns_nameservers': _('Default value for new subnets DNS name servers. Should be defined as list.'),
+        'flavor_exclude_regex': _('Flavors matching this regex expression will not be pulled from the backend.'),
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
@@ -78,11 +78,11 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         try:
             if not backend.check_admin_tenant():
                 raise serializers.ValidationError({
-                    'non_field_errors': 'Provided credentials are not for admin tenant.'
+                    'non_field_errors': _('Provided credentials are not for admin tenant.')
                 })
         except OpenStackBackendError:
             raise serializers.ValidationError({
-                'non_field_errors': 'Unable to validate credentials.'
+                'non_field_errors': _('Unable to validate credentials.')
             })
 
 
@@ -175,9 +175,9 @@ class ExternalNetworkSerializer(serializers.Serializer):
         vxlan_id = attrs.get('vxlan_id')
 
         if vlan_id is None and vxlan_id is None:
-            raise serializers.ValidationError("VLAN or VXLAN ID should be provided.")
+            raise serializers.ValidationError(_('VLAN or VXLAN ID should be provided.'))
         elif vlan_id and vxlan_id:
-            raise serializers.ValidationError("VLAN and VXLAN networks cannot be created simultaneously.")
+            raise serializers.ValidationError(_('VLAN and VXLAN networks cannot be created simultaneously.'))
 
         ips_count = attrs.get('ips_count')
         if ips_count is None:
@@ -191,7 +191,7 @@ class ExternalNetworkSerializer(serializers.Serializer):
 
         # subtract router and broadcast IPs
         if cidr.size < ips_count - 2:
-            raise serializers.ValidationError("Not enough Floating IP Addresses available.")
+            raise serializers.ValidationError(_('Not enough Floating IP Addresses available.'))
 
         return attrs
 
@@ -237,7 +237,8 @@ class SecurityGroupRuleCreateSerializer(SecurityGroupRuleSerializer):
 
     def to_internal_value(self, data):
         if 'id' in data:
-            raise serializers.ValidationError('Cannot add existed rule with id %s to new security group' % data['id'])
+            raise serializers.ValidationError(
+                _('Cannot add existed rule with id %s to new security group') % data['id'])
         internal_data = super(SecurityGroupRuleSerializer, self).to_internal_value(data)
         return models.SecurityGroupRule(**internal_data)
 
@@ -254,7 +255,7 @@ class SecurityGroupRuleUpdateSerializer(SecurityGroupRuleSerializer):
         try:
             rule = security_group.rules.get(id=rule_id)
         except models.SecurityGroupRule.DoesNotExist:
-            raise serializers.ValidationError({'id': 'Security group does not have rule with id %s.' % rule_id})
+            raise serializers.ValidationError({'id': _('Security group does not have rule with id %s.') % rule_id})
         for key, value in internal_data.items():
             setattr(rule, key, value)
         return rule
@@ -301,7 +302,8 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
     def validate_rules(self, value):
         for rule in value:
             if rule.id is not None:
-                raise serializers.ValidationError('Cannot add existed rule with id %s to new security group' % rule.id)
+                raise serializers.ValidationError(
+                    _('Cannot add existed rule with id %s to new security group') % rule.id)
             rule.full_clean(exclude=['security_group'])
         return value
 
@@ -333,7 +335,10 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
             tenant = backend.import_tenant(backend_id, service_project_link)
         except OpenStackBackendError as e:
             raise serializers.ValidationError({
-                'backend_id': "Can't import tenant with ID %s. Reason: %s" % (backend_id, e)
+                'backend_id': _('Can\'t import tenant with ID %(backend_id)s. Reason: %(reason)s') % {
+                    'backend_id': backend_id,
+                    'reason': e,
+                }
             })
         return tenant
 
@@ -364,7 +369,7 @@ class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSeriali
 
         if tenant.service_project_link.project != project:
             raise serializers.ValidationError({
-                'project': 'Tenant should belong to the same project.'
+                'project': _('Tenant should belong to the same project.')
             })
         return attrs
 
@@ -377,7 +382,10 @@ class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSeriali
             return self.import_resource(backend, backend_id)
         except OpenStackBackendError as e:
             raise serializers.ValidationError({
-                'backend_id': "Can't import resource with ID %s. Reason: %s" % (backend_id, e)
+                'backend_id': _("Can't import resource with ID %(backend_id)s. Reason: %(reason)s") % {
+                    'backend_id': backend_id,
+                    'reason': e,
+                }
             })
 
     def import_resource(self, backend, backend_id):
@@ -451,12 +459,12 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         user_username = attrs['user_username']
         if user_username in existing_usernames:
             raise serializers.ValidationError(
-                'Name "%s" is already registered. Please choose another one.' % user_username)
+                _('Name "%s" is already registered. Please choose another one.') % user_username)
 
         blacklisted_usernames = service_settings.options.get(
             'blacklisted_usernames', settings.NODECONDUCTOR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
         if user_username in blacklisted_usernames:
-            raise serializers.ValidationError('Name "%s" cannot be used as tenant user username.' % user_username)
+            raise serializers.ValidationError(_('Name "%s" cannot be used as tenant user username.') % user_username)
         return attrs
 
     def create(self, validated_data):
@@ -475,13 +483,13 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             tenant = super(TenantSerializer, self).create(validated_data)
             network = models.Network.objects.create(
                 name=slugified_name + '-int-net',
-                description='Internal network for tenant %s' % tenant.name,
+                description=_('Internal network for tenant %s') % tenant.name,
                 tenant=tenant,
                 service_project_link=tenant.service_project_link,
             )
             models.SubNet.objects.create(
                 name=slugified_name + '-sub-net',
-                description='SubNet for tenant %s internal network' % tenant.name,
+                description=_('SubNet for tenant %s internal network') % tenant.name,
                 network=network,
                 service_project_link=tenant.service_project_link,
                 cidr=subnet_cidr,
@@ -566,10 +574,10 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         if self.instance is None:
             attrs['network'] = network = self.context['view'].get_object()
             if network.subnets.count() >= 1:
-                raise serializers.ValidationError('Internal network cannot have more than one subnet.')
+                raise serializers.ValidationError(_('Internal network cannot have more than one subnet.'))
             cidr = attrs['cidr']
             if models.SubNet.objects.filter(cidr=cidr, network__tenant=network.tenant).exists():
-                raise serializers.ValidationError('Subnet with cidr "%s" is already registered' % cidr)
+                raise serializers.ValidationError(_('Subnet with cidr "%s" is already registered') % cidr)
         return attrs
 
     def create(self, validated_data):
@@ -595,11 +603,11 @@ class TenantChangePasswordSerializer(serializers.Serializer):
     user_password = serializers.CharField(max_length=50,
                                           allow_blank=True,
                                           validators=[password_validation.validate_password],
-                                          help_text='New tenant user password.')
+                                          help_text=_('New tenant user password.'))
 
     def validate_user_password(self, user_password):
         if self.instance.user_password == user_password:
-            raise serializers.ValidationError('New password cannot match the old password.')
+            raise serializers.ValidationError(_('New password cannot match the old password.'))
 
         return user_password
 

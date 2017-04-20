@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.core.urlresolvers import reverse
+from django.utils.translation import ugettext_lazy as _
 
 from nodeconductor.core.admin import ExecutorAdminAction
 from nodeconductor.quotas.admin import QuotaInline
@@ -24,12 +25,12 @@ class ServiceProjectLinkAdmin(structure_admin.ServiceProjectLinkAdmin):
     def get_service_settings_username(self, obj):
         return obj.service.settings.username
 
-    get_service_settings_username.short_description = 'Username'
+    get_service_settings_username.short_description = _('Username')
 
     def get_service_settings_password(self, obj):
         return obj.service.settings.password
 
-    get_service_settings_password.short_description = 'Password'
+    get_service_settings_password.short_description = _('Password')
 
 
 class TenantAdmin(structure_admin.ResourceAdmin):
@@ -43,50 +44,50 @@ class TenantAdmin(structure_admin.ResourceAdmin):
 
         def validate(self, tenant):
             if tenant.state != models.Tenant.States.OK:
-                raise ValidationError('Tenant has to be in state OK to pull security groups.')
+                raise ValidationError(_('Tenant has to be in state OK to pull security groups.'))
 
     class PullSecurityGroups(OKTenantAction):
         executor = executors.TenantPullSecurityGroupsExecutor
-        short_description = 'Pull security groups'
+        short_description = _('Pull security groups')
 
     pull_security_groups = PullSecurityGroups()
 
     class AllocateFloatingIP(OKTenantAction):
         executor = executors.TenantAllocateFloatingIPExecutor
-        short_description = 'Allocate floating IPs'
+        short_description = _('Allocate floating IPs')
 
         def validate(self, tenant):
             super(TenantAdmin.AllocateFloatingIP, self).validate(tenant)
             if not tenant.external_network_id:
-                raise ValidationError('Tenant has to have external network to allocate floating IP.')
+                raise ValidationError(_('Tenant has to have external network to allocate floating IP.'))
 
     allocate_floating_ip = AllocateFloatingIP()
 
     class DetectExternalNetworks(OKTenantAction):
         executor = executors.TenantDetectExternalNetworkExecutor
-        short_description = 'Attempt to lookup and set external network id of the connected router'
+        short_description = _('Attempt to lookup and set external network id of the connected router')
 
     detect_external_networks = DetectExternalNetworks()
 
     class PullFloatingIPs(OKTenantAction):
         executor = executors.TenantPullFloatingIPsExecutor
-        short_description = 'Pull floating IPs'
+        short_description = _('Pull floating IPs')
 
     pull_floating_ips = PullFloatingIPs()
 
     class PullQuotas(OKTenantAction):
         executor = executors.TenantPullQuotasExecutor
-        short_description = 'Pull quotas'
+        short_description = _('Pull quotas')
 
     pull_quotas = PullQuotas()
 
     class Pull(ExecutorAdminAction):
         executor = executors.TenantPullExecutor
-        short_description = 'Pull'
+        short_description = _('Pull')
 
         def validate(self, tenant):
             if tenant.state not in (models.Tenant.States.OK, models.Tenant.States.ERRED):
-                raise ValidationError('Tenant has to be OK or erred.')
+                raise ValidationError(_('Tenant has to be OK or erred.'))
 
     pull = Pull()
 
@@ -113,7 +114,7 @@ class TenantResourceAdmin(structure_admin.ResourceAdmin):
         tenant = obj.tenant
         return '<a href="%s">%s</a>' % (_get_obj_admin_url(tenant), tenant.name)
 
-    get_tenant.short_description = 'Tenant'
+    get_tenant.short_description = _('Tenant')
     get_tenant.allow_tags = True
 
 

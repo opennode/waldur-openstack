@@ -3,6 +3,7 @@ import pytz
 from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
+from django.utils.translation import ugettext_lazy as _
 
 from nodeconductor.core.admin import ExecutorAdminAction
 from nodeconductor.structure import admin as structure_admin
@@ -43,11 +44,11 @@ class VolumeAdmin(structure_admin.ResourceAdmin):
 
     class Pull(ExecutorAdminAction):
         executor = executors.SnapshotPullExecutor
-        short_description = 'Pull'
+        short_description = _('Pull')
 
         def validate(self, instance):
             if instance.state not in (models.Snapshot.States.OK, models.Snapshot.States.ERRED):
-                raise ValidationError('Snapshot has to be in OK or ERRED state.')
+                raise ValidationError(_('Snapshot has to be in OK or ERRED state.'))
 
     pull = Pull()
 
@@ -56,11 +57,11 @@ class SnapshotAdmin(structure_admin.ResourceAdmin):
 
     class Pull(ExecutorAdminAction):
         executor = executors.SnapshotPullExecutor
-        short_description = 'Pull'
+        short_description = _('Pull')
 
         def validate(self, instance):
             if instance.state not in (models.Snapshot.States.OK, models.Snapshot.States.ERRED):
-                raise ValidationError('Snapshot has to be in OK or ERRED state.')
+                raise ValidationError(_('Snapshot has to be in OK or ERRED state.'))
 
     pull = Pull()
 
@@ -70,11 +71,11 @@ class InstanceAdmin(structure_admin.VirtualMachineAdmin):
 
     class Pull(ExecutorAdminAction):
         executor = executors.InstancePullExecutor
-        short_description = 'Pull'
+        short_description = _('Pull')
 
         def validate(self, instance):
             if instance.state not in (models.Instance.States.OK, models.Instance.States.ERRED):
-                raise ValidationError('Instance has to be in OK or ERRED state.')
+                raise ValidationError(_('Instance has to be in OK or ERRED state.'))
 
     pull = Pull()
 
@@ -87,14 +88,14 @@ class BackupAdmin(admin.ModelAdmin):
     def project(self, obj):
         return obj.instance.service_project_link.project
 
-    project.short_description = 'Project'
+    project.short_description = _('Project')
 
 
 class BaseScheduleForm(forms.ModelForm):
     def clean_timezone(self):
         tz = self.cleaned_data['timezone']
         if tz not in pytz.all_timezones:
-            raise ValidationError('Invalid timezone', code='invalid')
+            raise ValidationError(_('Invalid timezone'), code='invalid')
 
         return self.cleaned_data['timezone']
 
