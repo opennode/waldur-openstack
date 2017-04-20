@@ -257,9 +257,9 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 
     def validate_instance(self, instance):
         States, RuntimeStates = models.Instance.States, models.Instance.RuntimeStates
-        if instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF:
+        if instance.state != States.OK or instance.runtime_state not in (RuntimeStates.SHUTOFF, RuntimeStates.ACTIVE):
             raise serializers.ValidationError(
-                'Volume can be attached only to instance that is shutoff and in state OK.')
+                'Volume can be attached only to shutoff or active instance in OK state.')
         volume = self.instance
         if instance.service_project_link != volume.service_project_link:
             raise serializers.ValidationError('Volume and instance should belong to the same service and project.')
