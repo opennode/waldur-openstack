@@ -2,6 +2,7 @@ from django.core.validators import MaxValueValidator
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
+from django.utils.translation import ugettext_lazy as _
 from iptools.ipv4 import validate_cidr
 
 from nodeconductor.core import models as core_models
@@ -31,22 +32,22 @@ class BaseSecurityGroupRule(models.Model):
 
     def validate_icmp(self):
         if self.from_port is not None and not -1 <= self.from_port <= 255:
-            raise ValidationError('Wrong value for "from_port": '
-                                  'expected value in range [-1, 255], found %d' % self.from_port)
+            raise ValidationError(_('Wrong value for "from_port": '
+                                  'expected value in range [-1, 255], found %d') % self.from_port)
         if self.to_port is not None and not -1 <= self.to_port <= 255:
-            raise ValidationError('Wrong value for "to_port": '
-                                  'expected value in range [-1, 255], found %d' % self.to_port)
+            raise ValidationError(_('Wrong value for "to_port": '
+                                  'expected value in range [-1, 255], found %d') % self.to_port)
 
     def validate_port(self):
         if self.from_port is not None and self.to_port is not None:
             if self.from_port > self.to_port:
-                raise ValidationError('"from_port" should be less or equal to "to_port"')
+                raise ValidationError(_('"from_port" should be less or equal to "to_port"'))
         if self.from_port is not None and self.from_port < 1:
-            raise ValidationError('Wrong value for "from_port": '
-                                  'expected value in range [1, 65535], found %d' % self.from_port)
+            raise ValidationError(_('Wrong value for "from_port": '
+                                  'expected value in range [1, 65535], found %d') % self.from_port)
         if self.to_port is not None and self.to_port < 1:
-            raise ValidationError('Wrong value for "to_port": '
-                                  'expected value in range [1, 65535], found %d' % self.to_port)
+            raise ValidationError(_('Wrong value for "to_port": '
+                                  'expected value in range [1, 65535], found %d') % self.to_port)
 
     def validate_cidr(self):
         if not self.cidr:
@@ -54,22 +55,22 @@ class BaseSecurityGroupRule(models.Model):
 
         if not validate_cidr(self.cidr):
             raise ValidationError(
-                'Wrong cidr value. Expected cidr format: <0-255>.<0-255>.<0-255>.<0-255>/<0-32>')
+                _('Wrong cidr value. Expected cidr format: <0-255>.<0-255>.<0-255>.<0-255>/<0-32>'))
 
     def clean(self):
         if self.to_port is None:
-            raise ValidationError('"to_port" cannot be empty')
+            raise ValidationError(_('"to_port" cannot be empty'))
 
         if self.from_port is None:
-            raise ValidationError('"from_port" cannot be empty')
+            raise ValidationError(_('"from_port" cannot be empty'))
 
         if self.protocol == 'icmp':
             self.validate_icmp()
         elif self.protocol in ('tcp', 'udp'):
             self.validate_port()
         else:
-            raise ValidationError('Wrong value for "protocol": '
-                                  'expected one of (tcp, udp, icmp), found %s' % self.protocol)
+            raise ValidationError(_('Wrong value for "protocol": '
+                                  'expected one of (tcp, udp, icmp), found %s') % self.protocol)
         self.validate_cidr()
 
     def __str__(self):

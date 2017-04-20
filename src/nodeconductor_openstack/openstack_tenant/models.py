@@ -5,6 +5,7 @@ from urlparse import urlparse
 from django.core.validators import RegexValidator
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
+from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
 from model_utils import FieldTracker
 from model_utils.models import TimeStampedModel
@@ -22,8 +23,8 @@ class OpenStackTenantService(structure_models.Service):
 
     class Meta:
         unique_together = ('customer', 'settings')
-        verbose_name = 'OpenStackTenant provider'
-        verbose_name_plural = 'OpenStackTenant providers'
+        verbose_name = _('OpenStackTenant provider')
+        verbose_name_plural = _('OpenStackTenant providers')
 
     @classmethod
     def get_url_name(cls):
@@ -34,8 +35,8 @@ class OpenStackTenantServiceProjectLink(structure_models.CloudServiceProjectLink
     service = models.ForeignKey(OpenStackTenantService)
 
     class Meta(structure_models.CloudServiceProjectLink.Meta):
-        verbose_name = 'OpenStackTenant provider project link'
-        verbose_name_plural = 'OpenStackTenant provider project links'
+        verbose_name = _('OpenStackTenant provider project link')
+        verbose_name_plural = _('OpenStackTenant provider project links')
 
     @classmethod
     def get_url_name(cls):
@@ -43,9 +44,9 @@ class OpenStackTenantServiceProjectLink(structure_models.CloudServiceProjectLink
 
 
 class Flavor(LoggableMixin, structure_models.ServiceProperty):
-    cores = models.PositiveSmallIntegerField(help_text='Number of cores in a VM')
-    ram = models.PositiveIntegerField(help_text='Memory size in MiB')
-    disk = models.PositiveIntegerField(help_text='Root disk size in MiB')
+    cores = models.PositiveSmallIntegerField(help_text=_('Number of cores in a VM'))
+    ram = models.PositiveIntegerField(help_text=_('Memory size in MiB'))
+    disk = models.PositiveIntegerField(help_text=_('Root disk size in MiB'))
 
     @classmethod
     def get_url_name(cls):
@@ -57,8 +58,8 @@ class Flavor(LoggableMixin, structure_models.ServiceProperty):
 
 
 class Image(structure_models.ServiceProperty):
-    min_disk = models.PositiveIntegerField(default=0, help_text='Minimum disk size in MiB')
-    min_ram = models.PositiveIntegerField(default=0, help_text='Minimum memory size in MiB')
+    min_disk = models.PositiveIntegerField(default=0, help_text=_('Minimum disk size in MiB'))
+    min_ram = models.PositiveIntegerField(default=0, help_text=_('Minimum memory size in MiB'))
 
     @classmethod
     def get_url_name(cls):
@@ -84,7 +85,8 @@ class FloatingIP(structure_models.ServiceProperty):
     address = models.GenericIPAddressField(protocol='IPv4', null=True)
     runtime_state = models.CharField(max_length=30)
     backend_network_id = models.CharField(max_length=255, editable=False)
-    is_booked = models.BooleanField(default=False, help_text='Marks if floating IP has been booked for provisioning.')
+    is_booked = models.BooleanField(default=False,
+                                    help_text=_('Marks if floating IP has been booked for provisioning.'))
     internal_ip = models.ForeignKey('InternalIP', related_name='floating_ips', null=True, on_delete=models.SET_NULL)
 
     class Meta:
@@ -116,8 +118,9 @@ class Volume(structure_models.Storage):
     instance = models.ForeignKey('Instance', related_name='volumes', blank=True, null=True)
     device = models.CharField(
         max_length=50, blank=True,
-        validators=[RegexValidator('^/dev/[a-zA-Z0-9]+$', message='Device should match pattern "/dev/alphanumeric+"')],
-        help_text='Name of volume as instance device e.g. /dev/vdb.')
+        validators=[RegexValidator('^/dev/[a-zA-Z0-9]+$',
+                                   message=_('Device should match pattern "/dev/alphanumeric+"'))],
+        help_text=_('Name of volume as instance device e.g. /dev/vdb.'))
     bootable = models.BooleanField(default=False)
     metadata = JSONField(blank=True)
     image = models.ForeignKey(Image, null=True)
@@ -175,7 +178,7 @@ class Snapshot(structure_models.Storage):
     kept_until = models.DateTimeField(
         null=True,
         blank=True,
-        help_text='Guaranteed time of snapshot retention. If null - keep forever.')
+        help_text=_('Guaranteed time of snapshot retention. If null - keep forever.'))
 
     @classmethod
     def get_url_name(cls):
@@ -240,7 +243,7 @@ class Instance(structure_models.VirtualMachine):
         OpenStackTenantServiceProjectLink, related_name='instances', on_delete=models.PROTECT)
 
     flavor_name = models.CharField(max_length=255, blank=True)
-    flavor_disk = models.PositiveIntegerField(default=0, help_text='Flavor disk size in MiB')
+    flavor_disk = models.PositiveIntegerField(default=0, help_text=_('Flavor disk size in MiB'))
     security_groups = models.ManyToManyField(SecurityGroup, related_name='instances')
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
@@ -324,10 +327,10 @@ class Backup(structure_models.SubResource):
     kept_until = models.DateTimeField(
         null=True,
         blank=True,
-        help_text='Guaranteed time of backup retention. If null - keep forever.')
+        help_text=_('Guaranteed time of backup retention. If null - keep forever.'))
     metadata = JSONField(
         blank=True,
-        help_text='Additional information about backup, can be used for backup restoration or deletion',
+        help_text=_('Additional information about backup, can be used for backup restoration or deletion'),
     )
     snapshots = models.ManyToManyField('Snapshot', related_name='backups')
 
@@ -349,9 +352,10 @@ class BackupRestoration(core_models.UuidMixin, TimeStampedModel):
 
 class BaseSchedule(structure_models.NewResource, core_models.ScheduleMixin):
     retention_time = models.PositiveIntegerField(
-        help_text='Retention time in days, if 0 - resource will be kept forever')
+        help_text=_('Retention time in days, if 0 - resource will be kept forever'))
     maximal_number_of_resources = models.PositiveSmallIntegerField()
-    call_count = models.PositiveSmallIntegerField(default=0, help_text="How many times a resource schedule was called.")
+    call_count = models.PositiveSmallIntegerField(default=0,
+                                                  help_text=_('How many times a resource schedule was called.'))
 
     class Meta(object):
         abstract = True
@@ -409,7 +413,7 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     allocation_pools = JSONField(default={})
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
-    dns_nameservers = JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')
+    dns_nameservers = JSONField(default=[], help_text=_('List of DNS name servers associated with the subnet.'))
 
     def __str__(self):
         return '%s (%s)' % (self.name, self.cidr)
