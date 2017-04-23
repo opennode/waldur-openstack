@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
+from django.utils.translation import ugettext_lazy as _
 from jsonfield import JSONField
 from model_utils import FieldTracker
 
@@ -28,8 +29,8 @@ class OpenStackService(structure_models.Service):
 
     class Meta:
         unique_together = ('customer', 'settings')
-        verbose_name = 'OpenStack provider'
-        verbose_name_plural = 'OpenStack providers'
+        verbose_name = _('OpenStack provider')
+        verbose_name_plural = _('OpenStack providers')
 
     class Quotas(QuotaModelMixin.Quotas):
         tenant_count = CounterQuotaField(
@@ -56,8 +57,8 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
     service = models.ForeignKey(OpenStackService)
 
     class Meta(structure_models.ServiceProjectLink.Meta):
-        verbose_name = 'OpenStack provider project link'
-        verbose_name_plural = 'OpenStack provider project links'
+        verbose_name = _('OpenStack provider project link')
+        verbose_name_plural = _('OpenStack provider project links')
 
     @classmethod
     def get_url_name(cls):
@@ -71,9 +72,9 @@ class OpenStackServiceProjectLink(structure_models.ServiceProjectLink):
 
 
 class Flavor(LoggableMixin, structure_models.ServiceProperty):
-    cores = models.PositiveSmallIntegerField(help_text='Number of cores in a VM')
-    ram = models.PositiveIntegerField(help_text='Memory size in MiB')
-    disk = models.PositiveIntegerField(help_text='Root disk size in MiB')
+    cores = models.PositiveSmallIntegerField(help_text=_('Number of cores in a VM'))
+    ram = models.PositiveIntegerField(help_text=_('Memory size in MiB'))
+    disk = models.PositiveIntegerField(help_text=_('Root disk size in MiB'))
 
     @classmethod
     def get_url_name(cls):
@@ -86,8 +87,8 @@ class Flavor(LoggableMixin, structure_models.ServiceProperty):
 
 
 class Image(structure_models.ServiceProperty):
-    min_disk = models.PositiveIntegerField(default=0, help_text='Minimum disk size in MiB')
-    min_ram = models.PositiveIntegerField(default=0, help_text='Minimum memory size in MiB')
+    min_disk = models.PositiveIntegerField(default=0, help_text=_('Minimum disk size in MiB'))
+    min_ram = models.PositiveIntegerField(default=0, help_text=_('Minimum memory size in MiB'))
 
     @classmethod
     def get_url_name(cls):
@@ -185,7 +186,7 @@ class Tenant(structure_models.PrivateCloud):
     external_network_id = models.CharField(max_length=64, blank=True)
     availability_zone = models.CharField(
         max_length=100, blank=True,
-        help_text='Optional availability group. Will be used for all instances provisioned in this tenant'
+        help_text=_('Optional availability group. Will be used for all instances provisioned in this tenant')
     )
     user_username = models.CharField(max_length=50, blank=True)
     user_password = models.CharField(max_length=50, blank=True)
@@ -239,7 +240,7 @@ class SubNet(structure_models.SubResource):
     allocation_pools = JSONField(default={})
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
-    dns_nameservers = JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')
+    dns_nameservers = JSONField(default=[], help_text=_('List of DNS name servers associated with the subnet.'))
 
     def get_backend(self):
         return self.network.get_backend()

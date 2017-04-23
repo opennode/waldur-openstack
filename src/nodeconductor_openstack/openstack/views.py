@@ -2,14 +2,13 @@ import uuid
 
 from django.conf import settings
 from django.utils import six
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import viewsets, decorators, response, status, serializers as rf_serializers
+from django.utils.translation import ugettext_lazy as _
+from rest_framework import decorators, response, status, serializers as rf_serializers
 from rest_framework.exceptions import ValidationError
 
 from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
-from nodeconductor.structure import (
-    views as structure_views, SupportedServices, executors as structure_executors,
-    filters as structure_filters, permissions as structure_permissions)
+from nodeconductor.structure import (views as structure_views, SupportedServices, filters as structure_filters,
+                                     permissions as structure_permissions)
 from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import models, filters, serializers, executors
@@ -121,7 +120,7 @@ class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceVie
             try:
                 uuid.UUID(tenant_uuid)
             except ValueError:
-                raise ValidationError('Invalid tenant UUID')
+                raise ValidationError(_('Invalid tenant UUID'))
             queryset = filter_queryset_for_user(models.Tenant.objects.all(), self.request.user)
             tenant = queryset.filter(service_project_link__service=self.get_object(),
                                      uuid=tenant_uuid).first()
@@ -211,7 +210,7 @@ class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetacl
 
         executors.PushSecurityGroupRulesExecutor().execute(self.get_object())
         return response.Response(
-            {'status': 'Rules update was successfully scheduled.'}, status=status.HTTP_202_ACCEPTED)
+            {'status': _('Rules update was successfully scheduled.')}, status=status.HTTP_202_ACCEPTED)
 
     set_rules_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
     set_rules_serializer_class = serializers.SecurityGroupRuleUpdateSerializer
@@ -322,7 +321,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         executors.TenantPushQuotasExecutor.execute(tenant, quotas=quotas)
 
         return response.Response(
-            {'detail': 'Quota update has been scheduled'}, status=status.HTTP_202_ACCEPTED)
+            {'detail': _('Quota update has been scheduled')}, status=status.HTTP_202_ACCEPTED)
 
     set_quotas_permissions = [structure_permissions.is_staff]
     set_quotas_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
@@ -343,7 +342,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     def external_network_is_defined(tenant):
         if not tenant.external_network_id:
             raise core_exceptions.IncorrectStateException(
-                'Cannot create floating IP if tenant external network is not defined.')
+                _('Cannot create floating IP if tenant external network is not defined.'))
 
     @decorators.detail_route(methods=['post'])
     def create_floating_ip(self, request, uuid=None):
@@ -408,7 +407,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     def pull_security_groups(self, request, uuid=None):
         executors.TenantPullSecurityGroupsExecutor.execute(self.get_object())
         return response.Response(
-            {'status': 'Security groups pull has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
+            {'status': _('Security groups pull has been scheduled.')}, status=status.HTTP_202_ACCEPTED)
 
     pull_security_groups_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
@@ -419,14 +418,14 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         serializer.save()
 
         executors.TenantChangeUserPasswordExecutor.execute(self.get_object())
-        return response.Response({'status': 'Password update has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
+        return response.Response({'status': _('Password update has been scheduled.')}, status=status.HTTP_202_ACCEPTED)
 
     change_password_serializer_class = serializers.TenantChangePasswordSerializer
     change_password_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
     def pull_quotas(self, request, uuid=None):
         executors.TenantPullQuotasExecutor.execute(self.get_object())
-        return response.Response({'status': 'Quotas pull has been scheduled.'}, status=status.HTTP_202_ACCEPTED)
+        return response.Response({'status': _('Quotas pull has been scheduled.')}, status=status.HTTP_202_ACCEPTED)
 
     pull_quotas_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 

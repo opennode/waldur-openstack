@@ -7,6 +7,7 @@ import re
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import ugettext, ugettext_lazy as _
 from rest_framework import serializers
 
 from nodeconductor.core import serializers as core_serializers, fields as core_fields, utils as core_utils
@@ -21,14 +22,14 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                         core_serializers.RequiredFieldsMixin,
                         structure_serializers.BaseServiceSerializer):
     SERVICE_ACCOUNT_FIELDS = {
-        'backend_url': 'Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)',
-        'username': 'Tenant user username',
-        'password': 'Tenant user password',
+        'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)'),
+        'username': _('Tenant user username'),
+        'password': _('Tenant user password'),
     }
     SERVICE_ACCOUNT_EXTRA_FIELDS = {
-        'tenant_id': 'Tenant ID in OpenStack',
-        'availability_zone': 'Default availability zone for provisioned instances',
-        'flavor_exclude_regex': 'Flavors matching this regex expression will not be pulled from the backend.',
+        'tenant_id': _('Tenant ID in OpenStack'),
+        'availability_zone': _('Default availability zone for provisioned instances'),
+        'flavor_exclude_regex': _('Flavors matching this regex expression will not be pulled from the backend.'),
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
@@ -181,19 +182,19 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
             image = attrs.get('image')
             spl = attrs['service_project_link']
             if image and image.settings != spl.service.settings:
-                raise serializers.ValidationError({'image': 'Image must belong to the same service settings'})
+                raise serializers.ValidationError({'image': _('Image must belong to the same service settings')})
             # snapshot & size validation
             size = attrs.get('size')
             snapshot = attrs.get('snapshot')
             if not size and not snapshot:
-                raise serializers.ValidationError('Snapshot or size should be defined')
+                raise serializers.ValidationError(_('Snapshot or size should be defined'))
             if size and snapshot:
-                raise serializers.ValidationError('It is impossible to define both snapshot and size')
+                raise serializers.ValidationError(_('It is impossible to define both snapshot and size'))
             # image & size validation
             size = size or snapshot.size
             if image and image.min_disk > size:
                 raise serializers.ValidationError({
-                    'size': 'Volume size should be equal or greater than %s for selected image' % image.min_disk
+                    'size': _('Volume size should be equal or greater than %s for selected image') % image.min_disk
                 })
         return attrs
 
@@ -209,7 +210,7 @@ class VolumeExtendSerializer(serializers.Serializer):
     def validate_disk_size(self, disk_size):
         if disk_size < self.instance.size + 1024:
             raise serializers.ValidationError(
-                'Disk size should be greater or equal to %s' % (self.instance.size + 1024))
+                _('Disk size should be greater or equal to %s') % (self.instance.size + 1024))
         return disk_size
 
     @transaction.atomic
@@ -257,25 +258,25 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 
     def validate_instance(self, instance):
         States, RuntimeStates = models.Instance.States, models.Instance.RuntimeStates
-        if instance.state != States.OK or instance.runtime_state != RuntimeStates.SHUTOFF:
+        if instance.state != States.OK or instance.runtime_state not in (RuntimeStates.SHUTOFF, RuntimeStates.ACTIVE):
             raise serializers.ValidationError(
-                'Volume can be attached only to instance that is shutoff and in state OK.')
+                _('Volume can be attached only to shutoff or active instance in OK state.'))
         volume = self.instance
         if instance.service_project_link != volume.service_project_link:
-            raise serializers.ValidationError('Volume and instance should belong to the same service and project.')
+            raise serializers.ValidationError(_('Volume and instance should belong to the same service and project.'))
         return instance
 
     def validate(self, attrs):
         instance = attrs['instance']
         device = attrs.get('device')
         if device and instance.volumes.filter(device=device).exists():
-            raise serializers.ValidationError({'device': 'The supplied device path (%s) is in use.' % device})
+            raise serializers.ValidationError({'device': _('The supplied device path (%s) is in use.') % device})
         return attrs
 
 
 class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
-    name = serializers.CharField(write_only=True, help_text='New volume name.')
-    description = serializers.CharField(required=False, help_text='New volume description.')
+    name = serializers.CharField(write_only=True, help_text=_('New volume name.'))
+    description = serializers.CharField(required=False, help_text=_('New volume description.'))
 
     class Meta(object):
         model = models.SnapshotRestoration
@@ -386,7 +387,7 @@ class NestedSecurityGroupRuleSerializer(serializers.ModelSerializer):
             try:
                 return models.SecurityGroupRule.objects.get(id=data['id'])
             except models.SecurityGroup:
-                raise serializers.ValidationError('Security group with id %s does not exist' % data['id'])
+                raise serializers.ValidationError(_('Security group with id %s does not exist') % data['id'])
         else:
             internal_data = super(NestedSecurityGroupRuleSerializer, self).to_internal_value(data)
             return models.SecurityGroupRule(**internal_data)
@@ -481,15 +482,15 @@ def _validate_instance_internal_ips(internal_ips, settings):
     """
     if not internal_ips:
         raise serializers.ValidationError(
-            {'internal_ips_set': 'Instance should be connected to at least one network.'})
+            {'internal_ips_set': _('Instance should be connected to at least one network.')})
     subnets = [internal_ip.subnet for internal_ip in internal_ips]
     for subnet in subnets:
         if subnet.settings != settings:
-            message = 'Subnet %s does not belong to the same service settings as service project link.' % subnet
+            message = _('Subnet %s does not belong to the same service settings as service project link.') % subnet
             raise serializers.ValidationError({'internal_ips_set': message})
     duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
     if duplicates:
-        raise serializers.ValidationError('It is impossible to connect to subnet %s twice.' % duplicates[0])
+        raise serializers.ValidationError(_('It is impossible to connect to subnet %s twice.') % duplicates[0])
 
 
 def _validate_instance_security_groups(security_groups, settings):
@@ -497,35 +498,35 @@ def _validate_instance_security_groups(security_groups, settings):
     """
     for security_group in security_groups:
         if security_group.settings != settings:
-            error_template = 'Security group %s does not belong to the same service settings as service project link.'
-            raise serializers.ValidationError({'security_groups': error_template % security_group.name})
+            error = _('Security group %s does not belong to the same service settings as service project link.')
+            raise serializers.ValidationError({'security_groups': error % security_group.name})
 
 
 def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instance_subnets):
     if floating_ips_with_subnets and 'external_network_id' not in settings.options:
-        raise serializers.ValidationError('Please specify tenant external network to perform floating IP operations.')
+        raise serializers.ValidationError(
+            ugettext('Please specify tenant external network to perform floating IP operations.'))
 
     for floating_ip, subnet in floating_ips_with_subnets:
         if subnet not in instance_subnets:
-            message = 'SubNet %s is not connected to instance.' % subnet
+            message = ugettext('SubNet %s is not connected to instance.') % subnet
             raise serializers.ValidationError({'floating_ips': message})
         if not floating_ip:
             continue
         if floating_ip.is_booked:
-            raise serializers.ValidationError(
-                {'floating_ips': 'Floating IP %s is already booked for another instance creation' % floating_ip})
+            message = ugettext('Floating IP %s is already booked for another instance creation')
+            raise serializers.ValidationError({'floating_ips': message % floating_ip})
         if not floating_ip.internal_ip and floating_ip.runtime_state != 'DOWN':
             raise serializers.ValidationError(
-                {'floating_ips': 'Floating IP %s runtime state should be DOWN.' % floating_ip})
+                {'floating_ips': ugettext('Floating IP %s runtime state should be DOWN.') % floating_ip})
         if floating_ip.settings != settings:
-            message = (
-                'Floating IP %s does not belong to the same service settings as service project link.' % floating_ip)
-            raise serializers.ValidationError({'floating_ips': message})
+            message = ugettext('Floating IP %s does not belong to the same service settings as service project link.')
+            raise serializers.ValidationError({'floating_ips': message % floating_ip})
 
     subnets = [subnet for _, subnet in floating_ips_with_subnets]
     duplicates = [subnet for subnet, count in collections.Counter(subnets).items() if count > 1]
     if duplicates:
-        raise serializers.ValidationError('It is impossible to use subnet %s twice.' % duplicates[0])
+        raise serializers.ValidationError(ugettext('It is impossible to use subnet %s twice.') % duplicates[0])
 
 
 def _connect_floating_ip_to_instance(floating_ip, subnet, instance):
@@ -630,20 +631,20 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         if any([flavor.settings != settings, image.settings != settings]):
             raise serializers.ValidationError(
-                'Flavor and image must belong to the same service settings as service project link.')
+                _('Flavor and image must belong to the same service settings as service project link.'))
 
         if image.min_ram > flavor.ram:
             raise serializers.ValidationError(
-                {'flavor': 'RAM of flavor is not enough for selected image %s' % image.min_ram})
+                {'flavor': _('RAM of flavor is not enough for selected image %s') % image.min_ram})
 
         if image.min_disk > flavor.disk:
             raise serializers.ValidationError({
-                'flavor': "Flavor's disk is too small for the selected image."
+                'flavor': _('Flavor\'s disk is too small for the selected image.')
             })
 
         if image.min_disk > attrs['system_volume_size']:
             raise serializers.ValidationError(
-                {'system_volume_size': 'System volume size has to be greater than %s' % image.min_disk})
+                {'system_volume_size': _('System volume size has to be greater than %s') % image.min_disk})
 
         internal_ips = attrs.get('internal_ips_set', [])
         _validate_instance_security_groups(attrs.get('security_groups', []), settings)
@@ -751,9 +752,9 @@ class AssignFloatingIpSerializer(serializers.Serializer):
     def validate_floating_ip(self, floating_ip):
         if floating_ip is not None:
             if floating_ip.runtime_state != 'DOWN':
-                raise serializers.ValidationError('Floating IP runtime_state must be DOWN.')
+                raise serializers.ValidationError(_('Floating IP runtime_state must be DOWN.'))
             elif floating_ip.settings != self.instance.service_project_link.service.settings:
-                raise serializers.ValidationError('Floating IP must belong to same settings as instance.')
+                raise serializers.ValidationError(_('Floating IP must belong to same settings as instance.'))
         return floating_ip
 
     def save(self):
@@ -788,15 +789,15 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 
             if value.name == self.instance.flavor_name:
                 raise serializers.ValidationError(
-                    'New flavor is the same as current.')
+                    _('New flavor is the same as current.'))
 
             if value.settings != spl.service.settings:
                 raise serializers.ValidationError(
-                    'New flavor is not within the same service settings')
+                    _('New flavor is not within the same service settings'))
 
             if value.disk < self.instance.flavor_disk:
                 raise serializers.ValidationError(
-                    'New flavor disk should be greater than the previous value')
+                    _('New flavor disk should be greater than the previous value'))
         return value
 
     @transaction.atomic
@@ -823,7 +824,7 @@ class InstanceDeleteSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if attrs['delete_volumes'] and models.Snapshot.objects.filter(source_volume__instance=self.instance).exists():
-            raise serializers.ValidationError('Cannot delete instance. One of its volumes has attached snapshot.')
+            raise serializers.ValidationError(_('Cannot delete instance. One of its volumes has attached snapshot.'))
         return attrs
 
 
@@ -850,7 +851,7 @@ class InstanceSecurityGroupsUpdateSerializer(serializers.Serializer):
         for security_group in security_groups:
             if security_group.settings != spl.service.settings:
                 raise serializers.ValidationError(
-                    'Security group %s is not within the same service settings' % security_group.name)
+                    _('Security group %s is not within the same service settings') % security_group.name)
 
         return security_groups
 
@@ -932,7 +933,7 @@ class InstanceFloatingIPsUpdateSerializer(serializers.Serializer):
 
 class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
     name = serializers.CharField(
-        required=False, help_text='New instance name. Leave blank to use source instance name.')
+        required=False, help_text=_('New instance name. Leave blank to use source instance name.'))
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
     internal_ips_set = NestedInternalIPSerializer(many=True, required=False)
@@ -940,7 +941,8 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta(object):
         model = models.BackupRestoration
-        fields = ('uuid', 'instance', 'created', 'flavor', 'name', 'floating_ips', 'security_groups', 'internal_ips_set')
+        fields = ('uuid', 'instance', 'created', 'flavor', 'name', 'floating_ips', 'security_groups',
+                  'internal_ips_set')
         read_only_fields = ('url', 'uuid', 'instance', 'created', 'backup')
         extra_kwargs = dict(
             instance={'lookup_field': 'uuid', 'view_name': 'openstacktenant-instance-detail'},
@@ -998,9 +1000,9 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
         settings = backup.instance.service_project_link.service.settings
 
         if flavor.settings != settings:
-            raise serializers.ValidationError({'flavor': "Flavor is not within services' settings."})
+            raise serializers.ValidationError({'flavor': _('Flavor is not within services\' settings.')})
         if flavor.disk < system_volume.size:
-            raise serializers.ValidationError({'flavor': 'Flavor disk size should match system volume size.'})
+            raise serializers.ValidationError({'flavor': _('Flavor disk size should match system volume size.')})
 
         _validate_instance_security_groups(attrs.get('security_groups', []), settings)
 
