@@ -1389,9 +1389,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
 
     def connect_router(self, network_name, subnet_id, external=False, network_id=None, tenant_id=None):
-        neutron = self.neutron_client
         tenant_id = tenant_id or self.tenant_id
-
         router_name = '{0}-router'.format(network_name)
         router = self._get_router(tenant_id) or self._create_router(router_name, tenant_id)
         self._connect_network_to_router(router, external, tenant_id, network_id, subnet_id)
