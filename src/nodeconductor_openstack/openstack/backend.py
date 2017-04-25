@@ -1069,7 +1069,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         logger.info('Subnet with name %s has been created.', subnet_name)
 
         # Router creation
-        self.get_or_create_router(network_name, create_response['subnets'][0]['id'])
+        self.connect_router(network_name, create_response['subnets'][0]['id'])
 
         # Floating IPs creation
         floating_ip = {
@@ -1217,9 +1217,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             response = neutron.create_subnet({'subnets': [data]})
             # Automatically create router for subnet
             # TODO: Ideally: Create separate model for router and create it separately.
-            #       Good enough: refactor `get_or_create_router` method: split it into several method.
-            self.get_or_create_router(subnet.network.name, response['subnets'][0]['id'],
-                                      tenant_id=subnet.network.tenant.backend_id)
+            self.connect_router(subnet.network.name, response['subnets'][0]['id'],
+                                tenant_id=subnet.network.tenant.backend_id)
         except neutron_exceptions.NeutronException as e:
             six.reraise(OpenStackBackendError, e)
         else:
@@ -1338,9 +1337,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         network_name = response['network']['name']
         subnet_id = response['network']['subnets'][0]
-        # XXX: refactor function call, split get_or_create_router into more fine grained
-        self.get_or_create_router(network_name, subnet_id,
-                                  external=True, network_id=response['network']['id'])
+        self.connect_router(network_name, subnet_id, external=True, network_id=response['network']['id'])
 
         tenant.external_network_id = external_network_id
         tenant.save()
@@ -1350,45 +1347,54 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         return external_network_id
 
-    def get_or_create_router(self, network_name, subnet_id, external=False, network_id=None, tenant_id=None):
-        neutron = self.neutron_admin_client
-        tenant_id = tenant_id or self.tenant_id
-        router_name = '{0}-router'.format(network_name)
+    def _get_router(self, tenant_id):
+        neutron = self.neutron_client
 
         try:
             routers = neutron.list_routers(tenant_id=tenant_id)['routers']
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        if routers:
-            logger.info('Router(s) in tenant with id %s already exist(s).', tenant_id)
-            router = routers[0]
-        else:
-            try:
-                router = neutron.create_router({'router': {'name': router_name, 'tenant_id': tenant_id}})['router']
-                logger.info('Router %s has been created.', router['name'])
-            except neutron_exceptions.NeutronClientException as e:
-                six.reraise(OpenStackBackendError, e)
+        # If any router in Tenant exists, use it
+        return routers[0] if routers else None
 
+    def _create_router(self, router_name, tenant_id):
+        neutron = self.neutron_client
         try:
-            if not external:
+            router = neutron.create_router({'router': {'name': router_name, 'tenant_id': tenant_id}})['router']
+            logger.info('Router %s has been created.', router['name'])
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return router
+
+    def _connect_network_to_router(self, router, external, tenant_id, network_id=None, subnet_id=None):
+        neutron = self.neutron_client
+        try:
+            if external:
+                if (not router.get('external_gateway_info') or
+                            router['external_gateway_info'].get('network_id') != network_id):
+                    neutron.add_gateway_router(router['id'], {'network_id': network_id})
+                    logger.info('External network %s was connected to the router %s.', network_id, router['name'])
+                else:
+                    logger.info('External network %s is already connected to router %s.', network_id, router['name'])
+            else:
                 ports = neutron.list_ports(device_id=router['id'], tenant_id=tenant_id)['ports']
                 if not ports:
-                # XXX: Ilja: revert to old behaviour as new check breaks setup of router legs
-                # if subnet_id in [port['fixed_ips'][0]['subnet_id'] for port in ports]:
                     neutron.add_interface_router(router['id'], {'subnet_id': subnet_id})
-                    logger.info('Internal subnet %s was connected to the router %s.', subnet_id, router_name)
+                    logger.info('Internal subnet %s was connected to the router %s.', subnet_id, router['name'])
                 else:
-                    logger.info('Internal subnet %s is already connected to the router %s.', subnet_id, router_name)
-            else:
-                if (not router.get('external_gateway_info') or
-                        router['external_gateway_info'].get('network_id') != network_id):
-                    neutron.add_gateway_router(router['id'], {'network_id': network_id})
-                    logger.info('External network %s was connected to the router %s.', network_id, router_name)
-                else:
-                    logger.info('External network %s is already connected to router %s.', network_id, router_name)
+                    logger.info('Internal subnet %s is already connected to the router %s.', subnet_id, router['name'])
         except neutron_exceptions.NeutronClientException as e:
-            logger.warning(e)
+            six.reraise(OpenStackBackendError, e)
+
+    def connect_router(self, network_name, subnet_id, external=False, network_id=None, tenant_id=None):
+        neutron = self.neutron_client
+        tenant_id = tenant_id or self.tenant_id
+
+        router_name = '{0}-router'.format(network_name)
+        router = self._get_router(tenant_id) or self._create_router(router_name, tenant_id)
+        self._connect_network_to_router(router, external, tenant_id, network_id, subnet_id)
 
         return router['id']
 
