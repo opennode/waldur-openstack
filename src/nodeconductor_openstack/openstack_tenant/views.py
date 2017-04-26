@@ -424,11 +424,6 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     @decorators.detail_route(methods=['post'])
     def backup(self, request, uuid=None):
-        instance = self.get_object()
-        if instance.volumes.count() != 2:
-            raise core_exceptions.IncorrectStateException(
-                _('Instance can be backed up only with 1 bootable and 1 data volumes.'))
-
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         backup = serializer.save()

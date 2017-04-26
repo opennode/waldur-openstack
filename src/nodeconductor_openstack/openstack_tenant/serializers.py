@@ -580,7 +580,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
 
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
-    data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024, write_only=True)
+    data_volume_size = serializers.IntegerField(min_value=1024, required=False, write_only=True)
 
     volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
     action_details = core_serializers.JSONField(read_only=True)
@@ -684,7 +684,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         validated_data['min_ram'] = image.min_ram
 
         system_volume_size = validated_data['system_volume_size']
-        data_volume_size = validated_data['data_volume_size']
+        data_volume_size = validated_data.get('data_volume_size', 0)
         validated_data['disk'] = data_volume_size + system_volume_size
 
         instance = super(InstanceSerializer, self).create(validated_data)
@@ -699,6 +699,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         for floating_ip, subnet in floating_ips_with_subnets:
             _connect_floating_ip_to_instance(floating_ip, subnet, instance)
         # volumes
+        volumes = []
         system_volume = models.Volume.objects.create(
             name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
             service_project_link=spl,
@@ -706,23 +707,21 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             image=image,
             bootable=True,
         )
-        system_volume.increase_backend_quotas_usage()
-        data_volume = models.Volume.objects.create(
-            name='{0}-data'.format(instance.name[:145]),  # volume name cannot be longer than 150 symbols
-            service_project_link=spl,
-            size=data_volume_size,
-        )
-        data_volume.increase_backend_quotas_usage()
-        instance.volumes.add(system_volume, data_volume)
+        volumes.append(system_volume)
 
+        if data_volume_size:
+            data_volume = models.Volume.objects.create(
+                name='{0}-data'.format(instance.name[:145]),  # volume name cannot be longer than 150 symbols
+                service_project_link=spl,
+                size=data_volume_size,
+            )
+            volumes.append(data_volume)
+
+        for volume in volumes:
+            volume.increase_backend_quotas_usage()
+
+        instance.volumes.add(*volumes)
         return instance
-
-    def update(self, instance, validated_data):
-        # DRF adds data_volume_size to validated_data, because it has default value.
-        # This field is protected, so it should not be used for update.
-        if 'data_volume_size' in validated_data:
-            del validated_data['data_volume_size']
-        return super(InstanceSerializer, self).update(instance, validated_data)
 
 
 class AssignFloatingIpSerializer(serializers.Serializer):
