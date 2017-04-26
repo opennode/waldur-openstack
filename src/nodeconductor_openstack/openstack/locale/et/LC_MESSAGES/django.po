@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-04-20 16:05+0300\n"
+"POT-Creation-Date: 2017-04-26 08:05+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,253 +18,254 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: admin.py:28
+#: src/nodeconductor_openstack/openstack/admin.py:28
 msgid "Username"
 msgstr ""
 
-#: admin.py:33
+#: src/nodeconductor_openstack/openstack/admin.py:33
 msgid "Password"
 msgstr ""
 
-#: admin.py:47
+#: src/nodeconductor_openstack/openstack/admin.py:47
 msgid "Tenant has to be in state OK to pull security groups."
 msgstr ""
 
-#: admin.py:51
+#: src/nodeconductor_openstack/openstack/admin.py:51
 msgid "Pull security groups"
 msgstr ""
 
-#: admin.py:57
+#: src/nodeconductor_openstack/openstack/admin.py:57
 msgid "Allocate floating IPs"
 msgstr ""
 
-#: admin.py:62
+#: src/nodeconductor_openstack/openstack/admin.py:62
 msgid "Tenant has to have external network to allocate floating IP."
 msgstr ""
 
-#: admin.py:68
+#: src/nodeconductor_openstack/openstack/admin.py:68
 msgid "Attempt to lookup and set external network id of the connected router"
 msgstr ""
 
-#: admin.py:74
+#: src/nodeconductor_openstack/openstack/admin.py:74
 msgid "Pull floating IPs"
 msgstr ""
 
-#: admin.py:80
+#: src/nodeconductor_openstack/openstack/admin.py:80
 msgid "Pull quotas"
 msgstr ""
 
-#: admin.py:86
+#: src/nodeconductor_openstack/openstack/admin.py:86
 msgid "Pull"
 msgstr ""
 
-#: admin.py:90
+#: src/nodeconductor_openstack/openstack/admin.py:90
 msgid "Tenant has to be OK or erred."
 msgstr ""
 
-#: admin.py:117
+#: src/nodeconductor_openstack/openstack/admin.py:117
 msgid "Tenant"
 msgstr ""
 
-#: models.py:32
+#: src/nodeconductor_openstack/openstack/models.py:32
 msgid "OpenStack provider"
 msgstr ""
 
-#: models.py:33
+#: src/nodeconductor_openstack/openstack/models.py:33
 msgid "OpenStack providers"
 msgstr ""
 
-#: models.py:60
+#: src/nodeconductor_openstack/openstack/models.py:60
 msgid "OpenStack provider project link"
 msgstr ""
 
-#: models.py:61
+#: src/nodeconductor_openstack/openstack/models.py:61
 msgid "OpenStack provider project links"
 msgstr ""
 
-#: models.py:75
+#: src/nodeconductor_openstack/openstack/models.py:75
 msgid "Number of cores in a VM"
 msgstr ""
 
-#: models.py:76
+#: src/nodeconductor_openstack/openstack/models.py:76
 msgid "Memory size in MiB"
 msgstr ""
 
-#: models.py:77
+#: src/nodeconductor_openstack/openstack/models.py:77
 msgid "Root disk size in MiB"
 msgstr ""
 
-#: models.py:90
+#: src/nodeconductor_openstack/openstack/models.py:90
 msgid "Minimum disk size in MiB"
 msgstr ""
 
-#: models.py:91
+#: src/nodeconductor_openstack/openstack/models.py:91
 msgid "Minimum memory size in MiB"
 msgstr ""
 
-#: models.py:189
+#: src/nodeconductor_openstack/openstack/models.py:189
 msgid ""
 "Optional availability group. Will be used for all instances provisioned in "
 "this tenant"
 msgstr ""
 
-#: models.py:243
+#: src/nodeconductor_openstack/openstack/models.py:243
 msgid "List of DNS name servers associated with the subnet."
 msgstr ""
 
-#: serializers.py:34
+#: src/nodeconductor_openstack/openstack/serializers.py:34
 msgid "Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)"
 msgstr ""
 
-#: serializers.py:35
+#: src/nodeconductor_openstack/openstack/serializers.py:35
 msgid "Administrative user"
 msgstr ""
 
-#: serializers.py:36
+#: src/nodeconductor_openstack/openstack/serializers.py:36
 msgid "Domain name. If not defined default domain will be used."
 msgstr ""
 
-#: serializers.py:41
+#: src/nodeconductor_openstack/openstack/serializers.py:41
 msgid "Default availability zone for provisioned instances"
 msgstr ""
 
-#: serializers.py:42
+#: src/nodeconductor_openstack/openstack/serializers.py:42
 msgid "ID of OpenStack external network that will be connected to tenants"
 msgstr ""
 
-#: serializers.py:43
+#: src/nodeconductor_openstack/openstack/serializers.py:43
 msgid "Latitude of the datacenter (e.g. 40.712784)"
 msgstr ""
 
-#: serializers.py:44
+#: src/nodeconductor_openstack/openstack/serializers.py:44
 msgid "Longitude of the datacenter (e.g. -74.005941)"
 msgstr ""
 
-#: serializers.py:45
+#: src/nodeconductor_openstack/openstack/serializers.py:45
 msgid "Publicly accessible OpenStack dashboard URL"
 msgstr ""
 
-#: serializers.py:46
+#: src/nodeconductor_openstack/openstack/serializers.py:46
 msgid ""
 "Default value for new subnets DNS name servers. Should be defined as list."
 msgstr ""
 
-#: serializers.py:47
+#: src/nodeconductor_openstack/openstack/serializers.py:47
 msgid ""
 "Flavors matching this regex expression will not be pulled from the backend."
 msgstr ""
 
-#: serializers.py:81
+#: src/nodeconductor_openstack/openstack/serializers.py:81
 msgid "Provided credentials are not for admin tenant."
 msgstr ""
 
-#: serializers.py:85
+#: src/nodeconductor_openstack/openstack/serializers.py:85
 msgid "Unable to validate credentials."
 msgstr ""
 
-#: serializers.py:178
+#: src/nodeconductor_openstack/openstack/serializers.py:178
 msgid "VLAN or VXLAN ID should be provided."
 msgstr ""
 
-#: serializers.py:180
+#: src/nodeconductor_openstack/openstack/serializers.py:180
 msgid "VLAN and VXLAN networks cannot be created simultaneously."
 msgstr ""
 
-#: serializers.py:194
+#: src/nodeconductor_openstack/openstack/serializers.py:194
 msgid "Not enough Floating IP Addresses available."
 msgstr ""
 
-#: serializers.py:241 serializers.py:306
+#: src/nodeconductor_openstack/openstack/serializers.py:241
+#: src/nodeconductor_openstack/openstack/serializers.py:306
 #, python-format
 msgid "Cannot add existed rule with id %s to new security group"
 msgstr ""
 
-#: serializers.py:258
+#: src/nodeconductor_openstack/openstack/serializers.py:258
 #, python-format
 msgid "Security group does not have rule with id %s."
 msgstr ""
 
-#: serializers.py:338
+#: src/nodeconductor_openstack/openstack/serializers.py:338
 #, python-format
 msgid "Can't import tenant with ID %(backend_id)s. Reason: %(reason)s"
 msgstr ""
 
-#: serializers.py:372
+#: src/nodeconductor_openstack/openstack/serializers.py:372
 msgid "Tenant should belong to the same project."
 msgstr ""
 
-#: serializers.py:385
+#: src/nodeconductor_openstack/openstack/serializers.py:385
 #, python-format
 msgid "Can't import resource with ID %(backend_id)s. Reason: %(reason)s"
 msgstr ""
 
-#: serializers.py:442
+#: src/nodeconductor_openstack/openstack/serializers.py:442
 msgid ""
 "You do not have permissions to create tenant in this project using selected "
 "service."
 msgstr ""
 
-#: serializers.py:462
+#: src/nodeconductor_openstack/openstack/serializers.py:462
 #, python-format
 msgid "Name \"%s\" is already registered. Please choose another one."
 msgstr ""
 
-#: serializers.py:467
+#: src/nodeconductor_openstack/openstack/serializers.py:467
 #, python-format
 msgid "Name \"%s\" cannot be used as tenant user username."
 msgstr ""
 
-#: serializers.py:486
+#: src/nodeconductor_openstack/openstack/serializers.py:486
 #, python-format
 msgid "Internal network for tenant %s"
 msgstr ""
 
-#: serializers.py:492
+#: src/nodeconductor_openstack/openstack/serializers.py:492
 #, python-format
 msgid "SubNet for tenant %s internal network"
 msgstr ""
 
-#: serializers.py:577
+#: src/nodeconductor_openstack/openstack/serializers.py:577
 msgid "Internal network cannot have more than one subnet."
 msgstr ""
 
-#: serializers.py:580
+#: src/nodeconductor_openstack/openstack/serializers.py:580
 #, python-format
 msgid "Subnet with cidr \"%s\" is already registered"
 msgstr ""
 
-#: serializers.py:606
+#: src/nodeconductor_openstack/openstack/serializers.py:606
 msgid "New tenant user password."
 msgstr ""
 
-#: serializers.py:610
+#: src/nodeconductor_openstack/openstack/serializers.py:610
 msgid "New password cannot match the old password."
 msgstr ""
 
-#: views.py:123
+#: src/nodeconductor_openstack/openstack/views.py:123
 msgid "Invalid tenant UUID"
 msgstr ""
 
-#: views.py:213
+#: src/nodeconductor_openstack/openstack/views.py:213
 msgid "Rules update was successfully scheduled."
 msgstr ""
 
-#: views.py:324
+#: src/nodeconductor_openstack/openstack/views.py:324
 msgid "Quota update has been scheduled"
 msgstr ""
 
-#: views.py:345
+#: src/nodeconductor_openstack/openstack/views.py:345
 msgid "Cannot create floating IP if tenant external network is not defined."
 msgstr ""
 
-#: views.py:410
+#: src/nodeconductor_openstack/openstack/views.py:410
 msgid "Security groups pull has been scheduled."
 msgstr ""
 
-#: views.py:421
+#: src/nodeconductor_openstack/openstack/views.py:421
 msgid "Password update has been scheduled."
 msgstr ""
 
-#: views.py:428
+#: src/nodeconductor_openstack/openstack/views.py:428
 msgid "Quotas pull has been scheduled."
 msgstr ""

@@ -33,7 +33,7 @@ class BackupUsageTest(test.APITransactionTestCase):
         response = self.client.post(url, data={'name': 'test backup'})
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
-    def test_user_can_backup_instance_with_only_two_volumes(self):
+    def test_user_can_backup_instance_with_one_volume(self):
         instance = factories.InstanceFactory(
             state=models.Instance.States.OK,
             runtime_state=models.Instance.RuntimeStates.SHUTOFF,
@@ -42,7 +42,7 @@ class BackupUsageTest(test.APITransactionTestCase):
         url = factories.InstanceFactory.get_url(instance, action='backup')
 
         response = self.client.post(url, data={'name': 'test backup'})
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_backup_delete(self):
         backup = factories.BackupFactory(state=models.Backup.States.OK)
@@ -280,6 +280,15 @@ class BackupRestorationTest(test.APITransactionTestCase):
         self.assertEqual(instance.subnets.count(), 1)
         self.assertEqual(instance.subnets.first().uuid.hex, self.subnet.uuid.hex)
         self.assertEqual(instance.flavor_name, self.valid_flavor.name)
+
+    def test_backup_can_be_restored_for_instance_with_1_volume(self):
+        self.backup.instance.volumes.get(bootable=False).delete()
+        payload = self._get_valid_payload()
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(models.BackupRestoration.objects.filter(instance__name=payload['name']).exists)
 
     def _get_valid_payload(self, **options):
         payload = {

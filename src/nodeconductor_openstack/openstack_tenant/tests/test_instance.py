@@ -509,3 +509,44 @@ class InstanceUpdateFloatingIPsTest(test.APITransactionTestCase):
         data = {'floating_ips': [{'subnet': self.subnet_url}, {'subnet': self.subnet_url}]}
         response = self.client.post(self.url, data=data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class InstanceBackupTest(test.APITransactionTestCase):
+    action_name = 'backup'
+
+    def setUp(self):
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.client.force_authenticate(self.fixture.owner)
+
+    def test_backup_can_be_created_for_instance_with_2_volumes(self):
+        url = factories.InstanceFactory.get_url(self.fixture.instance, action='backup')
+        payload = self.get_payload()
+        response = self.client.post(url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(models.Backup.objects.get(name=payload['name']).snapshots.count(), 2)
+
+    def test_backup_can_be_created_for_instance_only_with_system_volume(self):
+        instance = self.fixture.instance
+        instance.volumes.filter(bootable=False).delete()
+        url = factories.InstanceFactory.get_url(instance, action='backup')
+        payload = self.get_payload()
+        response = self.client.post(url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(models.Backup.objects.get(name=payload['name']).snapshots.count(), 1)
+
+    def test_backup_can_be_created_for_instance_with_3_volumes(self):
+        instance = self.fixture.instance
+        instance.volumes.add(factories.VolumeFactory(service_project_link=instance.service_project_link))
+        url = factories.InstanceFactory.get_url(instance, action='backup')
+        payload = self.get_payload()
+        response = self.client.post(url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(models.Backup.objects.get(name=payload['name']).snapshots.count(), 3)
+
+    def get_payload(self):
+        return {
+            'name': 'backup_name'
+        }
