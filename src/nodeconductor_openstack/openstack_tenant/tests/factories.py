@@ -248,9 +248,10 @@ class BackupFactory(factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackTenantServiceProjectLinkFactory)
     backup_schedule = factory.SubFactory(BackupScheduleFactory)
     instance = factory.LazyAttribute(lambda b: b.backup_schedule.instance)
+    state = models.Backup.States.OK
 
     @classmethod
-    def get_url(cls, backup, action=None):
+    def get_url(cls, backup=None, action=None):
         if backup is None:
             backup = BackupFactory()
         url = 'http://testserver' + reverse('openstacktenant-backup-detail', kwargs={'uuid': backup.uuid})

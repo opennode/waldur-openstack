@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+from ddt import ddt, data
 from mock import patch
 from rest_framework import status
 from rest_framework import test
@@ -10,45 +11,25 @@ from .. import models
 from . import factories, fixtures
 
 
-class BackupUsageTest(test.APITransactionTestCase):
+@ddt
+class BackupDeleteTest(test.APITransactionTestCase):
 
     def setUp(self):
-        self.user = structure_factories.UserFactory.create(is_staff=True, is_superuser=True)
-        self.client.force_authenticate(user=self.user)
+        self.fixture = fixtures.OpenStackTenantFixture()
 
-    def test_backup_manually_create(self):
-        backupable = factories.InstanceFactory(
-            state=models.Instance.States.OK,
-            runtime_state=models.Instance.RuntimeStates.SHUTOFF,
-        )
-        url = factories.InstanceFactory.get_url(backupable, action='backup')
-        response = self.client.post(url, data={'name': 'test backup'})
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        models.Backup.objects.get(instance_id=backupable.id)
-
-    def test_user_cannot_backup_unstable_instance(self):
-        instance = factories.InstanceFactory(state=models.Instance.States.UPDATING)
-        url = factories.InstanceFactory.get_url(instance, action='backup')
-
-        response = self.client.post(url, data={'name': 'test backup'})
-        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
-
-    def test_user_can_backup_instance_with_one_volume(self):
-        instance = factories.InstanceFactory(
-            state=models.Instance.States.OK,
-            runtime_state=models.Instance.RuntimeStates.SHUTOFF,
-        )
-        instance.volumes.first().delete()
-        url = factories.InstanceFactory.get_url(instance, action='backup')
-
-        response = self.client.post(url, data={'name': 'test backup'})
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    def test_backup_delete(self):
-        backup = factories.BackupFactory(state=models.Backup.States.OK)
-        url = factories.BackupFactory.get_url(backup)
+    @data('staff', 'owner', 'manager', 'admin')
+    def test_user_can_delete_backup(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+        url = factories.BackupFactory.get_url(self.fixture.backup)
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+
+    @data('global_support', 'customer_support')
+    def test_user_can_not_delete_backup(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+        url = factories.BackupFactory.get_url(self.fixture.backup)
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class BackupListPermissionsTest(helpers.ListPermissionsTest):

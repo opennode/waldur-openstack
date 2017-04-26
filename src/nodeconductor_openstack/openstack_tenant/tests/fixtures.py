@@ -73,6 +73,14 @@ class OpenStackTenantFixture(ProjectFixture):
         )
 
     @cached_property
+    def backup(self):
+        return factories.BackupFactory(
+            service_project_link=self.spl,
+            instance=self.instance,
+            backup_schedule=self.backup_schedule
+        )
+
+    @cached_property
     def backup_schedule(self):
         return factories.BackupScheduleFactory(
             service_project_link=self.spl,

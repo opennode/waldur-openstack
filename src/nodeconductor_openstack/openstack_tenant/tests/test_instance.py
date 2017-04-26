@@ -546,6 +546,15 @@ class InstanceBackupTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(models.Backup.objects.get(name=payload['name']).snapshots.count(), 3)
 
+    def test_user_cannot_backup_unstable_instance(self):
+        instance = self.fixture.instance
+        instance.state = models.Instance.States.UPDATING
+        instance.save()
+        url = factories.InstanceFactory.get_url(instance, action='backup')
+
+        response = self.client.post(url, data={'name': 'test backup'})
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+
     def get_payload(self):
         return {
             'name': 'backup_name'
