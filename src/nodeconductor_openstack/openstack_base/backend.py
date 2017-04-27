@@ -373,12 +373,19 @@ class BaseOpenStackBackend(ServiceBackend):
                 cinder_exceptions.ClientException,
                 neutron_exceptions.NeutronClientException) as e:
             six.reraise(OpenStackBackendError, e)
+
+        volumes_size = sum(self.gb2mb(v.size) for v in volumes)
+        snapshots_size = sum(self.gb2mb(v.size) for v in snapshots)
+        storage = volumes_size + snapshots_size
+
         return {
             Tenant.Quotas.ram: ram,
             Tenant.Quotas.vcpu: vcpu,
-            Tenant.Quotas.storage: sum(self.gb2mb(v.size) for v in volumes + snapshots),
+            Tenant.Quotas.storage: storage,
             Tenant.Quotas.volumes: len(volumes),
+            Tenant.Quotas.volumes_size: volumes_size,
             Tenant.Quotas.snapshots: len(snapshots),
+            Tenant.Quotas.snapshots_size: snapshots_size,
             Tenant.Quotas.instances: len(instances),
             Tenant.Quotas.security_group_count: len(security_groups),
             Tenant.Quotas.security_group_rule_count: len(sum([sg['security_group_rules']
