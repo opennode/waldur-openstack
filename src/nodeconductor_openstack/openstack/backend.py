@@ -51,79 +51,34 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     def pull_tenants(self):
         keystone = self.keystone_admin_client
-        nova = self.nova_admin_client
-        cinder = self.cinder_admin_client
-        neutron = self.neutron_admin_client
 
         try:
             backend_tenants = keystone.projects.list(domain=self._get_domain())
-            neutron_quotas = neutron.list_quotas()['quotas']
-        except (keystone_exceptions.ClientException, neutron_exceptions.NeutronClientException) as e:
+        except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
         backend_tenants_mapping = {tenant.id: tenant for tenant in backend_tenants}
-        neutron_quotas_mapping = {quota['tenant_id']: quota for quota in neutron_quotas}
 
         tenants = models.Tenant.objects.filter(
             state__in=[models.Tenant.States.OK, models.Tenant.States.ERRED],
             service_project_link__service__settings=self.settings,
         )
-        with transaction.atomic():
-            for tenant in tenants:
-                backend_tenant = backend_tenants_mapping.get(tenant.backend_id)
-                if backend_tenant is None:
-                    handle_resource_not_found(tenant)
-                    continue
+        for tenant in tenants:
+            backend_tenant = backend_tenants_mapping.get(tenant.backend_id)
+            if backend_tenant is None:
+                handle_resource_not_found(tenant)
+                continue
 
-                # XXX: Consider changing, when nova and cinder clients introduce quotas fetch in bulk for all tenants.
-                try:
-                    nova_quotas = nova.quotas.get(tenant_id=tenant.backend_id)
-                    cinder_quotas = cinder.quotas.get(tenant_id=tenant.backend_id)
-                except (nova_exceptions.ClientException, cinder_exceptions.ClientException) as e:
-                    six.reraise(OpenStackBackendError, e)
+            imported_backend_tenant = models.Tenant(
+                name=backend_tenant.name,
+                description=backend_tenant.description,
+                backend_id=backend_tenant.id,
+                state=models.Tenant.States.OK,
+            )
+            update_pulled_fields(tenant, imported_backend_tenant, models.Tenant.get_backend_fields())
 
-                neutron_quotas = neutron_quotas_mapping.get(tenant.backend_id, {})
-                imported_backend_tenant = self._backend_tenant_to_tenant(backend_tenant,
-                                                                         nova_quotas, cinder_quotas, neutron_quotas)
-                update_pulled_fields(tenant, imported_backend_tenant, models.Tenant.get_backend_fields())
-                for quota_name, limit in imported_backend_tenant._quota_limits.items():
-                    tenant.set_quota_limit(quota_name, limit)
-                handle_resource_update_success(tenant)
-
-    def _backend_tenant_to_tenant(self, backend_tenant, nova_quotas=None,
-                                  cinder_quotas=None, neutron_quotas=None, **kwargs):
-        tenant = models.Tenant(
-            name=backend_tenant.name,
-            description=backend_tenant.description,
-            backend_id=backend_tenant.id,
-            state=models.Tenant.States.OK,
-        )
-        for field, value in kwargs.items():
-            setattr(tenant, field, value)
-
-        tenant._quota_limits = {}
-        if nova_quotas is not None:
-            tenant._quota_limits.update({
-                models.Tenant.Quotas.ram: nova_quotas.ram,
-                models.Tenant.Quotas.vcpu: nova_quotas.cores,
-                models.Tenant.Quotas.instances: nova_quotas.instances,
-            })
-        if cinder_quotas is not None:
-            tenant._quota_limits.update({
-                models.Tenant.Quotas.storage: self.gb2mb(cinder_quotas.gigabytes),
-                models.Tenant.Quotas.snapshots: cinder_quotas.snapshots,
-                models.Tenant.Quotas.volumes: cinder_quotas.volumes,
-            })
-        if neutron_quotas is not None:
-            tenant._quota_limits.update({
-                models.Tenant.Quotas.security_group_count: neutron_quotas.get('security_group', -1),
-                models.Tenant.Quotas.security_group_rule_count: neutron_quotas.get('security_group_rule', -1),
-                models.Tenant.Quotas.floating_ip_count: neutron_quotas.get('floatingip', -1),
-                models.Tenant.Quotas.network_count: neutron_quotas.get('network', -1),
-                models.Tenant.Quotas.subnet_count: neutron_quotas.get('subnet', -1),
-            })
-
-        return tenant
+            self.pull_tenant_quotas(tenant)
+            handle_resource_update_success(tenant)
 
     def _get_domain(self):
         """ Get current domain """
@@ -258,10 +213,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action('pull quotas for tenant')
     def pull_tenant_quotas(self, tenant):
-        for quota_name, limit in self.get_tenant_quotas_limits(tenant.backend_id).items():
-            tenant.set_quota_limit(quota_name, limit)
-        for quota_name, usage in self.get_tenant_quotas_usage(tenant.backend_id).items():
-            tenant.set_quota_usage(quota_name, usage, fail_silently=True)
+        self._pull_tenant_quotas(tenant.backend_id, tenant)
 
     def pull_floating_ips(self, tenants=None):
         neutron = self.neutron_admin_client
