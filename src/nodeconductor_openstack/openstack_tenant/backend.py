@@ -232,10 +232,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             models.SecurityGroup.objects.filter(backend_id__in=cur_security_groups.keys()).delete()
 
     def pull_quotas(self):
-        for quota_name, limit in self.get_tenant_quotas_limits(self.tenant_id).items():
-            self.settings.set_quota_limit(quota_name, limit)
-        for quota_name, usage in self.get_tenant_quotas_usage(self.tenant_id).items():
-            self.settings.set_quota_usage(quota_name, usage, fail_silently=True)
+        self._pull_tenant_quotas(self.tenant_id, self.settings)
 
     def pull_networks(self):
         neutron = self.neutron_client
