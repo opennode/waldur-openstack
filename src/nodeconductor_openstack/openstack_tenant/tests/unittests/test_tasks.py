@@ -1,12 +1,12 @@
 import mock
 
-from datetime import timedelta
+from datetime import timedelta, datetime
+import pytz
 
-from ddt import ddt, data
+from croniter import croniter
 from django.test import TestCase
 from django.utils import timezone
-
-from nodeconductor.core import utils as core_utils
+from freezegun import freeze_time
 
 from ... import tasks, models
 from ...tests import factories
@@ -69,6 +69,24 @@ class BackupScheduleTaskTest(TestCase):
     def test_command_create_one_backup_created_for_schedule_with_next_trigger_in_past(self):
         tasks.ScheduleBackups().run()
         self.assertEqual(self.schedule_for_execution.backups.count(), 1)
+
+    def test_command_does_not_create_a_second_backup_if_timedelta_is_less_than_schedule(self):
+        tasks.ScheduleBackups().run()
+        self.assertEqual(self.schedule_for_execution.backups.count(), 1)
+        # timedelta is 0
+        tasks.ScheduleBackups().run()
+        self.assertEqual(self.schedule_for_execution.backups.count(), 1)
+
+    def test_command_create_two_backups_if_enough_time_has_passed(self):
+        tasks.ScheduleBackups().run()
+        self.assertEqual(self.schedule_for_execution.backups.count(), 1)
+        tasks.ScheduleBackups().run()
+        base_time = timezone.now().replace(tzinfo=pytz.timezone(self.schedule_for_execution.timezone))
+        next_trigger_at = croniter(self.schedule_for_execution.schedule, base_time).get_next(datetime)
+        mocked_now = next_trigger_at + timezone.timedelta(seconds=5)
+        with freeze_time(mocked_now):
+            tasks.ScheduleBackups().run()
+            self.assertEqual(self.schedule_for_execution.backups.count(), 2)
 
     def test_command_does_not_create_backups_created_for_schedule_with_next_trigger_in_future(self):
         tasks.ScheduleBackups().run()
