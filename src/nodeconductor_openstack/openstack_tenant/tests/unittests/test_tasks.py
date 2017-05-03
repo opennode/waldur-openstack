@@ -1,12 +1,11 @@
-import mock
-
 from datetime import timedelta, datetime
-import pytz
+import mock
 
 from croniter import croniter
 from django.test import TestCase
 from django.utils import timezone
 from freezegun import freeze_time
+import pytz
 
 from ... import tasks, models
 from ...tests import factories
