@@ -9,9 +9,12 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import ugettext, ugettext_lazy as _
 from rest_framework import serializers
+from rest_framework.reverse import reverse
 
-from nodeconductor.core import serializers as core_serializers, fields as core_fields, utils as core_utils
+from nodeconductor.core import (serializers as core_serializers, fields as core_fields, utils as core_utils,
+                                signals as core_signals)
 from nodeconductor.structure import serializers as structure_serializers
+from nodeconductor_openstack.openstack import serializers as openstack_serializers
 
 from . import models, fields
 
@@ -1222,3 +1225,50 @@ class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSeriali
         fields['start'].default = core_utils.timeshift(hours=-1)
         fields['end'].default = core_utils.timeshift()
         return fields
+
+
+def get_instance(openstack_floating_ip):
+    # cache openstack instance on openstack floating_ip instance
+    if hasattr(openstack_floating_ip, '_instance'):
+        return openstack_floating_ip._instance
+    try:
+        floating_ip = models.FloatingIP.objects.get(backend_id=openstack_floating_ip.backend_id,
+                                                    address=openstack_floating_ip.address)
+    except models.FloatingIP.DoesNotExist:
+        openstack_floating_ip._instance = None
+    else:
+        instance = getattr(floating_ip.internal_ip, 'instance', None)
+        openstack_floating_ip._instance = instance
+        return instance
+
+
+def get_instance_attr(openstack_floating_ip, name):
+    instance = get_instance(openstack_floating_ip)
+    return getattr(instance, name, None)
+
+
+def get_instance_uuid(serializer, openstack_floating_ip):
+    return get_instance_attr(openstack_floating_ip, 'uuid')
+
+
+def get_instance_name(serializer, openstack_floating_ip):
+    return get_instance_attr(openstack_floating_ip, 'name')
+
+
+def get_instance_url(serializer, openstack_floating_ip):
+    instance = get_instance(openstack_floating_ip)
+    if instance:
+        return reverse('openstacktenant-instance-detail', kwargs={'uuid': instance.uuid.hex},
+                       request=serializer.context['request'])
+
+
+def add_instance_fields(sender, fields, **kwargs):
+    fields['instance_uuid'] = serializers.SerializerMethodField()
+    setattr(sender, 'get_instance_uuid', get_instance_uuid)
+    fields['instance_name'] = serializers.SerializerMethodField()
+    setattr(sender, 'get_instance_name', get_instance_name)
+    fields['instance_url'] = serializers.SerializerMethodField()
+    setattr(sender, 'get_instance_url', get_instance_url)
+
+
+core_signals.pre_serializer_fields.connect(add_instance_fields, sender=openstack_serializers.FloatingIPSerializer)

@@ -152,6 +152,7 @@ class FloatingIPFactory(TenantMixin, factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
     runtime_state = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
     address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
 
     @classmethod
     def get_url(cls, instance=None):

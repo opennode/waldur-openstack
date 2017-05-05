@@ -102,3 +102,10 @@ class OpenStackTenantFixture(ProjectFixture):
             settings=self.openstack_tenant_service_settings,
             runtime_state='DOWN',
         )
+
+    @cached_property
+    def internal_ip(self):
+        return factories.InternalIPFactory(
+            subnet=self.subnet,
+            instance=self.instance,
+        )
