@@ -1228,13 +1228,18 @@ class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSeriali
 
 
 def get_instance(openstack_floating_ip):
+    # cache openstack instance on openstack floating_ip instance
+    if hasattr(openstack_floating_ip, '_instance'):
+        return openstack_floating_ip._instance
     try:
-        floating_ip = models.FloatingIP.objects.get(backend_network_id=openstack_floating_ip.backend_network_id,
+        floating_ip = models.FloatingIP.objects.get(backend_id=openstack_floating_ip.backend_id,
                                                     address=openstack_floating_ip.address)
     except models.FloatingIP.DoesNotExist:
-        pass
+        openstack_floating_ip._instance = None
     else:
-        return getattr(floating_ip.internal_ip, 'instance', None)
+        instance = getattr(floating_ip.internal_ip, 'instance', None)
+        openstack_floating_ip._instance = instance
+        return instance
 
 
 def get_instance_attr(openstack_floating_ip, name):
