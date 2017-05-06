@@ -91,6 +91,23 @@ class FloatingIPHandlerTest(TestCase):
 
         self.assertEqual(models.FloatingIP.objects.count(), 1)
 
+    def test_floating_ip_is_not_created_if_it_already_exists(self):
+        factories.FloatingIPFactory(
+            settings=self.service_settings,
+            backend_id='VALID_BACKEND_ID'
+        )
+        openstack_floating_ip = openstack_factories.FloatingIPFactory(
+            tenant=self.tenant,
+            state=StateMixin.States.CREATING,
+            backend_id='VALID_BACKEND_ID',
+        )
+        self.assertEqual(models.FloatingIP.objects.count(), 1)
+
+        openstack_floating_ip.set_ok()
+        openstack_floating_ip.save()
+
+        self.assertEqual(models.FloatingIP.objects.count(), 1)
+
     def test_floating_ip_update(self):
         openstack_floating_ip = openstack_factories.FloatingIPFactory(
             tenant=self.tenant,

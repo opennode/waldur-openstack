@@ -9,9 +9,12 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import ugettext, ugettext_lazy as _
 from rest_framework import serializers
+from rest_framework.reverse import reverse
 
-from nodeconductor.core import serializers as core_serializers, fields as core_fields, utils as core_utils
+from nodeconductor.core import (serializers as core_serializers, fields as core_fields, utils as core_utils,
+                                signals as core_signals)
 from nodeconductor.structure import serializers as structure_serializers
+from nodeconductor_openstack.openstack import serializers as openstack_serializers
 
 from . import models, fields
 
@@ -580,7 +583,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
 
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
-    data_volume_size = serializers.IntegerField(initial=20 * 1024, default=20 * 1024, min_value=1024, write_only=True)
+    data_volume_size = serializers.IntegerField(min_value=1024, required=False, write_only=True)
 
     volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
     action_details = core_serializers.JSONField(read_only=True)
@@ -684,7 +687,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         validated_data['min_ram'] = image.min_ram
 
         system_volume_size = validated_data['system_volume_size']
-        data_volume_size = validated_data['data_volume_size']
+        data_volume_size = validated_data.get('data_volume_size', 0)
         validated_data['disk'] = data_volume_size + system_volume_size
 
         instance = super(InstanceSerializer, self).create(validated_data)
@@ -699,6 +702,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         for floating_ip, subnet in floating_ips_with_subnets:
             _connect_floating_ip_to_instance(floating_ip, subnet, instance)
         # volumes
+        volumes = []
         system_volume = models.Volume.objects.create(
             name='{0}-system'.format(instance.name[:143]),  # volume name cannot be longer than 150 symbols
             service_project_link=spl,
@@ -706,23 +710,21 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             image=image,
             bootable=True,
         )
-        system_volume.increase_backend_quotas_usage()
-        data_volume = models.Volume.objects.create(
-            name='{0}-data'.format(instance.name[:145]),  # volume name cannot be longer than 150 symbols
-            service_project_link=spl,
-            size=data_volume_size,
-        )
-        data_volume.increase_backend_quotas_usage()
-        instance.volumes.add(system_volume, data_volume)
+        volumes.append(system_volume)
 
+        if data_volume_size:
+            data_volume = models.Volume.objects.create(
+                name='{0}-data'.format(instance.name[:145]),  # volume name cannot be longer than 150 symbols
+                service_project_link=spl,
+                size=data_volume_size,
+            )
+            volumes.append(data_volume)
+
+        for volume in volumes:
+            volume.increase_backend_quotas_usage()
+
+        instance.volumes.add(*volumes)
         return instance
-
-    def update(self, instance, validated_data):
-        # DRF adds data_volume_size to validated_data, because it has default value.
-        # This field is protected, so it should not be used for update.
-        if 'data_volume_size' in validated_data:
-            del validated_data['data_volume_size']
-        return super(InstanceSerializer, self).update(instance, validated_data)
 
 
 class AssignFloatingIpSerializer(serializers.Serializer):
@@ -1223,3 +1225,50 @@ class MeterTimestampIntervalSerializer(core_serializers.TimestampIntervalSeriali
         fields['start'].default = core_utils.timeshift(hours=-1)
         fields['end'].default = core_utils.timeshift()
         return fields
+
+
+def get_instance(openstack_floating_ip):
+    # cache openstack instance on openstack floating_ip instance
+    if hasattr(openstack_floating_ip, '_instance'):
+        return openstack_floating_ip._instance
+    try:
+        floating_ip = models.FloatingIP.objects.get(backend_id=openstack_floating_ip.backend_id,
+                                                    address=openstack_floating_ip.address)
+    except models.FloatingIP.DoesNotExist:
+        openstack_floating_ip._instance = None
+    else:
+        instance = getattr(floating_ip.internal_ip, 'instance', None)
+        openstack_floating_ip._instance = instance
+        return instance
+
+
+def get_instance_attr(openstack_floating_ip, name):
+    instance = get_instance(openstack_floating_ip)
+    return getattr(instance, name, None)
+
+
+def get_instance_uuid(serializer, openstack_floating_ip):
+    return get_instance_attr(openstack_floating_ip, 'uuid')
+
+
+def get_instance_name(serializer, openstack_floating_ip):
+    return get_instance_attr(openstack_floating_ip, 'name')
+
+
+def get_instance_url(serializer, openstack_floating_ip):
+    instance = get_instance(openstack_floating_ip)
+    if instance:
+        return reverse('openstacktenant-instance-detail', kwargs={'uuid': instance.uuid.hex},
+                       request=serializer.context['request'])
+
+
+def add_instance_fields(sender, fields, **kwargs):
+    fields['instance_uuid'] = serializers.SerializerMethodField()
+    setattr(sender, 'get_instance_uuid', get_instance_uuid)
+    fields['instance_name'] = serializers.SerializerMethodField()
+    setattr(sender, 'get_instance_name', get_instance_name)
+    fields['instance_url'] = serializers.SerializerMethodField()
+    setattr(sender, 'get_instance_url', get_instance_url)
+
+
+core_signals.pre_serializer_fields.connect(add_instance_fields, sender=openstack_serializers.FloatingIPSerializer)

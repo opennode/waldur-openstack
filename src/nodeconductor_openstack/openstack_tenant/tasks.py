@@ -174,6 +174,8 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
             else:
                 executor = self._get_create_executor()
                 executor.execute(resource)
+                schedule.update_next_trigger_at()
+                schedule.save()
 
     def _create_resource(self, schedule, kept_until):
         raise NotImplementedError()

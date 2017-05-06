@@ -51,79 +51,34 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     def pull_tenants(self):
         keystone = self.keystone_admin_client
-        nova = self.nova_admin_client
-        cinder = self.cinder_admin_client
-        neutron = self.neutron_admin_client
 
         try:
             backend_tenants = keystone.projects.list(domain=self._get_domain())
-            neutron_quotas = neutron.list_quotas()['quotas']
-        except (keystone_exceptions.ClientException, neutron_exceptions.NeutronClientException) as e:
+        except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
         backend_tenants_mapping = {tenant.id: tenant for tenant in backend_tenants}
-        neutron_quotas_mapping = {quota['tenant_id']: quota for quota in neutron_quotas}
 
         tenants = models.Tenant.objects.filter(
             state__in=[models.Tenant.States.OK, models.Tenant.States.ERRED],
             service_project_link__service__settings=self.settings,
         )
-        with transaction.atomic():
-            for tenant in tenants:
-                backend_tenant = backend_tenants_mapping.get(tenant.backend_id)
-                if backend_tenant is None:
-                    handle_resource_not_found(tenant)
-                    continue
+        for tenant in tenants:
+            backend_tenant = backend_tenants_mapping.get(tenant.backend_id)
+            if backend_tenant is None:
+                handle_resource_not_found(tenant)
+                continue
 
-                # XXX: Consider changing, when nova and cinder clients introduce quotas fetch in bulk for all tenants.
-                try:
-                    nova_quotas = nova.quotas.get(tenant_id=tenant.backend_id)
-                    cinder_quotas = cinder.quotas.get(tenant_id=tenant.backend_id)
-                except (nova_exceptions.ClientException, cinder_exceptions.ClientException) as e:
-                    six.reraise(OpenStackBackendError, e)
+            imported_backend_tenant = models.Tenant(
+                name=backend_tenant.name,
+                description=backend_tenant.description,
+                backend_id=backend_tenant.id,
+                state=models.Tenant.States.OK,
+            )
+            update_pulled_fields(tenant, imported_backend_tenant, models.Tenant.get_backend_fields())
 
-                neutron_quotas = neutron_quotas_mapping.get(tenant.backend_id, {})
-                imported_backend_tenant = self._backend_tenant_to_tenant(backend_tenant,
-                                                                         nova_quotas, cinder_quotas, neutron_quotas)
-                update_pulled_fields(tenant, imported_backend_tenant, models.Tenant.get_backend_fields())
-                for quota_name, limit in imported_backend_tenant._quota_limits.items():
-                    tenant.set_quota_limit(quota_name, limit)
-                handle_resource_update_success(tenant)
-
-    def _backend_tenant_to_tenant(self, backend_tenant, nova_quotas=None,
-                                  cinder_quotas=None, neutron_quotas=None, **kwargs):
-        tenant = models.Tenant(
-            name=backend_tenant.name,
-            description=backend_tenant.description,
-            backend_id=backend_tenant.id,
-            state=models.Tenant.States.OK,
-        )
-        for field, value in kwargs.items():
-            setattr(tenant, field, value)
-
-        tenant._quota_limits = {}
-        if nova_quotas is not None:
-            tenant._quota_limits.update({
-                models.Tenant.Quotas.ram: nova_quotas.ram,
-                models.Tenant.Quotas.vcpu: nova_quotas.cores,
-                models.Tenant.Quotas.instances: nova_quotas.instances,
-            })
-        if cinder_quotas is not None:
-            tenant._quota_limits.update({
-                models.Tenant.Quotas.storage: self.gb2mb(cinder_quotas.gigabytes),
-                models.Tenant.Quotas.snapshots: cinder_quotas.snapshots,
-                models.Tenant.Quotas.volumes: cinder_quotas.volumes,
-            })
-        if neutron_quotas is not None:
-            tenant._quota_limits.update({
-                models.Tenant.Quotas.security_group_count: neutron_quotas.get('security_group', -1),
-                models.Tenant.Quotas.security_group_rule_count: neutron_quotas.get('security_group_rule', -1),
-                models.Tenant.Quotas.floating_ip_count: neutron_quotas.get('floatingip', -1),
-                models.Tenant.Quotas.network_count: neutron_quotas.get('network', -1),
-                models.Tenant.Quotas.subnet_count: neutron_quotas.get('subnet', -1),
-            })
-
-        return tenant
+            self.pull_tenant_quotas(tenant)
+            handle_resource_update_success(tenant)
 
     def _get_domain(self):
         """ Get current domain """
@@ -258,10 +213,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     @log_backend_action('pull quotas for tenant')
     def pull_tenant_quotas(self, tenant):
-        for quota_name, limit in self.get_tenant_quotas_limits(tenant.backend_id).items():
-            tenant.set_quota_limit(quota_name, limit)
-        for quota_name, usage in self.get_tenant_quotas_usage(tenant.backend_id).items():
-            tenant.set_quota_usage(quota_name, usage, fail_silently=True)
+        self._pull_tenant_quotas(tenant.backend_id, tenant)
 
     def pull_floating_ips(self, tenants=None):
         neutron = self.neutron_admin_client
@@ -1069,7 +1021,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         logger.info('Subnet with name %s has been created.', subnet_name)
 
         # Router creation
-        self.get_or_create_router(network_name, create_response['subnets'][0]['id'])
+        self.connect_router(network_name, create_response['subnets'][0]['id'])
 
         # Floating IPs creation
         floating_ip = {
@@ -1217,9 +1169,8 @@ class OpenStackBackend(BaseOpenStackBackend):
             response = neutron.create_subnet({'subnets': [data]})
             # Automatically create router for subnet
             # TODO: Ideally: Create separate model for router and create it separately.
-            #       Good enough: refactor `get_or_create_router` method: split it into several method.
-            self.get_or_create_router(subnet.network.name, response['subnets'][0]['id'],
-                                      tenant_id=subnet.network.tenant.backend_id)
+            self.connect_router(subnet.network.name, response['subnets'][0]['id'],
+                                tenant_id=subnet.network.tenant.backend_id)
         except neutron_exceptions.NeutronException as e:
             six.reraise(OpenStackBackendError, e)
         else:
@@ -1338,9 +1289,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         network_name = response['network']['name']
         subnet_id = response['network']['subnets'][0]
-        # XXX: refactor function call, split get_or_create_router into more fine grained
-        self.get_or_create_router(network_name, subnet_id,
-                                  external=True, network_id=response['network']['id'])
+        self.connect_router(network_name, subnet_id, external=True, network_id=response['network']['id'])
 
         tenant.external_network_id = external_network_id
         tenant.save()
@@ -1350,45 +1299,52 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         return external_network_id
 
-    def get_or_create_router(self, network_name, subnet_id, external=False, network_id=None, tenant_id=None):
-        neutron = self.neutron_admin_client
-        tenant_id = tenant_id or self.tenant_id
-        router_name = '{0}-router'.format(network_name)
+    def _get_router(self, tenant_id):
+        neutron = self.neutron_client
 
         try:
             routers = neutron.list_routers(tenant_id=tenant_id)['routers']
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        if routers:
-            logger.info('Router(s) in tenant with id %s already exist(s).', tenant_id)
-            router = routers[0]
-        else:
-            try:
-                router = neutron.create_router({'router': {'name': router_name, 'tenant_id': tenant_id}})['router']
-                logger.info('Router %s has been created.', router['name'])
-            except neutron_exceptions.NeutronClientException as e:
-                six.reraise(OpenStackBackendError, e)
+        # If any router in Tenant exists, use it
+        return routers[0] if routers else None
 
+    def _create_router(self, router_name, tenant_id):
+        neutron = self.neutron_client
         try:
-            if not external:
+            router = neutron.create_router({'router': {'name': router_name, 'tenant_id': tenant_id}})['router']
+            logger.info('Router %s has been created.', router['name'])
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return router
+
+    def _connect_network_to_router(self, router, external, tenant_id, network_id=None, subnet_id=None):
+        neutron = self.neutron_client
+        try:
+            if external:
+                if (not router.get('external_gateway_info') or
+                            router['external_gateway_info'].get('network_id') != network_id):
+                    neutron.add_gateway_router(router['id'], {'network_id': network_id})
+                    logger.info('External network %s was connected to the router %s.', network_id, router['name'])
+                else:
+                    logger.info('External network %s is already connected to router %s.', network_id, router['name'])
+            else:
                 ports = neutron.list_ports(device_id=router['id'], tenant_id=tenant_id)['ports']
                 if not ports:
-                # XXX: Ilja: revert to old behaviour as new check breaks setup of router legs
-                # if subnet_id in [port['fixed_ips'][0]['subnet_id'] for port in ports]:
                     neutron.add_interface_router(router['id'], {'subnet_id': subnet_id})
-                    logger.info('Internal subnet %s was connected to the router %s.', subnet_id, router_name)
+                    logger.info('Internal subnet %s was connected to the router %s.', subnet_id, router['name'])
                 else:
-                    logger.info('Internal subnet %s is already connected to the router %s.', subnet_id, router_name)
-            else:
-                if (not router.get('external_gateway_info') or
-                        router['external_gateway_info'].get('network_id') != network_id):
-                    neutron.add_gateway_router(router['id'], {'network_id': network_id})
-                    logger.info('External network %s was connected to the router %s.', network_id, router_name)
-                else:
-                    logger.info('External network %s is already connected to router %s.', network_id, router_name)
+                    logger.info('Internal subnet %s is already connected to the router %s.', subnet_id, router['name'])
         except neutron_exceptions.NeutronClientException as e:
-            logger.warning(e)
+            six.reraise(OpenStackBackendError, e)
+
+    def connect_router(self, network_name, subnet_id, external=False, network_id=None, tenant_id=None):
+        tenant_id = tenant_id or self.tenant_id
+        router_name = '{0}-router'.format(network_name)
+        router = self._get_router(tenant_id) or self._create_router(router_name, tenant_id)
+        self._connect_network_to_router(router, external, tenant_id, network_id, subnet_id)
 
         return router['id']
 

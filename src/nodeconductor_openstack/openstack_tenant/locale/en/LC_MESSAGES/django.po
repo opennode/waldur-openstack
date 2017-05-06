@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-04-20 16:06+0300\n"
+"POT-Creation-Date: 2017-04-26 08:04+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,391 +17,394 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: admin.py:47 admin.py:60 admin.py:74
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:47
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:60
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:74
 msgid "Pull"
 msgstr ""
 
-#: admin.py:51 admin.py:64
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:51
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:64
 msgid "Snapshot has to be in OK or ERRED state."
 msgstr ""
 
-#: admin.py:78
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:78
 msgid "Instance has to be in OK or ERRED state."
 msgstr ""
 
-#: admin.py:91
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:91
 msgid "Project"
 msgstr ""
 
-#: admin.py:98
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:98
 msgid "Invalid timezone"
 msgstr ""
 
-#: fields.py:29
+#: src/nodeconductor_openstack/openstack_tenant/backend.py:587
+msgid "Current installation cannot create instance without a system volume."
+msgstr ""
+
+#: src/nodeconductor_openstack/openstack_tenant/fields.py:29
 #, python-format
 msgid "This field does not have datetime format that matches %s string."
 msgstr ""
 
-#: fields.py:36
+#: src/nodeconductor_openstack/openstack_tenant/fields.py:36
 msgid "Value \"{}\" should be valid UNIX timestamp."
 msgstr ""
 
-#: models.py:26
+#: src/nodeconductor_openstack/openstack_tenant/models.py:26
 msgid "OpenStackTenant provider"
 msgstr ""
 
-#: models.py:27
+#: src/nodeconductor_openstack/openstack_tenant/models.py:27
 msgid "OpenStackTenant providers"
 msgstr ""
 
-#: models.py:38
+#: src/nodeconductor_openstack/openstack_tenant/models.py:38
 msgid "OpenStackTenant provider project link"
 msgstr ""
 
-#: models.py:39
+#: src/nodeconductor_openstack/openstack_tenant/models.py:39
 msgid "OpenStackTenant provider project links"
 msgstr ""
 
-#: models.py:47
+#: src/nodeconductor_openstack/openstack_tenant/models.py:47
 msgid "Number of cores in a VM"
 msgstr ""
 
-#: models.py:48
+#: src/nodeconductor_openstack/openstack_tenant/models.py:48
 msgid "Memory size in MiB"
 msgstr ""
 
-#: models.py:49
+#: src/nodeconductor_openstack/openstack_tenant/models.py:49
 msgid "Root disk size in MiB"
 msgstr ""
 
-#: models.py:61
+#: src/nodeconductor_openstack/openstack_tenant/models.py:61
 msgid "Minimum disk size in MiB"
 msgstr ""
 
-#: models.py:62
+#: src/nodeconductor_openstack/openstack_tenant/models.py:62
 msgid "Minimum memory size in MiB"
 msgstr ""
 
-#: models.py:89
+#: src/nodeconductor_openstack/openstack_tenant/models.py:89
 msgid "Marks if floating IP has been booked for provisioning."
 msgstr ""
 
-#: models.py:122
+#: src/nodeconductor_openstack/openstack_tenant/models.py:122
 msgid "Device should match pattern \"/dev/alphanumeric+\""
 msgstr ""
 
-#: models.py:123
+#: src/nodeconductor_openstack/openstack_tenant/models.py:123
 msgid "Name of volume as instance device e.g. /dev/vdb."
 msgstr ""
 
-#: models.py:181
+#: src/nodeconductor_openstack/openstack_tenant/models.py:181
 msgid "Guaranteed time of snapshot retention. If null - keep forever."
 msgstr ""
 
-#: models.py:246
+#: src/nodeconductor_openstack/openstack_tenant/models.py:246
 msgid "Flavor disk size in MiB"
 msgstr ""
 
-#: models.py:330
+#: src/nodeconductor_openstack/openstack_tenant/models.py:330
 msgid "Guaranteed time of backup retention. If null - keep forever."
 msgstr ""
 
-#: models.py:333
+#: src/nodeconductor_openstack/openstack_tenant/models.py:333
 msgid ""
 "Additional information about backup, can be used for backup restoration or "
 "deletion"
 msgstr ""
 
-#: models.py:355
+#: src/nodeconductor_openstack/openstack_tenant/models.py:355
 msgid "Retention time in days, if 0 - resource will be kept forever"
 msgstr ""
 
-#: models.py:358
+#: src/nodeconductor_openstack/openstack_tenant/models.py:358
 msgid "How many times a resource schedule was called."
 msgstr ""
 
-#: models.py:416
+#: src/nodeconductor_openstack/openstack_tenant/models.py:416
 msgid "List of DNS name servers associated with the subnet."
 msgstr ""
 
-#: serializers.py:25
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:25
 msgid "Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)"
 msgstr ""
 
-#: serializers.py:26
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:26
 msgid "Tenant user username"
 msgstr ""
 
-#: serializers.py:27
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:27
 msgid "Tenant user password"
 msgstr ""
 
-#: serializers.py:30
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:30
 msgid "Tenant ID in OpenStack"
 msgstr ""
 
-#: serializers.py:31
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:31
 msgid "Default availability zone for provisioned instances"
 msgstr ""
 
-#: serializers.py:32
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:32
 msgid ""
 "Flavors matching this regex expression will not be pulled from the backend."
 msgstr ""
 
-#: serializers.py:185
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:185
 msgid "Image must belong to the same service settings"
 msgstr ""
 
-#: serializers.py:190
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:190
 msgid "Snapshot or size should be defined"
 msgstr ""
 
-#: serializers.py:192
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:192
 msgid "It is impossible to define both snapshot and size"
 msgstr ""
 
-#: serializers.py:197
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:197
 #, python-format
 msgid "Volume size should be equal or greater than %s for selected image"
 msgstr ""
 
-#: serializers.py:213
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:213
 #, python-format
 msgid "Disk size should be greater or equal to %s"
 msgstr ""
 
-#: serializers.py:263
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:263
 msgid "Volume can be attached only to shutoff or active instance in OK state."
 msgstr ""
 
-#: serializers.py:266
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:266
 msgid "Volume and instance should belong to the same service and project."
 msgstr ""
 
-#: serializers.py:273
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:273
 #, python-format
 msgid "The supplied device path (%s) is in use."
 msgstr ""
 
-#: serializers.py:278
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:278
 msgid "New volume name."
 msgstr ""
 
-#: serializers.py:279
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:279
 msgid "New volume description."
 msgstr ""
 
-#: serializers.py:390
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:390
 #, python-format
 msgid "Security group with id %s does not exist"
 msgstr ""
 
-#: serializers.py:485
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:485
 msgid "Instance should be connected to at least one network."
 msgstr ""
 
-#: serializers.py:489
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:489
 #, python-format
 msgid ""
 "Subnet %s does not belong to the same service settings as service project "
 "link."
 msgstr ""
 
-#: serializers.py:493
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:493
 #, python-format
 msgid "It is impossible to connect to subnet %s twice."
 msgstr ""
 
-#: serializers.py:501
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:501
 #, python-format
 msgid ""
 "Security group %s does not belong to the same service settings as service "
 "project link."
 msgstr ""
 
-#: serializers.py:508
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:508
 msgid ""
 "Please specify tenant external network to perform floating IP operations."
 msgstr ""
 
-#: serializers.py:512
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:512
 #, python-format
 msgid "SubNet %s is not connected to instance."
 msgstr ""
 
-#: serializers.py:517
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:517
 #, python-format
 msgid "Floating IP %s is already booked for another instance creation"
 msgstr ""
 
-#: serializers.py:521
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:521
 #, python-format
 msgid "Floating IP %s runtime state should be DOWN."
 msgstr ""
 
-#: serializers.py:523
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:523
 #, python-format
 msgid ""
 "Floating IP %s does not belong to the same service settings as service "
 "project link."
 msgstr ""
 
-#: serializers.py:529
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:529
 #, python-format
 msgid "It is impossible to use subnet %s twice."
 msgstr ""
 
-#: serializers.py:634
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:634
 msgid ""
 "Flavor and image must belong to the same service settings as service project "
 "link."
 msgstr ""
 
-#: serializers.py:638
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:638
 #, python-format
 msgid "RAM of flavor is not enough for selected image %s"
 msgstr ""
 
-#: serializers.py:642
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:642
 msgid "Flavor's disk is too small for the selected image."
 msgstr ""
 
-#: serializers.py:647
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:647
 #, python-format
 msgid "System volume size has to be greater than %s"
 msgstr ""
 
-#: serializers.py:755
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:754
 msgid "Floating IP runtime_state must be DOWN."
 msgstr ""
 
-#: serializers.py:757
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:756
 msgid "Floating IP must belong to same settings as instance."
 msgstr ""
 
-#: serializers.py:792
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:791
 msgid "New flavor is the same as current."
 msgstr ""
 
-#: serializers.py:796
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:795
 msgid "New flavor is not within the same service settings"
 msgstr ""
 
-#: serializers.py:800
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:799
 msgid "New flavor disk should be greater than the previous value"
 msgstr ""
 
-#: serializers.py:827
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:826
 msgid "Cannot delete instance. One of its volumes has attached snapshot."
 msgstr ""
 
-#: serializers.py:854
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:853
 #, python-format
 msgid "Security group %s is not within the same service settings"
 msgstr ""
 
-#: serializers.py:936
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:935
 msgid "New instance name. Leave blank to use source instance name."
 msgstr ""
 
-#: serializers.py:1003
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:1002
 msgid "Flavor is not within services' settings."
 msgstr ""
 
-#: serializers.py:1005
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:1004
 msgid "Flavor disk size should match system volume size."
 msgstr ""
 
-#: views.py:69
+#: src/nodeconductor_openstack/openstack_tenant/views.py:69
 msgid "Meter must be from meters list."
 msgstr ""
 
-#: views.py:71
+#: src/nodeconductor_openstack/openstack_tenant/views.py:71
 #, python-format
 msgid "%s must have backend_id."
 msgstr ""
 
-#: views.py:158
+#: src/nodeconductor_openstack/openstack_tenant/views.py:158
 msgid "Volume has dependent snapshots."
 msgstr ""
 
-#: views.py:169
+#: src/nodeconductor_openstack/openstack_tenant/views.py:169
 msgid "Volume cannot be bootable."
 msgstr ""
 
-#: views.py:173
+#: src/nodeconductor_openstack/openstack_tenant/views.py:173
 msgid "Volume instance should be in shutoff state."
 msgstr ""
 
-#: views.py:187
+#: src/nodeconductor_openstack/openstack_tenant/views.py:187
 msgid "extend was scheduled"
 msgstr ""
 
-#: views.py:225
+#: src/nodeconductor_openstack/openstack_tenant/views.py:225
 msgid "attach was scheduled"
 msgstr ""
 
-#: views.py:236
+#: src/nodeconductor_openstack/openstack_tenant/views.py:236
 msgid "detach was scheduled"
 msgstr ""
 
-#: views.py:311
+#: src/nodeconductor_openstack/openstack_tenant/views.py:311
 msgid "Cannot delete instance that has backups."
 msgstr ""
 
-#: views.py:319
+#: src/nodeconductor_openstack/openstack_tenant/views.py:319
 msgid "Instance should be shutoff and OK or erred."
 msgstr ""
 
-#: views.py:361
+#: src/nodeconductor_openstack/openstack_tenant/views.py:361
 msgid "destroy was scheduled"
 msgstr ""
 
-#: views.py:376
+#: src/nodeconductor_openstack/openstack_tenant/views.py:376
 msgid "change_flavor was scheduled"
 msgstr ""
 
-#: views.py:386
+#: src/nodeconductor_openstack/openstack_tenant/views.py:386
 msgid "start was scheduled"
 msgstr ""
 
-#: views.py:396
+#: src/nodeconductor_openstack/openstack_tenant/views.py:396
 msgid "stop was scheduled"
 msgstr ""
 
-#: views.py:406
+#: src/nodeconductor_openstack/openstack_tenant/views.py:406
 msgid "restart was scheduled"
 msgstr ""
 
-#: views.py:420
+#: src/nodeconductor_openstack/openstack_tenant/views.py:420
 msgid "security groups update was scheduled"
 msgstr ""
 
-#: views.py:430
-msgid "Instance can be backed up only with 1 bootable and 1 data volumes."
-msgstr ""
-
-#: views.py:460
+#: src/nodeconductor_openstack/openstack_tenant/views.py:455
 msgid "internal ips update was scheduled"
 msgstr ""
 
-#: views.py:481
+#: src/nodeconductor_openstack/openstack_tenant/views.py:476
 msgid "floating ips update was scheduled"
 msgstr ""
 
-#: views.py:591
+#: src/nodeconductor_openstack/openstack_tenant/views.py:586
 msgid "Resource schedule is already activated."
 msgstr ""
 
-#: views.py:603
+#: src/nodeconductor_openstack/openstack_tenant/views.py:598
 msgid "A schedule was activated"
 msgstr ""
 
-#: views.py:609
+#: src/nodeconductor_openstack/openstack_tenant/views.py:604
 msgid "A schedule is already deactivated."
 msgstr ""
 
-#: views.py:620
+#: src/nodeconductor_openstack/openstack_tenant/views.py:615
 msgid "Backup schedule was deactivated"
 msgstr ""

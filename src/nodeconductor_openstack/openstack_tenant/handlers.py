@@ -234,7 +234,7 @@ class BaseSynchronizationHandler(object):
         """
         if source == StateMixin.States.CREATING and target == StateMixin.States.OK:
             settings = self.get_service_settings(instance)
-            if settings:
+            if settings and not self.get_service_property(instance, settings):
                 self.create_service_property(instance, settings)
 
     def update_handler(self, sender, instance, name, source, target, **kwargs):

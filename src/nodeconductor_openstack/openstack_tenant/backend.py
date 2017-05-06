@@ -232,10 +232,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             models.SecurityGroup.objects.filter(backend_id__in=cur_security_groups.keys()).delete()
 
     def pull_quotas(self):
-        for quota_name, limit in self.get_tenant_quotas_limits(self.tenant_id).items():
-            self.settings.set_quota_limit(quota_name, limit)
-        for quota_name, usage in self.get_tenant_quotas_usage(self.tenant_id).items():
-            self.settings.set_quota_usage(quota_name, usage, fail_silently=True)
+        self._pull_tenant_quotas(self.tenant_id, self.settings)
 
     def pull_networks(self):
         neutron = self.neutron_client
@@ -580,40 +577,35 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             else:
                 backend_public_key = None
 
-            if instance.volumes.count() != 2:
-                raise OpenStackBackendError('Current installation can create instance with 2 volumes only.')
             try:
-                system_volume = instance.volumes.get(bootable=True)
-                data_volume = instance.volumes.get(bootable=False)
+                instance.volumes.get(bootable=True)
             except models.Volume.DoesNotExist:
                 raise OpenStackBackendError(
-                    'Current installation can create only instance with 1 system volume and 1 data volume.')
+                    _('Current installation cannot create instance without a system volume.'))
 
             security_group_ids = instance.security_groups.values_list('backend_id', flat=True)
             internal_ips = instance.internal_ips_set.all()
             network_ids = [{'net-id': internal_ip.subnet.network.backend_id} for internal_ip in internal_ips]
 
+            block_device_mapping_v2 = []
+            for volume in instance.volumes.iterator():
+                device_mapping = {
+                    'destination_type': 'volume',
+                    'device_type': 'disk',
+                    'source_type': 'volume',
+                    'uuid': volume.backend_id,
+                    'delete_on_termination': True,
+                }
+                if volume.bootable:
+                    device_mapping.update({'boot_index': 0})
+
+                block_device_mapping_v2.append(device_mapping)
+
             server_create_parameters = dict(
                 name=instance.name,
-                image=None,  # Boot from volume, see boot_index below
+                image=None,  # Boot from volume, see boot_index above
                 flavor=backend_flavor,
-                block_device_mapping_v2=[
-                    {
-                        'boot_index': 0,
-                        'destination_type': 'volume',
-                        'device_type': 'disk',
-                        'source_type': 'volume',
-                        'uuid': system_volume.backend_id,
-                        'delete_on_termination': True,
-                    },
-                    {
-                        'destination_type': 'volume',
-                        'device_type': 'disk',
-                        'source_type': 'volume',
-                        'uuid': data_volume.backend_id,
-                        'delete_on_termination': True,
-                    },
-                ],
+                block_device_mapping_v2=block_device_mapping_v2,
                 nics=network_ids,
                 key_name=backend_public_key.name if backend_public_key is not None else None,
                 security_groups=security_group_ids,

@@ -315,6 +315,12 @@ class BaseOpenStackBackend(ServiceBackend):
         else:
             return True
 
+    def _pull_tenant_quotas(self, backend_id, scope):
+        for quota_name, limit in self.get_tenant_quotas_limits(backend_id).items():
+            scope.set_quota_limit(quota_name, limit)
+        for quota_name, usage in self.get_tenant_quotas_usage(backend_id).items():
+            scope.set_quota_usage(quota_name, usage, fail_silently=True)
+
     def get_tenant_quotas_limits(self, tenant_backend_id):
         nova = self.nova_client
         neutron = self.neutron_client
@@ -373,12 +379,19 @@ class BaseOpenStackBackend(ServiceBackend):
                 cinder_exceptions.ClientException,
                 neutron_exceptions.NeutronClientException) as e:
             six.reraise(OpenStackBackendError, e)
+
+        volumes_size = sum(self.gb2mb(v.size) for v in volumes)
+        snapshots_size = sum(self.gb2mb(v.size) for v in snapshots)
+        storage = volumes_size + snapshots_size
+
         return {
             Tenant.Quotas.ram: ram,
             Tenant.Quotas.vcpu: vcpu,
-            Tenant.Quotas.storage: sum(self.gb2mb(v.size) for v in volumes + snapshots),
+            Tenant.Quotas.storage: storage,
             Tenant.Quotas.volumes: len(volumes),
+            Tenant.Quotas.volumes_size: volumes_size,
             Tenant.Quotas.snapshots: len(snapshots),
+            Tenant.Quotas.snapshots_size: snapshots_size,
             Tenant.Quotas.instances: len(instances),
             Tenant.Quotas.security_group_count: len(security_groups),
             Tenant.Quotas.security_group_rule_count: len(sum([sg['security_group_rules']

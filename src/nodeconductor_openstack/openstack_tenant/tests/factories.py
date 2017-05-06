@@ -187,6 +187,7 @@ class FloatingIPFactory(factory.DjangoModelFactory):
     settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
     runtime_state = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
     address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
 
     @classmethod
     def get_url(cls, instance=None):
@@ -248,9 +249,10 @@ class BackupFactory(factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackTenantServiceProjectLinkFactory)
     backup_schedule = factory.SubFactory(BackupScheduleFactory)
     instance = factory.LazyAttribute(lambda b: b.backup_schedule.instance)
+    state = models.Backup.States.OK
 
     @classmethod
-    def get_url(cls, backup, action=None):
+    def get_url(cls, backup=None, action=None):
         if backup is None:
             backup = BackupFactory()
         url = 'http://testserver' + reverse('openstacktenant-backup-detail', kwargs={'uuid': backup.uuid})
