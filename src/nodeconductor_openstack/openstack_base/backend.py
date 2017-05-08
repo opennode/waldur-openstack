@@ -357,7 +357,7 @@ class BaseOpenStackBackend(ServiceBackend):
             volumes = cinder.volumes.list()
             snapshots = cinder.volume_snapshots.list()
             instances = nova.servers.list()
-            security_groups = neutron.list_security_groups()['security_groups']
+            security_groups = neutron.list_security_groups(tenant_id=tenant_backend_id)['security_groups']
             floating_ips = neutron.list_floatingips(tenant_id=tenant_backend_id)['floatingips']
             networks = neutron.list_networks(tenant_id=tenant_backend_id)['networks']
             subnets = neutron.list_subnets(tenant_id=tenant_backend_id)['subnets']
