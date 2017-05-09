@@ -49,3 +49,15 @@ class PollBackendCheckTask(core_tasks.Task):
         if not getattr(backend, backend_check_method)(instance):
             self.retry()
         return instance
+
+
+class TenantPullQuotas(core_tasks.BackgroundTask):
+    name = 'openstack.TenantPullQuotas'
+
+    def is_equal(self, other_task):
+        return self.name == other_task.get('name')
+
+    def run(self):
+        from .. import executors
+        for tenant in models.Tenant.objects.filter(state=models.Tenant.States.OK):
+            executors.TenantPullQuotasExecutor.execute(tenant)
