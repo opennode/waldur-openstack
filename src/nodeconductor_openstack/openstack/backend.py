@@ -76,8 +76,6 @@ class OpenStackBackend(BaseOpenStackBackend):
                 state=models.Tenant.States.OK,
             )
             update_pulled_fields(tenant, imported_backend_tenant, models.Tenant.get_backend_fields())
-
-            self.pull_tenant_quotas(tenant)
             handle_resource_update_success(tenant)
 
     def _get_domain(self):
