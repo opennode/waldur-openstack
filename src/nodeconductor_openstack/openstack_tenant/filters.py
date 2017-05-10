@@ -78,8 +78,6 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
 
 
 class InstanceFilter(structure_filters.BaseResourceFilter):
-    tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
-
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Instance
         fields = structure_filters.BaseResourceFilter.Meta.fields + ('runtime_state',)
