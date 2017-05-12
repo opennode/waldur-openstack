@@ -245,9 +245,13 @@ class TenantPullExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
-        return core_tasks.BackendMethodTask().si(
-            serialized_tenant, 'pull_tenant',
-            state_transition='begin_updating')
+        return chain(
+            core_tasks.BackendMethodTask().si(
+                serialized_tenant, 'pull_tenant', state_transition='begin_updating'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_quotas'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_floating_ips'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_security_groups'),
+        )
 
 
 class TenantPullSecurityGroupsExecutor(core_executors.ActionExecutor):
