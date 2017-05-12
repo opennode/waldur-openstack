@@ -158,7 +158,7 @@ class TenantDeleteExecutor(core_executors.DeleteExecutor):
             ),
             core_tasks.BackendMethodTask().si(
                 serialized_tenant, backend_method='delete_tenant_volumes',
-            ).set(),
+            ),
             tasks.PollBackendCheckTask().si(
                 serialized_tenant,
                 backend_check_method='are_all_tenant_volumes_deleted'
