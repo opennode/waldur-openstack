@@ -814,7 +814,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         for volume in volumes:
             logger.info("Deleting volume %s from tenant %s", volume.id, tenant.backend_id)
             try:
-                volume.delete()
+                volume.force_delete()
             except cinder_exceptions.NotFound:
                 logger.debug("Volume %s is already gone from tenant %s", volume.id, tenant.backend_id)
             except cinder_exceptions.ClientException as e:
