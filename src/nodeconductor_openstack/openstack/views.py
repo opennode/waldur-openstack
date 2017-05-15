@@ -239,11 +239,19 @@ class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass
 class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
+    secure_serializer_class = serializers.SecureTenantSerializer
     filter_class = structure_filters.BaseResourceFilter
 
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     pull_executor = executors.TenantPullExecutor
+
+    def get_serializer_class(self):
+        serializer_class = super(TenantViewSet, self).get_serializer_class()
+        if settings.NODECONDUCTOR_OPENSTACK.get('AUTOGENERATE_TENANT_CREDENTIALS', False):
+            return self.secure_serializer_class
+
+        return serializer_class
 
     def delete_permission_check(request, view, obj=None):
         if not obj:
