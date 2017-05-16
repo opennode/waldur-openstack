@@ -239,19 +239,11 @@ class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass
 class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
-    secure_serializer_class = serializers.SecureTenantSerializer
     filter_class = structure_filters.BaseResourceFilter
 
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     pull_executor = executors.TenantPullExecutor
-
-    def get_serializer_class(self):
-        serializer_class = super(TenantViewSet, self).get_serializer_class()
-        if settings.NODECONDUCTOR_OPENSTACK.get('AUTOGENERATE_TENANT_CREDENTIALS', False):
-            return self.secure_serializer_class
-
-        return serializer_class
 
     def delete_permission_check(request, view, obj=None):
         if not obj:
@@ -437,17 +429,6 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         return response.Response({'status': _('Quotas pull has been scheduled.')}, status=status.HTTP_202_ACCEPTED)
 
     pull_quotas_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
-
-    @decorators.detail_route(methods=['post'])
-    def send_credentials(self, request, uuid=None):
-        tenant = core_utils.serialize_instance(self.get_object())
-        user = core_utils.serialize_instance(self.request.user)
-        tasks.send_tenant_credentials.delay(tenant, user)
-        return response.Response({'status': _('Credentials have been sent to "%s" email.') % self.request.user.email},
-                                 status=status.HTTP_200_OK)
-
-    send_credentials_serializer_class = rf_serializers.Serializer
-    send_credentials_permissions = [structure_permissions.is_owner]
 
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):

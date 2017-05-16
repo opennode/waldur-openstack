@@ -398,7 +398,7 @@ subnet_cidr_validator = validators.RegexValidator(
 )
 
 
-class SecureTenantSerializer(structure_serializers.PrivateCloudSerializer):
+class TenantSerializer(structure_serializers.PrivateCloudSerializer):
     service = serializers.HyperlinkedRelatedField(
         source='service_project_link.service',
         view_name='openstack-detail',
@@ -412,10 +412,17 @@ class SecureTenantSerializer(structure_serializers.PrivateCloudSerializer):
     subnet_cidr = serializers.CharField(
         validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24', write_only=True)
 
+    def __new__(cls, *args, **kwargs):
+        if not settings.NODECONDUCTOR_OPENSTACK['AUTOGENERATE_TENANT_CREDENTIALS']:
+            cls.Meta.protected_fields += ('user_username',)
+            cls.Meta.read_only_fields += ('user_password',)
+        return super(TenantSerializer, cls).__new__(cls, *args, **kwargs)
+
     class Meta(structure_serializers.PrivateCloudSerializer.Meta):
         model = models.Tenant
         fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
-            'availability_zone', 'internal_network_id', 'external_network_id', 'quotas', 'subnet_cidr',
+            'availability_zone', 'internal_network_id', 'external_network_id',
+            'user_username', 'user_password', 'quotas', 'subnet_cidr',
         )
         read_only_fields = structure_serializers.PrivateCloudSerializer.Meta.read_only_fields + (
             'internal_network_id', 'external_network_id'
@@ -424,15 +431,18 @@ class SecureTenantSerializer(structure_serializers.PrivateCloudSerializer):
             'subnet_cidr',
         )
 
-    def get_access_url(self, obj):
-        """
-        access_url should not be visible if user has no permission to set tenant password
-        """
-        return None
+    def get_fields(self):
+        fields = super(TenantSerializer, self).get_fields()
+        if settings.NODECONDUCTOR_OPENSTACK['AUTOGENERATE_TENANT_CREDENTIALS']:
+            for field in ('user_username', 'user_password', 'access_url'):
+                if field in fields:
+                    del fields[field]
+
+        return fields
 
     def validate_service_project_link(self, spl):
         """ Administrator can create tenant only using not shared service settings """
-        spl = super(SecureTenantSerializer, self).validate_service_project_link(spl)
+        spl = super(TenantSerializer, self).validate_service_project_link(spl)
         user = self.context['request'].user
         message = _('You do not have permissions to create tenant in this project using selected service.')
         if spl.service.settings.shared and not user.is_staff:
@@ -441,51 +451,8 @@ class SecureTenantSerializer(structure_serializers.PrivateCloudSerializer):
             raise serializers.ValidationError(message)
         return spl
 
-    def create(self, validated_data):
-        spl = validated_data['service_project_link']
-        # get availability zone from service settings if it is not defined
-        if not validated_data.get('availability_zone'):
-            validated_data['availability_zone'] = spl.service.settings.get_option('availability_zone') or ''
-        # init tenant user username(if not defined) and password
-        slugified_name = slugify(validated_data['name'])[:30]
-        if not validated_data.get('user_username'):
-            validated_data['user_username'] = slugified_name + '-user'
-        validated_data['user_password'] = core_utils.pwgen()
-
-        subnet_cidr = validated_data.pop('subnet_cidr')
-        with transaction.atomic():
-            tenant = super(SecureTenantSerializer, self).create(validated_data)
-            network = models.Network.objects.create(
-                name=slugified_name + '-int-net',
-                description=_('Internal network for tenant %s') % tenant.name,
-                tenant=tenant,
-                service_project_link=tenant.service_project_link,
-            )
-            models.SubNet.objects.create(
-                name=slugified_name + '-sub-net',
-                description=_('SubNet for tenant %s internal network') % tenant.name,
-                network=network,
-                service_project_link=tenant.service_project_link,
-                cidr=subnet_cidr,
-                allocation_pools=_generate_subnet_allocation_pool(subnet_cidr),
-                dns_nameservers=spl.service.settings.options.get('dns_nameservers', [])
-            )
-        return tenant
-
-
-class TenantSerializer(SecureTenantSerializer):
-
-    class Meta(SecureTenantSerializer.Meta):
-        model = models.Tenant
-        fields = SecureTenantSerializer.Meta.fields + ('user_username', 'user_password')
-        read_only_fields = SecureTenantSerializer.Meta.read_only_fields + ('user_password',)
-        protected_fields = SecureTenantSerializer.Meta.protected_fields + ('user_username',)
-
-    def get_access_url(self, tenant):
-        return tenant.get_access_url()
-
     def validate(self, attrs):
-        if self.instance is not None:
+        if self.instance is not None or settings.NODECONDUCTOR_OPENSTACK['AUTOGENERATE_TENANT_CREDENTIALS']:
             return attrs
 
         if not attrs.get('user_username'):
@@ -504,6 +471,37 @@ class TenantSerializer(SecureTenantSerializer):
         if user_username in blacklisted_usernames:
             raise serializers.ValidationError(_('Name "%s" cannot be used as tenant user username.') % user_username)
         return attrs
+
+    def create(self, validated_data):
+        spl = validated_data['service_project_link']
+        # get availability zone from service settings if it is not defined
+        if not validated_data.get('availability_zone'):
+            validated_data['availability_zone'] = spl.service.settings.get_option('availability_zone') or ''
+        # init tenant user username(if not defined) and password
+        slugified_name = slugify(validated_data['name'])[:30]
+        if not validated_data.get('user_username'):
+            validated_data['user_username'] = slugified_name + '-user'
+        validated_data['user_password'] = core_utils.pwgen()
+
+        subnet_cidr = validated_data.pop('subnet_cidr')
+        with transaction.atomic():
+            tenant = super(TenantSerializer, self).create(validated_data)
+            network = models.Network.objects.create(
+                name=slugified_name + '-int-net',
+                description=_('Internal network for tenant %s') % tenant.name,
+                tenant=tenant,
+                service_project_link=tenant.service_project_link,
+            )
+            models.SubNet.objects.create(
+                name=slugified_name + '-sub-net',
+                description=_('SubNet for tenant %s internal network') % tenant.name,
+                network=network,
+                service_project_link=tenant.service_project_link,
+                cidr=subnet_cidr,
+                allocation_pools=_generate_subnet_allocation_pool(subnet_cidr),
+                dns_nameservers=spl.service.settings.options.get('dns_nameservers', [])
+            )
+        return tenant
 
 
 class _NestedSubNetSerializer(serializers.ModelSerializer):

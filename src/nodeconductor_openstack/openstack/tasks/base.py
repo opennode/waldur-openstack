@@ -60,33 +60,6 @@ class PollBackendCheckTask(core_tasks.Task):
         return instance
 
 
-@shared_task(name='nodeconductor_openstack.openstack.tasks.send_tenant_credentials')
-def send_tenant_credentials(serialized_tenant, serialized_user):
-    """
-    Sends tenant credentials and access_url to the user email.
-    :param serialized_tenant: tenant to send credentials of
-    :param serialized_user: an email receiver
-    """
-    tenant = core_utils.deserialize_instance(serialized_tenant)
-    user = core_utils.deserialize_instance(serialized_user)
-    context = {
-        'user_name': user.full_name or user.username,
-        'user_username': tenant.user_username,
-        'user_password': tenant.user_password,
-        'access_url': tenant.get_access_url(),
-        'tenant_name': tenant.name
-    }
-
-    subject = render_to_string('openstack/tenant_credentials_subject.txt', context).strip()
-    text_message = render_to_string('openstack/tenant_credentials.txt', context)
-    html_message = render_to_string('openstack/tenant_credentials.html', context)
-
-    logging_message_template = 'About to send tenant %(tenant_name)s credentials to %(user_email)s'
-    logger.warning(logging_message_template % dict(tenant_name=tenant.name, user_email=user.email))
-
-    user.email_user(subject, text_message, settings.DEFAULT_FROM_EMAIL, html_message)
-
-
 class TenantPullQuotas(core_tasks.BackgroundTask):
     name = 'openstack.TenantPullQuotas'
 
