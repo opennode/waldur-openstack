@@ -412,12 +412,6 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
     subnet_cidr = serializers.CharField(
         validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24', write_only=True)
 
-    def __new__(cls, *args, **kwargs):
-        if not settings.NODECONDUCTOR_OPENSTACK['AUTOGENERATE_TENANT_CREDENTIALS']:
-            cls.Meta.protected_fields += ('user_username',)
-            cls.Meta.read_only_fields += ('user_password',)
-        return super(TenantSerializer, cls).__new__(cls, *args, **kwargs)
-
     class Meta(structure_serializers.PrivateCloudSerializer.Meta):
         model = models.Tenant
         fields = structure_serializers.PrivateCloudSerializer.Meta.fields + (
@@ -425,15 +419,15 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             'user_username', 'user_password', 'quotas', 'subnet_cidr',
         )
         read_only_fields = structure_serializers.PrivateCloudSerializer.Meta.read_only_fields + (
-            'internal_network_id', 'external_network_id'
+            'internal_network_id', 'external_network_id', 'user_password',
         )
         protected_fields = structure_serializers.PrivateCloudSerializer.Meta.protected_fields + (
-            'subnet_cidr',
+            'subnet_cidr', 'user_username',
         )
 
     def get_fields(self):
         fields = super(TenantSerializer, self).get_fields()
-        if settings.NODECONDUCTOR_OPENSTACK['AUTOGENERATE_TENANT_CREDENTIALS']:
+        if not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
             for field in ('user_username', 'user_password', 'access_url'):
                 if field in fields:
                     del fields[field]
@@ -452,7 +446,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         return spl
 
     def validate(self, attrs):
-        if self.instance is not None or settings.NODECONDUCTOR_OPENSTACK['AUTOGENERATE_TENANT_CREDENTIALS']:
+        if self.instance is not None or not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
             return attrs
 
         if not attrs.get('user_username'):
