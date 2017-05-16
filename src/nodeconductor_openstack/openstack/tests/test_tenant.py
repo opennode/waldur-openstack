@@ -13,6 +13,7 @@ from . import factories, fixtures
 from .. import models
 
 
+@override_openstack_settings(AUTOGENERATE_TENANT_CREDENTIALS=False)
 class BaseTenantActionsTest(test.APITransactionTestCase):
 
     def setUp(self):

@@ -424,6 +424,12 @@ class SecureTenantSerializer(structure_serializers.PrivateCloudSerializer):
             'subnet_cidr',
         )
 
+    def get_access_url(self, obj):
+        """
+        access_url should not be visible if user has no permission to set tenant password
+        """
+        return None
+
     def validate_service_project_link(self, spl):
         """ Administrator can create tenant only using not shared service settings """
         spl = super(SecureTenantSerializer, self).validate_service_project_link(spl)
