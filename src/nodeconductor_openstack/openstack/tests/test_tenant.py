@@ -1,6 +1,5 @@
 from ddt import data, ddt
 from django.conf import settings
-from django.core import mail
 from django.contrib.auth import get_user_model
 from mock import patch
 from rest_framework import test, status
@@ -40,7 +39,6 @@ class TenantGetTest(BaseTenantActionsTest):
         self.assertNotIn('user_password', response.data)
         self.assertNotIn('access_url', response.data)
 
-    @override_openstack_settings(AUTOGENERATE_TENANT_CREDENTIALS=False)
     def test_user_name_and_password_and_access_url_are_returned_if_autogeneration_is_disabled(self):
         self.client.force_authenticate(self.fixture.staff)
 
@@ -91,7 +89,6 @@ class TenantCreateTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(models.Tenant.objects.filter(name=self.valid_data['name']).exists())
 
-    @override_openstack_settings(AUTOGENERATE_TENANT_CREDENTIALS=False)
     def test_cannot_create_tenant_with_service_settings_username(self):
         self.client.force_authenticate(self.fixture.staff)
         self.fixture.openstack_service_settings.username = 'admin'
@@ -104,7 +101,6 @@ class TenantCreateTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(models.Tenant.objects.filter(user_username=data['user_username']).exists())
 
-    @override_openstack_settings(AUTOGENERATE_TENANT_CREDENTIALS=False)
     def test_cannot_create_tenant_with_blacklisted_username(self):
         self.client.force_authenticate(self.fixture.staff)
         self.fixture.openstack_service_settings.options['blacklisted_usernames'] = ['admin']
@@ -116,7 +112,6 @@ class TenantCreateTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(models.Tenant.objects.filter(user_username=data['user_username']).exists())
 
-    @override_openstack_settings(AUTOGENERATE_TENANT_CREDENTIALS=False)
     def test_cannot_create_tenant_with_duplicated_username(self):
         self.client.force_authenticate(self.fixture.staff)
         self.fixture.tenant.user_username = 'username'
@@ -145,7 +140,6 @@ class TenantCreateTest(BaseTenantActionsTest):
         self.assertNotEqual(tenant.user_username, payload['user_username'])
         self.assertNotEqual(tenant.user_password, payload['user_password'])
 
-    @override_openstack_settings(AUTOGENERATE_TENANT_CREDENTIALS=False)
     def test_user_can_set_username_if_autogeneration_is_disabled(self):
         self.client.force_authenticate(self.fixture.staff)
         payload = self.valid_data.copy()
@@ -162,7 +156,6 @@ class TenantCreateTest(BaseTenantActionsTest):
 
 class TenantUpdateTest(BaseTenantActionsTest):
 
-    @override_openstack_settings(AUTOGENERATE_TENANT_CREDENTIALS=False)
     def test_user_cannot_update_username_even_if_credentials_autogeneration_is_disabled(self):
         self.client.force_authenticate(self.fixture.staff)
         payload = dict(name=self.fixture.tenant.name, user_username='new_username')

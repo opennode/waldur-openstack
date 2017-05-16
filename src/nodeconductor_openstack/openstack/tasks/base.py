@@ -1,15 +1,6 @@
-from django.conf import settings
-
-import logging
-
-from celery import shared_task
-from django.template.loader import render_to_string
-
-from nodeconductor.core import tasks as core_tasks, utils as core_utils
+from nodeconductor.core import tasks as core_tasks
 
 from .. import models
-
-logger = logging.getLogger(__name__)
 
 
 class TenantCreateErrorTask(core_tasks.ErrorStateTransitionTask):
