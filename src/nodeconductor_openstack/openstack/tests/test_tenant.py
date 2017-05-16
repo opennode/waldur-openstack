@@ -1,5 +1,6 @@
 from ddt import data, ddt
 from django.conf import settings
+from django.core import mail
 from django.contrib.auth import get_user_model
 from mock import patch
 from rest_framework import test, status
@@ -18,6 +19,47 @@ class BaseTenantActionsTest(test.APITransactionTestCase):
         super(BaseTenantActionsTest, self).setUp()
         self.fixture = fixtures.OpenStackFixture()
         self.tenant = self.fixture.tenant
+
+
+@ddt
+class TenantSendCredentialsTest(BaseTenantActionsTest):
+
+    def setUp(self):
+        super(TenantSendCredentialsTest, self).setUp()
+        settings.CELERY_ALWAYS_EAGER = True
+        self.tenant.user_password = 'user_password'
+        self.tenant.user_username = 'user_username'
+        self.tenant.save()
+        self.url = factories.TenantFactory.get_url(self.tenant, 'send_credentials')
+
+    def tearDown(self):
+        settings.CELERY_ALWAYS_EAGER = False
+
+    def test_tenant_credentials_are_sent_to_user_email(self):
+        self.client.force_authenticate(self.fixture.staff)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(self.fixture.staff.email, mail.outbox[0].to)
+
+    @data('staff', 'owner')
+    def test_user_can_request_credentials(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+
+    @data('admin', 'manager')
+    def test_user_cannot_request_credentials(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class TenantGetTest(BaseTenantActionsTest):

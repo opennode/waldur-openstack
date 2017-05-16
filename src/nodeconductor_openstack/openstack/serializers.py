@@ -476,14 +476,7 @@ class TenantSerializer(SecureTenantSerializer):
         protected_fields = SecureTenantSerializer.Meta.protected_fields + ('user_username',)
 
     def get_access_url(self, tenant):
-        settings = tenant.service_project_link.service.settings
-        access_url = settings.get_option('access_url')
-        if access_url:
-            return access_url
-
-        if settings.backend_url:
-            parsed = urlparse.urlparse(settings.backend_url)
-            return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
+        return tenant.get_access_url()
 
     def validate(self, attrs):
         if self.instance is not None:

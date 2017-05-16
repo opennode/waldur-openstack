@@ -6,12 +6,12 @@ from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, response, status, serializers as rf_serializers
 from rest_framework.exceptions import ValidationError
 
-from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
+from nodeconductor.core import validators as core_validators, exceptions as core_exceptions, utils as core_utils
 from nodeconductor.structure import (views as structure_views, SupportedServices, filters as structure_filters,
                                      permissions as structure_permissions)
 from nodeconductor.structure.managers import filter_queryset_for_user
 
-from . import models, filters, serializers, executors
+from . import models, filters, serializers, executors, tasks
 
 
 class GenericImportMixin(object):
@@ -436,6 +436,17 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
         return response.Response({'status': _('Quotas pull has been scheduled.')}, status=status.HTTP_202_ACCEPTED)
 
     pull_quotas_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
+
+    @decorators.detail_route(methods=['post'])
+    def send_credentials(self, request, uuid=None):
+        tenant = core_utils.serialize_instance(self.get_object())
+        user = core_utils.serialize_instance(self.request.user)
+        tasks.send_tenant_credentials.delay(tenant, user)
+        return response.Response({'status': _('Credentials have been sent to "%s" email.') % self.request.user.email},
+                                 status=status.HTTP_200_OK)
+
+    send_credentials_serializer_class = rf_serializers.Serializer
+    send_credentials_permissions = [structure_permissions.is_owner]
 
 
 class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
