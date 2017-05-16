@@ -6,12 +6,12 @@ from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, response, status, serializers as rf_serializers
 from rest_framework.exceptions import ValidationError
 
-from nodeconductor.core import validators as core_validators, exceptions as core_exceptions, utils as core_utils
+from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
 from nodeconductor.structure import (views as structure_views, SupportedServices, filters as structure_filters,
                                      permissions as structure_permissions)
 from nodeconductor.structure.managers import filter_queryset_for_user
 
-from . import models, filters, serializers, executors, tasks
+from . import models, filters, serializers, executors
 
 
 class GenericImportMixin(object):
