@@ -2,7 +2,6 @@ from __future__ import unicode_literals
 
 import logging
 import re
-import urlparse
 
 from django.conf import settings
 from django.core import validators
@@ -422,7 +421,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             'internal_network_id', 'external_network_id', 'user_password',
         )
         protected_fields = structure_serializers.PrivateCloudSerializer.Meta.protected_fields + (
-            'subnet_cidr', 'user_username',
+            'user_username', 'subnet_cidr',
         )
 
     def get_fields(self):
