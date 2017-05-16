@@ -1,4 +1,5 @@
 from __future__ import unicode_literals
+import urlparse
 
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
@@ -204,6 +205,16 @@ class Tenant(structure_models.PrivateCloud):
     @classmethod
     def get_backend_fields(cls):
         return super(Tenant, cls).get_backend_fields() + ('name', 'description', 'error_message', 'runtime_state')
+
+    def get_access_url(self):
+        settings = self.service_project_link.service.settings
+        access_url = settings.get_option('access_url')
+        if access_url:
+            return access_url
+
+        if settings.backend_url:
+            parsed = urlparse.urlparse(settings.backend_url)
+            return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
 
 
 class Network(core_models.RuntimeStateMixin, structure_models.SubResource):

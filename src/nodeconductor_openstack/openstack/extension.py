@@ -91,6 +91,7 @@ class OpenStackExtension(NodeConductorExtension):
             # If this flag is true - manager can execute actions that will
             # change cost of the project: delete tenants, change their configuration
             'MANAGER_CAN_MANAGE_TENANTS': False,
+            'TENANT_CREDENTIALS_VISIBLE': True
         }
 
     @staticmethod
