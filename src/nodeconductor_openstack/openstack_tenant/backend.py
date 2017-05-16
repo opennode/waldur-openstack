@@ -581,7 +581,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 instance.volumes.get(bootable=True)
             except models.Volume.DoesNotExist:
                 raise OpenStackBackendError(
-                    _('Current installation cannot create instance without a system volume.'))
+                    'Current installation cannot create instance without a system volume.')
 
             security_group_ids = instance.security_groups.values_list('backend_id', flat=True)
             internal_ips = instance.internal_ips_set.all()

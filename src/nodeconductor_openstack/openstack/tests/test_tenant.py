@@ -246,6 +246,18 @@ class TenantPullTest(BaseTenantActionsTest):
         return factories.TenantFactory.get_url(self.tenant, 'pull')
 
 
+@patch('nodeconductor_openstack.openstack.executors.TenantPullQuotasExecutor.execute')
+class TenantPullQuotasTest(BaseTenantActionsTest):
+    def test_staff_can_pull_tenant_quotas(self, mocked_task):
+        self.client.force_authenticate(self.fixture.staff)
+        response = self.client.post(self.get_url())
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        mocked_task.assert_called_once_with(self.tenant)
+
+    def get_url(self):
+        return factories.TenantFactory.get_url(self.tenant, 'pull_quotas')
+
+
 @ddt
 @patch('nodeconductor_openstack.openstack.executors.TenantDeleteExecutor.execute')
 class TenantDeleteTest(BaseTenantActionsTest):

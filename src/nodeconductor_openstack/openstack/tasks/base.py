@@ -85,3 +85,15 @@ def send_tenant_credentials(serialized_tenant, serialized_user):
     logger.warning(logging_message_template % dict(tenant_name=tenant.name, user_email=user.email))
 
     user.email_user(subject, text_message, settings.DEFAULT_FROM_EMAIL, html_message)
+
+
+class TenantPullQuotas(core_tasks.BackgroundTask):
+    name = 'openstack.TenantPullQuotas'
+
+    def is_equal(self, other_task):
+        return self.name == other_task.get('name')
+
+    def run(self):
+        from .. import executors
+        for tenant in models.Tenant.objects.filter(state=models.Tenant.States.OK):
+            executors.TenantPullQuotasExecutor.execute(tenant)
