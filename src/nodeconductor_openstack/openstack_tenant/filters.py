@@ -61,6 +61,11 @@ class VolumeFilter(structure_filters.BaseResourceFilter):
         model = models.Volume
         fields = structure_filters.BaseResourceFilter.Meta.fields + ('runtime_state',)
 
+    ORDERING_FIELDS = structure_filters.BaseResourceFilter.ORDERING_FIELDS + (
+        ('instance__name', 'instance_name'),
+        ('size', 'size'),
+    )
+
 
 class SnapshotFilter(structure_filters.BaseResourceFilter):
     source_volume_uuid = django_filters.UUIDFilter(name='source_volume__uuid')
@@ -76,13 +81,21 @@ class SnapshotFilter(structure_filters.BaseResourceFilter):
         model = models.Snapshot
         fields = structure_filters.BaseResourceFilter.Meta.fields + ('runtime_state',)
 
+    ORDERING_FIELDS = structure_filters.BaseResourceFilter.ORDERING_FIELDS + (
+        ('source_volume__name', 'source_volume_name'),
+        ('size', 'size'),
+    )
+
 
 class InstanceFilter(structure_filters.BaseResourceFilter):
-    tenant_uuid = django_filters.UUIDFilter(name='tenant__uuid')
-
     class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.Instance
         fields = structure_filters.BaseResourceFilter.Meta.fields + ('runtime_state',)
+
+    ORDERING_FIELDS = structure_filters.BaseResourceFilter.ORDERING_FIELDS + (
+        ('internal_ips_set__ip4_address', 'internal_ips'),
+        ('internal_ips_set__floating_ips__address', 'external_ips'),
+    )
 
 
 class BackupFilter(structure_filters.BaseResourceFilter):

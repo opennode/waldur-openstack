@@ -2,7 +2,6 @@ from __future__ import unicode_literals
 
 import logging
 import re
-import urlparse
 
 from django.conf import settings
 from django.core import validators
@@ -425,15 +424,14 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             'user_username', 'subnet_cidr',
         )
 
-    def get_access_url(self, tenant):
-        settings = tenant.service_project_link.service.settings
-        access_url = settings.get_option('access_url')
-        if access_url:
-            return access_url
+    def get_fields(self):
+        fields = super(TenantSerializer, self).get_fields()
+        if not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
+            for field in ('user_username', 'user_password', 'access_url'):
+                if field in fields:
+                    del fields[field]
 
-        if settings.backend_url:
-            parsed = urlparse.urlparse(settings.backend_url)
-            return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
+        return fields
 
     def validate_service_project_link(self, spl):
         """ Administrator can create tenant only using not shared service settings """
@@ -447,7 +445,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         return spl
 
     def validate(self, attrs):
-        if self.instance is not None:
+        if self.instance is not None or not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
             return attrs
 
         if not attrs.get('user_username'):

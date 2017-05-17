@@ -91,6 +91,7 @@ class OpenStackExtension(NodeConductorExtension):
             # If this flag is true - manager can execute actions that will
             # change cost of the project: delete tenants, change their configuration
             'MANAGER_CAN_MANAGE_TENANTS': False,
+            'TENANT_CREDENTIALS_VISIBLE': True
         }
 
     @staticmethod
@@ -101,3 +102,14 @@ class OpenStackExtension(NodeConductorExtension):
     def rest_urls():
         from .urls import register_in
         return register_in
+
+    @staticmethod
+    def celery_tasks():
+        from datetime import timedelta
+        return {
+            'openstack-tenant-pull-quotas': {
+                'task': 'openstack.TenantPullQuotas',
+                'schedule': timedelta(minutes=30),
+                'args': (),
+            },
+        }
