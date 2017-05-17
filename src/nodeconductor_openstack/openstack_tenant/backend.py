@@ -619,7 +619,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             server = nova.servers.create(**server_create_parameters)
             instance.backend_id = server.id
             instance.save()
-        except (nova_exceptions.ClientException, neutron_exceptions.NeutronClientException) as e:
+        except nova_exceptions.ClientException as e:
             logger.exception("Failed to provision instance %s", instance.uuid)
             six.reraise(OpenStackBackendError, e)
         else:
@@ -632,7 +632,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         logger.debug('About to infer internal ip addresses of instance backend_id: %s', instance_backend_id)
         try:
             ports = neutron.list_ports(device_id=instance_backend_id)['ports']
-        except (nova_exceptions.ClientException, KeyError, IndexError):
+        except (neutron_exceptions.NeutronClientException, KeyError, IndexError):
             logger.exception(
                 'Failed to infer internal ip addresses of instance backend_id %s', instance_backend_id)
         else:
@@ -704,15 +704,21 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         instance_floating_ips_ids = [fip.backend_id for fip in instance_floating_ips]
         for backend_floating_ip in backend_floating_ips:
             if backend_floating_ip['id'] not in instance_floating_ips_ids:
-                neutron.update_floatingip(backend_floating_ip['id'], body={'floatingip': {'port_id': None}})
+                try:
+                    neutron.update_floatingip(backend_floating_ip['id'], body={'floatingip': {'port_id': None}})
+                except neutron_exceptions.NeutronClientException as e:
+                    six.reraise(OpenStackBackendError, e)
 
         # connect new ones
         backend_floating_ip_ids = {fip['id']: fip for fip in backend_floating_ips}
         for floating_ip in instance_floating_ips:
             backend_floating_ip = backend_floating_ip_ids.get(floating_ip.backend_id)
             if not backend_floating_ip or backend_floating_ip['port_id'] != floating_ip.internal_ip.backend_id:
-                neutron.update_floatingip(
-                    floating_ip.backend_id, body={'floatingip': {'port_id': floating_ip.internal_ip.backend_id}})
+                try:
+                    neutron.update_floatingip(
+                        floating_ip.backend_id, body={'floatingip': {'port_id': floating_ip.internal_ip.backend_id}})
+                except neutron_exceptions.NeutronClientException as e:
+                    six.reraise(OpenStackBackendError, e)
 
     def create_floating_ip(self, floating_ip):
         neutron = self.neutron_client
@@ -981,7 +987,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         exist_ids = instance.internal_ips_set.values_list('backend_id', flat=True)
         for backend_internal_ip in backend_internal_ips:
             if backend_internal_ip['id'] not in exist_ids:
-                neutron.delete_port(backend_internal_ip['id'])
+                try:
+                    neutron.delete_port(backend_internal_ip['id'])
+                except neutron_exceptions.NeutronClientException as e:
+                    six.reraise(OpenStackBackendError, e)
 
         # create new internal IPs
         new_internal_ips = instance.internal_ips_set.exclude(backend_id__in=[ip['id'] for ip in backend_internal_ips])
