@@ -3,6 +3,7 @@ import uuid
 import factory
 
 from random import randint
+# XXX:  Django 1.10 deprecation, import from django.urls
 from django.core.urlresolvers import reverse
 
 from nodeconductor.structure import models as structure_models
