@@ -9,7 +9,7 @@ from . import models
 class OpenStackTenantServiceProjectLinkFilter(structure_filters.BaseServiceProjectLinkFilter):
     service = core_filters.URLFilter(view_name='openstacktenant-detail', name='service__uuid')
 
-    class Meta(object):
+    class Meta(structure_filters.BaseServiceProjectLinkFilter.Meta):
         model = models.OpenStackTenantServiceProjectLink
 
 
@@ -113,7 +113,7 @@ class BackupScheduleFilter(structure_filters.BaseResourceFilter):
     instance = core_filters.URLFilter(view_name='openstacktenant-instance-detail', name='instance__uuid')
     instance_uuid = django_filters.UUIDFilter(name='instance__uuid')
 
-    class Meta(object):
+    class Meta(structure_filters.BaseResourceFilter.Meta):
         model = models.BackupSchedule
 
 
