@@ -280,6 +280,7 @@ class VolumeAttachSerializer(structure_serializers.PermissionFieldFilteringMixin
 class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, serializers.HyperlinkedModelSerializer):
     name = serializers.CharField(write_only=True, help_text=_('New volume name.'))
     description = serializers.CharField(required=False, help_text=_('New volume description.'))
+    volume_state = serializers.CharField(source='volume.human_readable_state', read_only=True)
 
     class Meta(object):
         model = models.SnapshotRestoration
@@ -291,7 +292,6 @@ class SnapshotRestorationSerializer(core_serializers.AugmentedSerializerMixin, s
         }
         extra_kwargs = dict(
             volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
-            volume_state={'source': 'volume.human_readable_state'}
         )
 
     @transaction.atomic
