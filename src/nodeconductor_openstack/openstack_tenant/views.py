@@ -242,7 +242,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewSet)):
-    queryset = models.Snapshot.objects.all()
+    queryset = models.Snapshot.objects.all().order_by('name')
     serializer_class = serializers.SnapshotSerializer
     update_executor = executors.SnapshotUpdateExecutor
     delete_executor = executors.SnapshotDeleteExecutor
@@ -490,7 +490,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                        structure_views.ResourceViewSet)):
-    queryset = models.Backup.objects.all()
+    queryset = models.Backup.objects.all().order_by('name')
     serializer_class = serializers.BackupSerializer
     filter_class = filters.BackupFilter
     disabled_actions = ['create']
@@ -618,12 +618,12 @@ class BaseScheduleViewSet(structure_views.ResourceViewSet):
 
 
 class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, BaseScheduleViewSet)):
-    queryset = models.BackupSchedule.objects.all()
+    queryset = models.BackupSchedule.objects.all().order_by('name')
     serializer_class = serializers.BackupScheduleSerializer
     filter_class = filters.BackupScheduleFilter
 
 
 class SnapshotScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, BaseScheduleViewSet)):
-    queryset = models.SnapshotSchedule.objects.all()
+    queryset = models.SnapshotSchedule.objects.all().order_by('name')
     serializer_class = serializers.SnapshotScheduleSerializer
     filter_class = filters.SnapshotScheduleFilter

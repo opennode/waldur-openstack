@@ -41,7 +41,7 @@ class GenericImportMixin(object):
 
 
 class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceViewSet):
-    queryset = models.OpenStackService.objects.all()
+    queryset = models.OpenStackService.objects.all().order_by('id')
     serializer_class = serializers.ServiceSerializer
     import_serializer_class = serializers.TenantImportSerializer
     import_serializers = {
@@ -218,7 +218,7 @@ class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetacl
 
 class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                            structure_views.ResourceViewSet)):
-    queryset = models.FloatingIP.objects.all()
+    queryset = models.FloatingIP.objects.all().order_by('address')
     serializer_class = serializers.FloatingIPSerializer
     filter_class = filters.FloatingIPFilter
     disabled_actions = ['update', 'partial_update', 'create']

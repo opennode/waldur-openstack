@@ -1,3 +1,4 @@
+from ddt import ddt, data
 from mock import patch
 from rest_framework import status, test
 
@@ -5,7 +6,7 @@ from nodeconductor.structure.models import ServiceSettings, ProjectRole, Custome
 from nodeconductor.structure.tests import factories as structure_factories
 
 from .. import models
-from . import factories
+from . import factories, fixtures
 
 
 class BaseServiceTest(test.APITransactionTestCase):
@@ -46,51 +47,36 @@ class BaseServiceTest(test.APITransactionTestCase):
         factories.OpenStackServiceProjectLinkFactory(service=self.services['managed'], project=self.projects['managed'])
 
 
-class ListServiceTest(BaseServiceTest):
+@ddt
+class ListServiceTest(test.APITransactionTestCase):
+    def setUp(self):
+        self.fixture = fixtures.OpenStackFixture()
+        self.service = self.fixture.openstack_service
+        self.spl = self.fixture.openstack_spl
+
+    def get_list(self):
+        return self.client.get(factories.OpenStackServiceFactory.get_list_url())
+
     def test_anonymous_user_cannot_list_services(self):
-        response = self.client.get(factories.OpenStackServiceFactory.get_list_url())
+        response = self.get_list()
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_user_can_list_services_of_projects_he_is_administrator_of(self):
-        self.client.force_authenticate(user=self.users['project_admin'])
+    @data('staff', 'owner', 'admin', 'manager')
+    def test_authorized_user_can_list_services(self, user):
+        self.client.force_authenticate(user=getattr(self.fixture, user))
 
-        response = self.client.get(factories.OpenStackServiceFactory.get_list_url())
+        response = self.get_list()
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        service_url = factories.OpenStackServiceFactory.get_url(self.services['admined'])
-        self.assertIn(service_url, [instance['url'] for instance in response.data])
-
-    def test_user_can_list_services_of_projects_he_is_manager_of(self):
-        self.client.force_authenticate(user=self.users['project_manager'])
-
-        response = self.client.get(factories.OpenStackServiceFactory.get_list_url())
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        service_url = factories.OpenStackServiceFactory.get_url(self.services['managed'])
-        self.assertIn(service_url, [instance['url'] for instance in response.data])
-
-    def test_user_can_list_services_of_projects_he_is_customer_owner_of(self):
-        self.client.force_authenticate(user=self.users['customer_owner'])
-
-        response = self.client.get(factories.OpenStackServiceFactory.get_list_url())
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        service_url = factories.OpenStackServiceFactory.get_url(self.services['owned'])
+        service_url = factories.OpenStackServiceFactory.get_url(self.service)
         self.assertIn(service_url, [instance['url'] for instance in response.data])
 
     def test_user_cannot_list_services_of_projects_he_has_no_role_in(self):
-        self.client.force_authenticate(user=self.users['no_role'])
+        self.client.force_authenticate(user=self.fixture.user)
 
-        response = self.client.get(factories.OpenStackServiceFactory.get_list_url())
+        response = self.get_list()
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        for service_type in 'admined', 'managed':
-            service_url = factories.OpenStackServiceFactory.get_url(self.services[service_type])
-            self.assertNotIn(
-                service_url,
-                [instance['url'] for instance in response.data],
-                'User (role=none) should not see service (type=' + service_type + ')',
-            )
+        self.assertEqual(0, len(response.data))
 
 
 class GetServiceTest(BaseServiceTest):
