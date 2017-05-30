@@ -1,7 +1,6 @@
 from django.contrib import admin
 from django.core.exceptions import ValidationError
-# XXX:  Django 1.10 deprecation, import from django.urls
-from django.core.urlresolvers import reverse
+from django.urls import reverse
 from django.utils.translation import ugettext_lazy as _
 
 from nodeconductor.core.admin import ExecutorAdminAction
