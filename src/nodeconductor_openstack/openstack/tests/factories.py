@@ -1,9 +1,8 @@
+from random import randint
 import uuid
 
+from django.urls import reverse
 import factory
-
-from random import randint
-from django.core.urlresolvers import reverse
 
 from nodeconductor.core import utils as core_utils
 from nodeconductor.structure.tests import factories as structure_factories

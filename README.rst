@@ -1,5 +1,4 @@
-NodeConductor OpenStack
-=======================
+Waldur OpenStack
+================
 
-NodeConductor plugin for managing OpenStack resources.
-
+Waldur plugin for managing OpenStack resources.
