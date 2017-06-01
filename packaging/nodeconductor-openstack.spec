@@ -7,7 +7,7 @@ License: MIT
 Url: http://waldur.com
 Source0: %{name}-%{version}.tar.gz
 
-Requires: nodeconductor > 0.138.0
+Requires: nodeconductor > 0.139.0
 Requires: python-ceilometerclient >= 2.3.0
 Requires: python-cinderclient >= 1.6.0
 Requires: python-cinderclient < 2.0.0

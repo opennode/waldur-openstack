@@ -1,7 +1,9 @@
 from django.contrib import admin
 from django.core.exceptions import ValidationError
+from django.forms import ModelForm
 from django.urls import reverse
 from django.utils.translation import ugettext_lazy as _
+from jsoneditor.forms import JSONEditor
 
 from nodeconductor.core.admin import ExecutorAdminAction
 from nodeconductor.quotas.admin import QuotaInline
@@ -33,11 +35,19 @@ class ServiceProjectLinkAdmin(structure_admin.ServiceProjectLinkAdmin):
     get_service_settings_password.short_description = _('Password')
 
 
+class TenantAdminForm(ModelForm):
+    class Meta:
+        widgets = {
+            'extra_configuration': JSONEditor(),
+        }
+
+
 class TenantAdmin(structure_admin.ResourceAdmin):
 
     actions = ('pull', 'detect_external_networks', 'allocate_floating_ip', 'pull_security_groups',
                'pull_floating_ips', 'pull_quotas')
     inlines = [QuotaInline]
+    form = TenantAdminForm
 
     class OKTenantAction(ExecutorAdminAction):
         """ Execute action with tenant that is in state OK """

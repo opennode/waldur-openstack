@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import jsonfield.fields
 import nodeconductor.core.fields
 import nodeconductor.core.validators
 
@@ -55,15 +54,17 @@ class Migration(migrations.Migration):
                 ('backend_id', models.CharField(max_length=255, db_index=True)),
                 ('cidr', models.CharField(max_length=32, blank=True)),
                 ('gateway_ip', models.GenericIPAddressField(null=True, protocol='IPv4')),
-                ('allocation_pools', jsonfield.fields.JSONField(default={})),
+                ('allocation_pools', nodeconductor.core.fields.JSONField(default={})),
                 ('ip_version', models.SmallIntegerField(default=4)),
                 ('enable_dhcp', models.BooleanField(default=True)),
-                ('dns_nameservers', jsonfield.fields.JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')),
+                ('dns_nameservers', nodeconductor.core.fields.JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')),
                 ('network', models.ForeignKey(related_name='subnets', to='openstack_tenant.Network')),
                 ('settings', models.ForeignKey(related_name='+', to='structure.ServiceSettings')),
             ],
             options={
                 'abstract': False,
+                'verbose_name': 'Subnet',
+                'verbose_name_plural': 'Subnets',
             },
         ),
         migrations.AddField(

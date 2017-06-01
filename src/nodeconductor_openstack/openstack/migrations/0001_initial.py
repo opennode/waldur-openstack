@@ -5,13 +5,11 @@ from django.db import migrations, models
 import django_fsm
 import nodeconductor.structure.models
 import nodeconductor.core.models
-import nodeconductor.core.fields
 import django.core.validators
 import taggit.managers
 import nodeconductor.logging.loggers
 import model_utils.fields
 import nodeconductor.core.fields
-import jsonfield.fields
 import django.db.models.deletion
 import django.utils.timezone
 import nodeconductor.core.validators
@@ -34,7 +32,7 @@ class Migration(migrations.Migration):
                 ('kept_until', models.DateTimeField(help_text='Guaranteed time of backup retention. If null - keep forever.', null=True, blank=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('state', django_fsm.FSMIntegerField(default=1, choices=[(1, 'Ready'), (2, 'Backing up'), (3, 'Restoring'), (4, 'Deleting'), (5, 'Erred'), (6, 'Deleted')])),
-                ('metadata', jsonfield.fields.JSONField(help_text='Additional information about backup, can be used for backup restoration or deletion', blank=True)),
+                ('metadata', nodeconductor.core.fields.JSONField(help_text='Additional information about backup, can be used for backup restoration or deletion', blank=True)),
             ],
             options={
                 'abstract': False,
@@ -88,6 +86,8 @@ class Migration(migrations.Migration):
             ],
             options={
                 'abstract': False,
+                'verbose_name': 'Floating IP',
+                'verbose_name_plural': 'Floating IPs',
             },
         ),
         migrations.CreateModel(

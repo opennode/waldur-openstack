@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 import nodeconductor.logging.loggers
-import jsonfield.fields
 import django_fsm
 import nodeconductor.core.models
 import django.db.models.deletion
@@ -56,7 +55,7 @@ class Migration(migrations.Migration):
                 ('state', django_fsm.FSMIntegerField(default=5, choices=[(5, 'Creation Scheduled'), (6, 'Creating'), (1, 'Update Scheduled'), (2, 'Updating'), (7, 'Deletion Scheduled'), (8, 'Deleting'), (3, 'OK'), (4, 'Erred')])),
                 ('backend_id', models.CharField(max_length=255, blank=True)),
                 ('start_time', models.DateTimeField(null=True, blank=True)),
-                ('metadata', jsonfield.fields.JSONField(blank=True)),
+                ('metadata', nodeconductor.core.fields.JSONField(blank=True)),
                 ('service_project_link', models.ForeignKey(related_name='volume_backups', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink')),
             ],
             options={
