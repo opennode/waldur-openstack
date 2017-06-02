@@ -6,7 +6,7 @@ from django.core.validators import RegexValidator
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
-from jsonfield import JSONField
+from nodeconductor.core.fields import JSONField
 from model_utils import FieldTracker
 from model_utils.models import TimeStampedModel
 
@@ -93,6 +93,8 @@ class FloatingIP(structure_models.ServiceProperty):
         # It should be possible to create floating IP dynamically on instance creation
         # so floating IP with empty backend id can exist.
         unique_together = tuple()
+        verbose_name = _('Floating IP')
+        verbose_name_plural = _('Floating IPs')
 
     def __str__(self):
         return '%s:%s | %s' % (self.address, self.runtime_state, self.settings)
@@ -414,6 +416,10 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
     dns_nameservers = JSONField(default=[], help_text=_('List of DNS name servers associated with the subnet.'))
+
+    class Meta:
+        verbose_name = _('Subnet')
+        verbose_name_plural = _('Subnets')
 
     def __str__(self):
         return '%s (%s)' % (self.name, self.cidr)

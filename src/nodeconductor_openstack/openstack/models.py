@@ -4,7 +4,7 @@ import urlparse
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
-from jsonfield import JSONField
+from nodeconductor.core.fields import JSONField
 from model_utils import FieldTracker
 
 from nodeconductor.core import models as core_models
@@ -143,6 +143,10 @@ class FloatingIP(core_models.RuntimeStateMixin, structure_models.SubResource):
 
     tracker = FieldTracker()
 
+    class Meta:
+        verbose_name = _('Floating IP')
+        verbose_name_plural = _('Floating IPs')
+
     def get_backend(self):
         return self.tenant.get_backend()
 
@@ -254,6 +258,10 @@ class SubNet(structure_models.SubResource):
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
     dns_nameservers = JSONField(default=[], help_text=_('List of DNS name servers associated with the subnet.'))
+
+    class Meta:
+        verbose_name = _('Subnet')
+        verbose_name_plural = _('Subnets')
 
     def get_backend(self):
         return self.network.get_backend()
