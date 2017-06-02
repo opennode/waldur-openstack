@@ -163,6 +163,10 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         floating_ip_mappings = {ip.backend_id: ip for ip in models.FloatingIP.objects.filter(
             settings=self.settings, is_booked=False).exclude(backend_id='')}
 
+        booked_ips = models.FloatingIP.objects.filter(
+            settings=self.settings,
+            is_booked=True).exclude(backend_id='').values_list('backend_id', flat=True)
+
         internal_ip_mappings = {ip.backend_id: ip for ip in models.InternalIP.objects.filter(
             instance__service_project_link__service__settings=self.settings).exclude(backend_id='')}
 
@@ -176,8 +180,8 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     continue
 
                 floating_ip = floating_ip_mappings.pop(imported_floating_ip.backend_id, None)
-                # create Floating IP
-                if floating_ip is None:
+                # create Floating IP if it does not exist
+                if floating_ip is None and backend_ip.backend_id not in booked_ips:
                     imported_floating_ip.internal_ip = internal_ip
                     imported_floating_ip.save()
                     continue
