@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 import nodeconductor.logging.loggers
-import jsonfield.fields
 import model_utils.fields
 import nodeconductor.core.fields
 import nodeconductor.core.models
@@ -36,7 +35,7 @@ class Migration(migrations.Migration):
                 ('backend_id', models.CharField(max_length=255, blank=True)),
                 ('start_time', models.DateTimeField(null=True, blank=True)),
                 ('kept_until', models.DateTimeField(help_text=b'Guaranteed time of backup retention. If null - keep forever.', null=True, blank=True)),
-                ('metadata', jsonfield.fields.JSONField(help_text=b'Additional information about backup, can be used for backup restoration or deletion', blank=True)),
+                ('metadata', nodeconductor.core.fields.JSONField(help_text=b'Additional information about backup, can be used for backup restoration or deletion', blank=True)),
                 ('instance', models.ForeignKey(related_name='backups', on_delete=django.db.models.deletion.PROTECT, to='openstack_tenant.Instance')),
                 ('service_project_link', models.ForeignKey(related_name='backups', on_delete=django.db.models.deletion.PROTECT, to='openstack_tenant.OpenStackTenantServiceProjectLink')),
                 ('snapshots', models.ManyToManyField(related_name='backups', to='openstack_tenant.Snapshot')),

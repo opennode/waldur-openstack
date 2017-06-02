@@ -46,7 +46,7 @@ class FloatingIPFilter(structure_filters.ServicePropertySettingsFilter):
 
     class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
         model = models.FloatingIP
-        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('runtime_state', 'is_booked')
+        fields = structure_filters.ServicePropertySettingsFilter.Meta.fields + ('runtime_state', 'address', 'is_booked')
 
 
 class VolumeFilter(structure_filters.BaseResourceFilter):

@@ -2,7 +2,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import jsonfield.fields
+import nodeconductor.core.fields
 
 
 class Migration(migrations.Migration):
@@ -15,16 +15,16 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='instance',
             name='action_details',
-            field=jsonfield.fields.JSONField(default={}),
+            field=nodeconductor.core.fields.JSONField(default={}),
         ),
         migrations.AlterField(
             model_name='snapshot',
             name='action_details',
-            field=jsonfield.fields.JSONField(default={}),
+            field=nodeconductor.core.fields.JSONField(default={}),
         ),
         migrations.AlterField(
             model_name='volume',
             name='action_details',
-            field=jsonfield.fields.JSONField(default={}),
+            field=nodeconductor.core.fields.JSONField(default={}),
         ),
     ]

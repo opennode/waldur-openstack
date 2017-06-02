@@ -9,7 +9,6 @@ import django.core.validators
 import nodeconductor.logging.loggers
 import model_utils.fields
 import nodeconductor.core.fields
-import jsonfield.fields
 import django.db.models.deletion
 import django.utils.timezone
 import nodeconductor.core.validators
@@ -38,7 +37,7 @@ class Migration(migrations.Migration):
                 ('backend_id', models.CharField(max_length=255, blank=True)),
                 ('start_time', models.DateTimeField(null=True, blank=True)),
                 ('size', models.PositiveIntegerField(help_text='Size in MiB')),
-                ('metadata', jsonfield.fields.JSONField(blank=True)),
+                ('metadata', nodeconductor.core.fields.JSONField(blank=True)),
                 ('service_project_link', models.ForeignKey(related_name='snapshots', on_delete=django.db.models.deletion.PROTECT, to='openstack_tenant.OpenStackTenantServiceProjectLink')),
             ],
             options={
@@ -63,8 +62,8 @@ class Migration(migrations.Migration):
                 ('size', models.PositiveIntegerField(help_text='Size in MiB')),
                 ('device', models.CharField(blank=True, help_text=b'Name of volume as instance device e.g. /dev/vdb.', max_length=50, validators=[django.core.validators.RegexValidator(b'^/dev/[a-zA-Z0-9]+$', message=b'Device should match pattern "/dev/alphanumeric+"')])),
                 ('bootable', models.BooleanField(default=False)),
-                ('metadata', jsonfield.fields.JSONField(blank=True)),
-                ('image_metadata', jsonfield.fields.JSONField(blank=True)),
+                ('metadata', nodeconductor.core.fields.JSONField(blank=True)),
+                ('image_metadata', nodeconductor.core.fields.JSONField(blank=True)),
                 ('type', models.CharField(max_length=100, blank=True)),
                 ('image', models.ForeignKey(to='openstack_tenant.Image', null=True)),
                 ('service_project_link', models.ForeignKey(related_name='volumes', on_delete=django.db.models.deletion.PROTECT, to='openstack_tenant.OpenStackTenantServiceProjectLink')),

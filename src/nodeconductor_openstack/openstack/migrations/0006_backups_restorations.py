@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import jsonfield.fields
 import django.db.models.deletion
 import django.utils.timezone
 import model_utils.fields
@@ -35,7 +34,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('uuid', nodeconductor.core.fields.UUIDField()),
                 ('service', models.CharField(max_length=200)),
-                ('details', jsonfield.fields.JSONField(blank=True)),
+                ('details', nodeconductor.core.fields.JSONField(blank=True)),
             ],
             options={
                 'abstract': False,
@@ -56,7 +55,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='drbackup',
             name='metadata',
-            field=jsonfield.fields.JSONField(help_text='Information about instance that will be used on restoration', blank=True),
+            field=nodeconductor.core.fields.JSONField(help_text='Information about instance that will be used on restoration', blank=True),
         ),
         migrations.AddField(
             model_name='volumebackup',
@@ -72,7 +71,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='volumebackup',
             name='metadata',
-            field=jsonfield.fields.JSONField(help_text='Information about volume that will be used on restoration', blank=True),
+            field=nodeconductor.core.fields.JSONField(help_text='Information about volume that will be used on restoration', blank=True),
         ),
         migrations.AddField(
             model_name='volumebackuprestoration',

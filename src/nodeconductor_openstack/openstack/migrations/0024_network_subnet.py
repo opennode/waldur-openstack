@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 import nodeconductor.logging.loggers
-import jsonfield.fields
 import django.utils.timezone
 import model_utils.fields
 import nodeconductor.core.fields
@@ -63,7 +62,7 @@ class Migration(migrations.Migration):
                 ('start_time', models.DateTimeField(null=True, blank=True)),
                 ('cidr', models.CharField(max_length=32, blank=True)),
                 ('gateway_ip', models.GenericIPAddressField(null=True, protocol='IPv4')),
-                ('allocation_pools', jsonfield.fields.JSONField(default={})),
+                ('allocation_pools', nodeconductor.core.fields.JSONField(default={})),
                 ('ip_version', models.SmallIntegerField(default=4)),
                 ('enable_dhcp', models.BooleanField(default=True)),
                 ('network', models.ForeignKey(related_name='subnets', to='openstack.Network')),
@@ -72,6 +71,8 @@ class Migration(migrations.Migration):
             ],
             options={
                 'abstract': False,
+                'verbose_name': 'Subnet',
+                'verbose_name_plural': 'Subnets',
             },
             bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
         ),

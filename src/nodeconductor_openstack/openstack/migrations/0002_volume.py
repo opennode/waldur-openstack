@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 import nodeconductor.logging.loggers
-import jsonfield.fields
 import django_fsm
 import nodeconductor.core.models
 import django.db.models.deletion
@@ -38,8 +37,8 @@ class Migration(migrations.Migration):
                 ('start_time', models.DateTimeField(null=True, blank=True)),
                 ('size', models.PositiveIntegerField(help_text='Size in MiB')),
                 ('bootable', models.BooleanField(default=False)),
-                ('metadata', jsonfield.fields.JSONField(blank=True)),
-                ('image_metadata', jsonfield.fields.JSONField(blank=True)),
+                ('metadata', nodeconductor.core.fields.JSONField(blank=True)),
+                ('image_metadata', nodeconductor.core.fields.JSONField(blank=True)),
                 ('type', models.CharField(max_length=100, blank=True)),
                 ('image', models.ForeignKey(to='openstack.Image', null=True)),
                 ('service_project_link', models.ForeignKey(related_name='volumes', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink')),

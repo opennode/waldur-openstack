@@ -3,7 +3,6 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 import nodeconductor.logging.loggers
-import jsonfield.fields
 import django_fsm
 import nodeconductor.core.models
 import django.db.models.deletion
@@ -37,7 +36,7 @@ class Migration(migrations.Migration):
                 ('backend_id', models.CharField(max_length=255, blank=True)),
                 ('start_time', models.DateTimeField(null=True, blank=True)),
                 ('size', models.PositiveIntegerField(help_text='Size in MiB')),
-                ('metadata', jsonfield.fields.JSONField(blank=True)),
+                ('metadata', nodeconductor.core.fields.JSONField(blank=True)),
                 ('service_project_link', models.ForeignKey(related_name='snapshots', on_delete=django.db.models.deletion.PROTECT, to='openstack.OpenStackServiceProjectLink')),
                 ('tags', taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags')),
                 ('volume', models.ForeignKey(related_name='snapshots', to='openstack.Volume')),

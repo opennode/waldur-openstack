@@ -48,6 +48,8 @@ class Migration(migrations.Migration):
             ],
             options={
                 'abstract': False,
+                'verbose_name': 'Floating IP',
+                'verbose_name_plural': 'Floating IPs',
             },
         ),
         migrations.CreateModel(
