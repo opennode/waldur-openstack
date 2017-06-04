@@ -178,6 +178,27 @@ class InstanceFactory(factory.DjangoModelFactory):
                 self.security_groups.add(group)
 
 
+class FloatingIPFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.FloatingIP
+
+    name = factory.Sequence(lambda n: 'floating_ip%s' % n)
+    settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
+    runtime_state = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
+    address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
+
+    @classmethod
+    def get_url(cls, instance=None):
+        if instance is None:
+            instance = FloatingIPFactory()
+        return 'http://testserver' + reverse('openstacktenant-fip-detail', kwargs={'uuid': instance.uuid})
+
+    @classmethod
+    def get_list_url(cls):
+        return 'http://testserver' + reverse('openstacktenant-fip-list')
+
+
 class SecurityGroupFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.SecurityGroup
@@ -332,25 +353,3 @@ class InternalIPFactory(factory.DjangoModelFactory):
     backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
     instance = factory.SubFactory(InstanceFactory)
     subnet = factory.SubFactory(SubNetFactory)
-
-
-class FloatingIPFactory(factory.DjangoModelFactory):
-    class Meta(object):
-        model = models.FloatingIP
-
-    name = factory.Sequence(lambda n: 'floating_ip%s' % n)
-    settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
-    runtime_state = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
-    address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
-    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
-    is_booked = False
-
-    @classmethod
-    def get_url(cls, instance=None):
-        if instance is None:
-            instance = FloatingIPFactory()
-        return 'http://testserver' + reverse('openstacktenant-fip-detail', kwargs={'uuid': instance.uuid})
-
-    @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstacktenant-fip-list')
