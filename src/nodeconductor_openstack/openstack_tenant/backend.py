@@ -181,9 +181,13 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
                 floating_ip = floating_ip_mappings.pop(imported_floating_ip.backend_id, None)
                 # create Floating IP if it does not exist
-                if floating_ip is None and backend_ip not in booked_ips:
+                if floating_ip is None and backend_ip['id'] not in booked_ips:
                     imported_floating_ip.internal_ip = internal_ip
                     imported_floating_ip.save()
+                    continue
+                elif backend_ip['id'] in booked_ips:
+                    # floating_ip_mapping does not include booked ips as they must not be updated.
+                    # Skip one.
                     continue
 
                 # Don't update user defined name.
