@@ -343,7 +343,6 @@ class FloatingIPFactory(factory.DjangoModelFactory):
     runtime_state = factory.Iterator(['ACTIVE', 'SHUTOFF', 'DOWN'])
     address = factory.LazyAttribute(lambda o: '.'.join('%s' % randint(0, 255) for _ in range(4)))
     backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
-    internal_ip = factory.SubFactory(InternalIPFactory)
     is_booked = False
 
     @classmethod

@@ -34,12 +34,14 @@ class PullFloatingIPTest(TestCase):
         booked_ip = factories.FloatingIPFactory(is_booked=True,
                                                 settings=self.settings,
                                                 backend_id='booked_ip',
-                                                runtime_state='DOWN',
-                                                internal_ip__instance=self.fixture.instance)
+                                                runtime_state='DOWN')
+        booked_ip.internal_ip = factories.InternalIPFactory(instance=self.fixture.instance)
+        booked_ip.save()
         existing_ip = factories.FloatingIPFactory(settings=self.settings,
                                                   backend_id='existing_ip',
-                                                  runtime_state='DOWN',
-                                                  internal_ip__instance=self.fixture.instance)
+                                                  runtime_state='DOWN')
+        existing_ip.internal_ip = factories.InternalIPFactory(instance=self.fixture.instance)
+        existing_ip.save()
         for existing_ip in ([booked_ip, existing_ip]):
             backend_floating_ips['floatingips'].append({
                 'floating_ip_address': existing_ip.address,
