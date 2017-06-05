@@ -160,37 +160,46 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        floating_ip_mappings = {ip.backend_id: ip for ip in models.FloatingIP.objects.filter(
-            settings=self.settings, is_booked=False).exclude(backend_id='')}
+        # Step 1. Prepare data
+        imported_ips = {ip.backend_id: ip
+                        for ip in (self._backend_floating_ip_to_floating_ip(ip)
+                                   for ip in backend_floating_ips)}
 
-        internal_ip_mappings = {ip.backend_id: ip for ip in models.InternalIP.objects.filter(
+        floating_ips = {ip.backend_id: ip for ip in models.FloatingIP.objects.filter(
+            settings=self.settings).exclude(backend_id='')}
+        booked_ips = [backend_id for backend_id, ip in floating_ips.items() if ip.is_booked]
+
+        # all imported IPs except those which are booked.
+        ips_to_update = set(imported_ips) - set(booked_ips)
+
+        internal_ips = {ip.backend_id: ip for ip in models.InternalIP.objects.filter(
             instance__service_project_link__service__settings=self.settings).exclude(backend_id='')}
 
-        with transaction.atomic():
-            for backend_ip in backend_floating_ips:
-                imported_floating_ip = self._backend_floating_ip_to_floating_ip(backend_ip)
+        # Step 2. Update or create imported IPs
+        for backend_id in ips_to_update:
+            imported_ip = imported_ips[backend_id]
+            floating_ip = floating_ips.get(backend_id)
 
-                internal_ip = internal_ip_mappings.get(imported_floating_ip._internal_ip_backend_id)
-                if imported_floating_ip._internal_ip_backend_id and internal_ip is None:
-                    logger.warning('Failed to set internal_ip for Floating IP %s', imported_floating_ip.backend_id)
-                    continue
+            internal_ip = internal_ips.get(imported_ip._internal_ip_backend_id)
+            if imported_ip._internal_ip_backend_id and internal_ip is None:
+                logger.warning('Failed to set internal_ip for Floating IP %s', imported_ip.backend_id)
+                continue
 
-                floating_ip = floating_ip_mappings.pop(imported_floating_ip.backend_id, None)
-                # create Floating IP
-                if floating_ip is None:
-                    imported_floating_ip.internal_ip = internal_ip
-                    imported_floating_ip.save()
-                    continue
-
-                # Don't update user defined name.
+            if not floating_ip:
+                imported_ip.internal_ip = internal_ip
+                imported_ip.save()
+            else:
+                fields_to_update = models.FloatingIP.get_backend_fields()
                 if floating_ip.address != floating_ip.name:
-                    imported_floating_ip.name = floating_ip.name
+                    # Don't update user defined name.
+                    fields_to_update = [field for field in fields_to_update if field != 'name']
 
-                # update Floating IP
-                update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
+                update_pulled_fields(floating_ip, imported_ip, fields_to_update)
 
-        # Remove stale Floating IPs
-        models.FloatingIP.objects.filter(settings=self.settings, backend_id__in=floating_ip_mappings.keys()).delete()
+        # Step 3. Delete stale IPs
+        ips_to_delete = set(floating_ips) - set(imported_ips)
+        models.FloatingIP.objects.filter(settings=self.settings,
+                                         backend_id__in=ips_to_delete).delete()
 
     def _backend_floating_ip_to_floating_ip(self, backend_floating_ip, **kwargs):
         floating_ip = models.FloatingIP(

@@ -350,5 +350,6 @@ class InternalIPFactory(factory.DjangoModelFactory):
     class Meta(object):
         model = models.InternalIP
 
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
     instance = factory.SubFactory(InstanceFactory)
     subnet = factory.SubFactory(SubNetFactory)
