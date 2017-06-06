@@ -80,16 +80,36 @@ class BackupScheduleTaskTest(TestCase):
         tasks.ScheduleBackups().run()
         self.assertEqual(self.schedule_for_execution.backups.count(), 1)
         tasks.ScheduleBackups().run()
-        base_time = timezone.now().replace(tzinfo=pytz.timezone(self.schedule_for_execution.timezone))
-        next_trigger_at = croniter(self.schedule_for_execution.schedule, base_time).get_next(datetime)
-        mocked_now = next_trigger_at + timezone.timedelta(seconds=5)
-        with freeze_time(mocked_now):
-            tasks.ScheduleBackups().run()
-            self.assertEqual(self.schedule_for_execution.backups.count(), 2)
+        self._trigger_next_backup(timezone.now())
+        self.assertEqual(self.schedule_for_execution.backups.count(), 2)
 
     def test_command_does_not_create_backups_created_for_schedule_with_next_trigger_in_future(self):
         tasks.ScheduleBackups().run()
         self.assertEqual(self.future_schedule.backups.count(), 0)
+
+    def test_command_does_not_create_more_backups_than_maximal_number_of_resources(self):
+        maximum_number = 3
+        self.schedule_for_execution.maximal_number_of_resources = maximum_number
+        self.schedule_for_execution.save()
+        tasks.ScheduleBackups().run()
+
+        self.assertEqual(self.schedule_for_execution.backups.count(), 1)
+        base_time = self._trigger_next_backup(timezone.now())
+        self.assertEqual(self.schedule_for_execution.backups.count(), 2)
+        base_time = self._trigger_next_backup(base_time)
+        self.assertEqual(self.schedule_for_execution.backups.count(), 3)
+        self._trigger_next_backup(base_time)
+
+        self.assertEqual(self.schedule_for_execution.backups.count(), maximum_number)
+
+    def _trigger_next_backup(self, base_time):
+        base_time = base_time.replace(tzinfo=pytz.timezone(self.schedule_for_execution.timezone))
+        next_trigger_at = croniter(self.schedule_for_execution.schedule, base_time).get_next(datetime)
+        mocked_now = next_trigger_at + timezone.timedelta(seconds=5)
+        with freeze_time(mocked_now):
+            tasks.ScheduleBackups().run()
+
+        return mocked_now
 
 
 class SnapshotScheduleTaskTest(TestCase):

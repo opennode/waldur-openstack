@@ -153,6 +153,12 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
     def run(self):
         schedules = self.model.objects.filter(is_active=True, next_trigger_at__lt=timezone.now())
         for schedule in schedules:
+            existing_resources = self._get_number_of_resources(schedule)
+            if existing_resources >= schedule.maximal_number_of_resources:
+                schedule.is_active = False
+                schedule.save()
+                continue
+
             kept_until = None
             if schedule.retention_time:
                 kept_until = timezone.now() + timezone.timedelta(days=schedule.retention_time)
@@ -205,6 +211,9 @@ class ScheduleBackups(BaseScheduleTask):
         from . import executors
         return executors.BackupCreateExecutor
 
+    def _get_number_of_resources(self, schedule):
+        return schedule.backups.count()
+
 
 class DeleteExpiredBackups(core_tasks.BackgroundTask):
     name = 'openstack_tenant.DeleteExpiredBackups'
@@ -239,6 +248,9 @@ class ScheduleSnapshots(BaseScheduleTask):
     def _get_create_executor(self):
         from . import executors
         return executors.SnapshotCreateExecutor
+
+    def _get_number_of_resources(self, schedule):
+        return schedule.snapshots.count()
 
 
 class DeleteExpiredSnapshots(core_tasks.BackgroundTask):
