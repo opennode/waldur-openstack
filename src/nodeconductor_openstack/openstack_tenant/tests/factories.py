@@ -2,7 +2,10 @@ from random import randint
 import uuid
 
 from django.urls import reverse
+from django.utils import timezone
+from factory import fuzzy
 import factory
+import pytz
 
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.tests import factories as structure_factories
@@ -249,6 +252,7 @@ class BackupFactory(factory.DjangoModelFactory):
     backup_schedule = factory.SubFactory(BackupScheduleFactory)
     instance = factory.LazyAttribute(lambda b: b.backup_schedule.instance)
     state = models.Backup.States.OK
+    kept_until = fuzzy.FuzzyDateTime(timezone.datetime(2017, 06, 06, tzinfo=pytz.UTC))
 
     @classmethod
     def get_url(cls, backup=None, action=None):
