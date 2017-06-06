@@ -13,7 +13,7 @@ from nodeconductor.quotas import exceptions as quotas_exceptions
 from nodeconductor.structure import (models as structure_models, tasks as structure_tasks,
                                      SupportedServices)
 
-from . import models, serializers
+from . import models, serializers, log
 
 
 logger = logging.getLogger(__name__)
@@ -187,9 +187,13 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
                 schedule.save()
 
     def _remove_exceeding_backups(self, schedule, amount_to_remove):
+        self._log_backup_cleanup(schedule)
         resources = getattr(schedule, self.resource_attribute)
         resources_to_remove = resources.order_by('kept_until')[:amount_to_remove]
         resources.filter(id__in=resources_to_remove).delete()
+
+    def _log_backup_cleanup(self, schedule):
+        raise NotImplementedError()
 
     def _create_resource(self, schedule, kept_until):
         raise NotImplementedError()
@@ -223,6 +227,13 @@ class ScheduleBackups(BaseScheduleTask):
     def _get_create_executor(self):
         from . import executors
         return executors.BackupCreateExecutor
+
+    def _log_backup_cleanup(self, schedule):
+        log.event_logger.openstack_backup_schedule.info(
+            'Maximum resource number is reached. Backup schedule "%s" is being cleaned up.' % schedule.name,
+            event_type='resource_backup_schedule_cleaned_up',
+            event_context={'resource': schedule.instance, 'backup_schedule': schedule},
+        )
 
 
 class DeleteExpiredBackups(core_tasks.BackgroundTask):
@@ -259,6 +270,13 @@ class ScheduleSnapshots(BaseScheduleTask):
     def _get_create_executor(self):
         from . import executors
         return executors.SnapshotCreateExecutor
+
+    def _log_backup_cleanup(self, schedule):
+        log.event_logger.openstack_snapshot_schedule.info(
+            'Maximum resource number is reached. Snapshot schedule "%s" is being cleaned up.' % schedule.name,
+            event_type='resource_snapshot_schedule_cleaned_up',
+            event_context={'resource': schedule.source_volume, 'snapshot_schedule': schedule},
+        )
 
 
 class DeleteExpiredSnapshots(core_tasks.BackgroundTask):
