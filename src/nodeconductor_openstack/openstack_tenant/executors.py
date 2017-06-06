@@ -497,6 +497,24 @@ class InstanceFloatingIPsUpdateExecutor(core_executors.ActionExecutor):
     action = 'Update floating IPs'
 
     @classmethod
+    def get_action_details(cls, instance, **kwargs):
+        attached = set(instance._new_floating_ips) - set(instance._old_floating_ips)
+        detached = set(instance._old_floating_ips) - set(instance._new_floating_ips)
+
+        messages = []
+        if attached:
+            messages.append('Attached floating IPs: %s.' % ', '.join(attached))
+
+        if detached:
+            messages.append('Detached floating IPs: %s.' % ', '.join(detached))
+
+        return {
+            'message': ' '.join(messages),
+            'attached': list(attached),
+            'detached': list(detached),
+        }
+
+    @classmethod
     def get_task_signature(cls, instance, serialized_instance, **kwargs):
         _tasks = [core_tasks.StateTransitionTask().si(serialized_instance, state_transition='begin_updating')]
         # Create non-exist floating IPs

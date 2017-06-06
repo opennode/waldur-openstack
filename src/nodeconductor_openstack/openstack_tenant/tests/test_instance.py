@@ -477,6 +477,37 @@ class InstanceUpdateFloatingIPsTest(test.APITransactionTestCase):
         self.assertEqual(self.instance.floating_ips.count(), 1)
         self.assertIn(self.fixture.floating_ip, self.instance.floating_ips)
 
+    def test_when_floating_ip_is_attached_action_details_are_updated(self):
+        floating_ip_url = factories.FloatingIPFactory.get_url(self.fixture.floating_ip)
+        data = {
+            'floating_ips': [
+                {'subnet': self.subnet_url, 'url': floating_ip_url},
+            ]
+        }
+
+        self.client.post(self.url, data=data)
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.action_details, {
+            'message': 'Attached floating IPs: %s.' % self.fixture.floating_ip.address,
+            'attached': [self.fixture.floating_ip.address],
+            'detached': [],
+        })
+
+    def test_when_floating_ip_is_detached_action_details_are_updated(self):
+        self.fixture.floating_ip.internal_ip = self.instance.internal_ips_set.first()
+        self.fixture.floating_ip.save()
+
+        self.client.post(self.url, data={
+            'floating_ips': []
+        })
+
+        self.instance.refresh_from_db()
+        self.assertEqual(self.instance.action_details, {
+            'message': 'Detached floating IPs: %s.' % self.fixture.floating_ip.address,
+            'attached': [],
+            'detached': [self.fixture.floating_ip.address],
+        })
+
     def test_user_cannot_add_floating_ip_via_subnet_that_is_not_connected_to_instance(self):
         subnet_url = factories.SubNetFactory.get_url()
         data = {'floating_ips': [{'subnet': subnet_url}]}
