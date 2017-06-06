@@ -156,7 +156,8 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
         for schedule in schedules:
             existing_resources = self._get_number_of_resources(schedule)
             if existing_resources > schedule.maximal_number_of_resources:
-                self._remove_exceeding_backups(schedule)
+                amount_to_remove = existing_resources - schedule.maximal_number_of_resources
+                self._remove_exceeding_backups(schedule, amount_to_remove)
                 continue
             elif existing_resources == schedule.maximal_number_of_resources:
                 continue
@@ -185,9 +186,7 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
                 schedule.update_next_trigger_at()
                 schedule.save()
 
-    def _remove_exceeding_backups(self, schedule):
-        count = self._get_number_of_resources(schedule)
-        amount_to_remove = count - schedule.maximal_number_of_resources
+    def _remove_exceeding_backups(self, schedule, amount_to_remove):
         resources = getattr(schedule, self.resource_attribute)
         resources_to_remove = resources.order_by('kept_until')[:amount_to_remove]
         resources.filter(id__in=resources_to_remove).delete()
@@ -199,7 +198,8 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
         raise NotImplementedError()
 
     def _get_number_of_resources(self, schedule):
-        raise NotImplementedError()
+        resources = getattr(schedule, self.resource_attribute)
+        return resources.count()
 
 
 class ScheduleBackups(BaseScheduleTask):
@@ -223,9 +223,6 @@ class ScheduleBackups(BaseScheduleTask):
     def _get_create_executor(self):
         from . import executors
         return executors.BackupCreateExecutor
-
-    def _get_number_of_resources(self, schedule):
-        return schedule.backups.count()
 
 
 class DeleteExpiredBackups(core_tasks.BackgroundTask):
@@ -262,9 +259,6 @@ class ScheduleSnapshots(BaseScheduleTask):
     def _get_create_executor(self):
         from . import executors
         return executors.SnapshotCreateExecutor
-
-    def _get_number_of_resources(self, schedule):
-        return schedule.snapshots.count()
 
 
 class DeleteExpiredSnapshots(core_tasks.BackgroundTask):
