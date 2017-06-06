@@ -156,8 +156,7 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
         for schedule in schedules:
             existing_resources = self._get_number_of_resources(schedule)
             if existing_resources > schedule.maximal_number_of_resources:
-                amount_to_remove = existing_resources - schedule.maximal_number_of_resources
-                self._remove_exceeding_backups(schedule, amount_to_remove)
+                self._remove_exceeding_backups(schedule, existing_resources)
                 continue
             elif existing_resources == schedule.maximal_number_of_resources:
                 continue
@@ -186,13 +185,14 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
                 schedule.update_next_trigger_at()
                 schedule.save()
 
-    def _remove_exceeding_backups(self, schedule, amount_to_remove):
-        self._log_backup_cleanup(schedule)
+    def _remove_exceeding_backups(self, schedule, resources_count):
+        amount_to_remove = resources_count - schedule.maximal_number_of_resources
+        self._log_backup_cleanup(schedule, amount_to_remove, resources_count)
         resources = getattr(schedule, self.resource_attribute)
         resources_to_remove = resources.order_by('kept_until')[:amount_to_remove]
         resources.filter(id__in=resources_to_remove).delete()
 
-    def _log_backup_cleanup(self, schedule):
+    def _log_backup_cleanup(self, schedule, amount_to_remove, resources_count):
         raise NotImplementedError()
 
     def _create_resource(self, schedule, kept_until):
@@ -228,9 +228,11 @@ class ScheduleBackups(BaseScheduleTask):
         from . import executors
         return executors.BackupCreateExecutor
 
-    def _log_backup_cleanup(self, schedule):
+    def _log_backup_cleanup(self, schedule, amount_to_remove, resources_count):
+        message_template = ('Maximum resource count "%s" has been reached.'
+                            '"%s" from "%s" resources are going to be removed.')
         log.event_logger.openstack_backup_schedule.info(
-            'Maximum resource number is reached. Backup schedule "%s" is being cleaned up.' % schedule.name,
+            message_template % (schedule.maximal_number_of_resources, amount_to_remove, resources_count),
             event_type='resource_backup_schedule_cleaned_up',
             event_context={'resource': schedule.instance, 'backup_schedule': schedule},
         )
@@ -271,9 +273,11 @@ class ScheduleSnapshots(BaseScheduleTask):
         from . import executors
         return executors.SnapshotCreateExecutor
 
-    def _log_backup_cleanup(self, schedule):
+    def _log_backup_cleanup(self, schedule, amount_to_remove, resources_count):
+        message_template = ('Maximum resource count "%s" has been reached.'
+                            '"%s" from "%s" resources are going to be removed.')
         log.event_logger.openstack_snapshot_schedule.info(
-            'Maximum resource number is reached. Snapshot schedule "%s" is being cleaned up.' % schedule.name,
+            message_template % (schedule.maximal_number_of_resources, amount_to_remove, resources_count),
             event_type='resource_snapshot_schedule_cleaned_up',
             event_context={'resource': schedule.source_volume, 'snapshot_schedule': schedule},
         )
