@@ -157,6 +157,7 @@ class BaseScheduleTask(core_tasks.BackgroundTask):
             existing_resources = self._get_number_of_resources(schedule)
             if existing_resources > schedule.maximal_number_of_resources:
                 self._remove_exceeding_backups(schedule)
+                continue
             elif existing_resources == schedule.maximal_number_of_resources:
                 continue
 

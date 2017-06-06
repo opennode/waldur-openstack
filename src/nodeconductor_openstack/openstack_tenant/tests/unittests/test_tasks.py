@@ -131,6 +131,7 @@ class BackupScheduleTaskTest(TestCase):
         old_backup_exist = models.Backup.objects.filter(id__in=[older_backup.id, oldest_backup.id]).exists()
         self.assertFalse(old_backup_exist)
         self.assertTrue(models.Backup.objects.filter(id=todays_backup.id).exists())
+        self.assertEqual(self.schedule_for_execution.backups.count(), 1)
 
     def _trigger_next_backup(self, base_time):
         base_time = base_time.replace(tzinfo=pytz.timezone(self.schedule_for_execution.timezone))
