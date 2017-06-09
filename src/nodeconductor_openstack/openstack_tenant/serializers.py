@@ -922,6 +922,12 @@ class InstanceFloatingIPsUpdateSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         floating_ips_with_subnets = validated_data['floating_ips']
         floating_ips_to_disconnect = list(self.instance.floating_ips)
+
+        # Store both old and new floating IP addresses for action event logger
+        new_floating_ips = [floating_ip for (floating_ip, subnet) in floating_ips_with_subnets if floating_ip]
+        instance._old_floating_ips = [floating_ip.address for floating_ip in floating_ips_to_disconnect]
+        instance._new_floating_ips = [floating_ip.address for floating_ip in new_floating_ips]
+
         for floating_ip, subnet in floating_ips_with_subnets:
             if floating_ip in floating_ips_to_disconnect:
                 floating_ips_to_disconnect.remove(floating_ip)

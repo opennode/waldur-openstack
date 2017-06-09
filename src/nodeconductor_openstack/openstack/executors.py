@@ -82,6 +82,7 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
             creation_tasks.append(core_tasks.BackendMethodTask().si(
                 serialized_tenant, 'connect_tenant_to_external_network', external_network_id=external_network_id))
 
+        creation_tasks.append(core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_quotas'))
         return chain(*creation_tasks)
 
     @classmethod

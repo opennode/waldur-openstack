@@ -80,6 +80,7 @@ class BackupScheduleEventLogger(EventLogger):
             'resource_backup_schedule_deleted',
             'resource_backup_schedule_activated',
             'resource_backup_schedule_deactivated',
+            'resource_backup_schedule_cleaned_up',
         )
         event_groups = {'resources': event_types}
 
@@ -94,6 +95,7 @@ class SnapshotScheduleEventLogger(EventLogger):
             'resource_snapshot_schedule_deleted',
             'resource_snapshot_schedule_activated',
             'resource_snapshot_schedule_deactivated',
+            'resource_snapshot_schedule_cleaned_up',
         )
         event_groups = {'resources': event_types}
 

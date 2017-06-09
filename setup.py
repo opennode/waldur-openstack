@@ -26,12 +26,13 @@ install_requires = [
 
 setup(
     name='nodeconductor-openstack',
-    version='0.28.0',
+    version='0.29.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://waldur.com',
     description='Waldur plugin for managing OpenStack resources.',
     long_description=open('README.rst').read(),
+    license='MIT',
     package_dir={'': 'src'},
     packages=find_packages('src', exclude=['*.tests', '*.tests.*', 'tests.*', 'tests']),
     install_requires=install_requires,
