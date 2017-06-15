@@ -48,6 +48,9 @@ class Flavor(LoggableMixin, structure_models.ServiceProperty):
     ram = models.PositiveIntegerField(help_text=_('Memory size in MiB'))
     disk = models.PositiveIntegerField(help_text=_('Root disk size in MiB'))
 
+    class Meta(object):
+        unique_together = ('settings', 'backend_id')
+
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-flavor'
@@ -71,6 +74,10 @@ class Image(structure_models.ServiceProperty):
 
 
 class SecurityGroup(core_models.DescribableMixin, structure_models.ServiceProperty):
+
+    class Meta(object):
+        unique_together = ('settings', 'backend_id')
+
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-sgp'
@@ -399,6 +406,9 @@ class Network(core_models.DescribableMixin, structure_models.ServiceProperty):
     type = models.CharField(max_length=50, blank=True)
     segmentation_id = models.IntegerField(null=True)
 
+    class Meta(object):
+        unique_together = ('settings', 'backend_id')
+
     def __str__(self):
         return self.name
 
@@ -417,9 +427,10 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     enable_dhcp = models.BooleanField(default=True)
     dns_nameservers = JSONField(default=[], help_text=_('List of DNS name servers associated with the subnet.'))
 
-    class Meta:
+    class Meta(object):
         verbose_name = _('Subnet')
         verbose_name_plural = _('Subnets')
+        unique_together = ('settings', 'backend_id')
 
     def __str__(self):
         return '%s (%s)' % (self.name, self.cidr)

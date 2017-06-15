@@ -27,9 +27,12 @@ class SecurityGroupHandlerTest(TestCase):
         openstack_security_group.save()
 
         self.assertEqual(models.SecurityGroup.objects.count(), 1)
+        self.assertTrue(models.SecurityGroup.objects.filter(
+            settings=self.service_settings,
+            backend_id=openstack_security_group.backend_id
+        ).exists())
 
     def test_security_group_update(self):
-
         openstack_security_group = openstack_factories.SecurityGroupFactory(
             tenant=self.tenant,
             name='New name',
@@ -72,6 +75,29 @@ class SecurityGroupHandlerTest(TestCase):
 
         openstack_security_group.delete()
         self.assertEqual(models.SecurityGroup.objects.count(), 0)
+
+    def test_if_security_group_already_exists_duplicate_is_not_created(self):
+        """
+        Consider the following case: there are two objects:
+        security group as a property and security group as a resource.
+        Property has been created by pull_security_groups method.
+        When resource switches state, property should be created too via signal handler.
+        But as security group already exists as a property it should not be created twice,
+        because otherwise it violates uniqueness constraint.
+        """
+        security_group = factories.SecurityGroupFactory(
+            settings=self.service_settings,
+            backend_id='backend_id',
+        )
+        openstack_security_group = openstack_factories.SecurityGroupFactory(
+            tenant=self.tenant,
+            state=StateMixin.States.CREATING,
+            backend_id=security_group.backend_id,
+        )
+        openstack_security_group.set_ok()
+        openstack_security_group.save()
+
+        self.assertEqual(models.SecurityGroup.objects.count(), 1)
 
 
 class FloatingIPHandlerTest(TestCase):

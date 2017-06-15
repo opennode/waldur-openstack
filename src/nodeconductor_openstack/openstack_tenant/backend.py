@@ -2,7 +2,7 @@ import json
 import logging
 import re
 
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import six, timezone, dateparse
 
 from ceilometerclient import exc as ceilometer_exceptions
@@ -218,6 +218,15 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
         return floating_ip
 
+    def _delete_stale_properties(self, model, backend_items):
+        with transaction.atomic():
+            current_items = model.objects.filter(settings=self.settings)
+            current_ids = set(current_items.values_list('backend_id', flat=True))
+            backend_ids = set(item['id'] for item in backend_items)
+            stale_ids = current_ids - backend_ids
+            if stale_ids:
+                model.objects.filter(settings=self.settings, backend_id__in=stale_ids).delete()
+
     def pull_security_groups(self):
         neutron = self.neutron_client
         try:
@@ -225,20 +234,26 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        with transaction.atomic():
-            cur_security_groups = self._get_current_properties(models.SecurityGroup)
-            for backend_security_group in security_groups:
-                cur_security_groups.pop(backend_security_group['id'], None)
-                security_group, _ = models.SecurityGroup.objects.update_or_create(
-                    settings=self.settings,
-                    backend_id=backend_security_group['id'],
-                    defaults={
-                        'name': backend_security_group['name'],
-                        'description': backend_security_group['description'],
-                    })
-                self._extract_security_group_rules(security_group, backend_security_group)
+        for backend_security_group in security_groups:
+            backend_id = backend_security_group['id']
+            defaults = {
+                'name': backend_security_group['name'],
+                'description': backend_security_group['description']
+            }
+            try:
+                with transaction.atomic():
+                    security_group, _ = models.SecurityGroup.objects.update_or_create(
+                        settings=self.settings,
+                        backend_id=backend_id,
+                        defaults=defaults
+                    )
+                    self._extract_security_group_rules(security_group, backend_security_group)
+            except IntegrityError:
+                logger.warning('Could not create security group with backend ID %s '
+                               'and service settings %s due to concurrent update.',
+                               backend_id, self.settings)
 
-            models.SecurityGroup.objects.filter(backend_id__in=cur_security_groups.keys()).delete()
+        self._delete_stale_properties(models.SecurityGroup, security_groups)
 
     def pull_quotas(self):
         self._pull_tenant_quotas(self.tenant_id, self.settings)
@@ -250,24 +265,28 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        with transaction.atomic():
-            cur_networks = self._get_current_properties(models.Network)
-            for backend_network in networks:
-                cur_networks.pop(backend_network['id'], None)
-                defaults = {
-                    'name': backend_network['name'],
-                    'description': backend_network['description'],
-                }
-                if backend_network.get('provider:network_type'):
-                    defaults['type'] = backend_network['provider:network_type']
-                if backend_network.get('provider:segmentation_id'):
-                    defaults['segmentation_id'] = backend_network['provider:segmentation_id']
+        for backend_network in networks:
+            defaults = {
+                'name': backend_network['name'],
+                'description': backend_network['description'],
+            }
+            if backend_network.get('provider:network_type'):
+                defaults['type'] = backend_network['provider:network_type']
+            if backend_network.get('provider:segmentation_id'):
+                defaults['segmentation_id'] = backend_network['provider:segmentation_id']
+            backend_id = backend_network['id']
+            try:
                 models.Network.objects.update_or_create(
                     settings=self.settings,
-                    backend_id=backend_network['id'],
-                    defaults=defaults)
+                    backend_id=backend_id,
+                    defaults=defaults
+                )
+            except IntegrityError:
+                logger.warning('Could not create network with backend ID %s '
+                               'and service settings %s due to concurrent update.',
+                               backend_id, self.settings)
 
-            models.Network.objects.filter(backend_id__in=cur_networks.keys()).delete()
+        self._delete_stale_properties(models.Network, networks)
 
     def pull_subnets(self):
         neutron = self.neutron_client
@@ -276,32 +295,43 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        with transaction.atomic():
-            cur_subnets = self._get_current_properties(models.SubNet)
-            for backend_subnet in subnets:
-                cur_subnets.pop(backend_subnet['id'], None)
-                try:
-                    network = models.Network.objects.get(
-                        settings=self.settings, backend_id=backend_subnet['network_id'])
-                except models.Network.DoesNotExist:
-                    raise OpenStackBackendError(
-                        'Cannot pull subnet for network with id "%s". Network is not pulled yet.')
-                defaults = {
-                    'name': backend_subnet['name'],
-                    'description': backend_subnet['description'],
-                    'allocation_pools': backend_subnet['allocation_pools'],
-                    'cidr': backend_subnet['cidr'],
-                    'ip_version': backend_subnet.get('ip_version'),
-                    'gateway_ip': backend_subnet.get('gateway_ip'),
-                    'enable_dhcp': backend_subnet.get('enable_dhcp', False),
-                    'network': network,
-                }
+        current_networks = {
+            network.backend_id: network.id
+            for network in models.Network.objects.filter(settings=self.settings).only('id', 'backend_id')
+        }
+        subnet_networks = set(subnet['network_id'] for subnet in subnets)
+        missing_networks = subnet_networks - set(current_networks.keys())
+        if missing_networks:
+            logger.warning('Cannot pull subnets for networks with id %s '
+                           'because their networks are not pulled yet.', missing_networks)
+
+        for backend_subnet in subnets:
+            backend_id = backend_subnet['id']
+            network_id = current_networks.get(backend_subnet['network_id'])
+            if not network_id:
+                continue
+            defaults = {
+                'name': backend_subnet['name'],
+                'description': backend_subnet['description'],
+                'allocation_pools': backend_subnet['allocation_pools'],
+                'cidr': backend_subnet['cidr'],
+                'ip_version': backend_subnet['ip_version'],
+                'gateway_ip': backend_subnet.get('gateway_ip'),
+                'enable_dhcp': backend_subnet.get('enable_dhcp', False),
+                'network_id': network_id,
+            }
+            try:
                 models.SubNet.objects.update_or_create(
                     settings=self.settings,
-                    backend_id=backend_subnet['id'],
-                    defaults=defaults)
+                    backend_id=backend_id,
+                    defaults=defaults
+                )
+            except IntegrityError:
+                logger.warning('Could not create subnet with backend ID %s '
+                               'and service settings %s due to concurrent update.',
+                               backend_id, self.settings)
 
-            models.SubNet.objects.filter(backend_id__in=cur_subnets.keys()).delete()
+        self._delete_stale_properties(models.SubNet, subnets)
 
     def _get_current_properties(self, model):
         return {p.backend_id: p for p in model.objects.filter(settings=self.settings)}
