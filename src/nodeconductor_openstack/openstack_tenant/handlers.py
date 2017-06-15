@@ -1,13 +1,18 @@
 from __future__ import unicode_literals
 
+import logging
+
 from django.core import exceptions as django_exceptions
-from django.db import transaction
+from django.db import transaction, IntegrityError
 
 from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import models as structure_models
 
 from ..openstack import models as openstack_models, apps as openstack_apps
 from . import log, models, apps
+
+
+logger = logging.getLogger(__name__)
 
 
 def _log_scheduled_action(resource, action, action_details):
@@ -209,13 +214,19 @@ class BaseSynchronizationHandler(object):
         return {field: getattr(resource, field) for field in self.fields}
 
     def create_service_property(self, resource, settings):
-        params = self.map_resource_to_dict(resource)
-        return self.property_model.objects.create(
-            settings=settings,
-            backend_id=resource.backend_id,
-            name=resource.name,
-            **params
-        )
+        defaults = dict(name=resource.name, **self.map_resource_to_dict(resource))
+
+        try:
+            with transaction.atomic():
+                return self.property_model.objects.get_or_create(
+                    settings=settings,
+                    backend_id=resource.backend_id,
+                    defaults=defaults
+                )
+        except IntegrityError:
+            logger.warning('Could not create %s with backend ID %s '
+                           'and service settings %s due to concurrent update.',
+                           self.property_model, resource.backend_id, settings)
 
     def update_service_property(self, resource, settings):
         service_property = self.get_service_property(resource, settings)

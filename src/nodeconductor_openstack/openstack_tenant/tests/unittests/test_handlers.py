@@ -27,9 +27,12 @@ class SecurityGroupHandlerTest(TestCase):
         openstack_security_group.save()
 
         self.assertEqual(models.SecurityGroup.objects.count(), 1)
+        self.assertTrue(models.SecurityGroup.objects.filter(
+            settings=self.service_settings,
+            backend_id=openstack_security_group.backend_id
+        ).exists())
 
     def test_security_group_update(self):
-
         openstack_security_group = openstack_factories.SecurityGroupFactory(
             tenant=self.tenant,
             name='New name',
@@ -72,6 +75,21 @@ class SecurityGroupHandlerTest(TestCase):
 
         openstack_security_group.delete()
         self.assertEqual(models.SecurityGroup.objects.count(), 0)
+
+    def test_security_group_already_exists(self):
+        security_group = factories.SecurityGroupFactory(
+            settings=self.service_settings,
+            backend_id='backend_id',
+        )
+        openstack_security_group = openstack_factories.SecurityGroupFactory(
+            tenant=self.tenant,
+            state=StateMixin.States.CREATING,
+            backend_id=security_group.backend_id,
+        )
+        openstack_security_group.set_ok()
+        openstack_security_group.save()
+
+        self.assertEqual(models.SecurityGroup.objects.count(), 1)
 
 
 class FloatingIPHandlerTest(TestCase):
