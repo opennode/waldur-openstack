@@ -103,8 +103,9 @@ def log_tenant_quota_update(sender, instance, created=False, **kwargs):
         return
 
     tenant = quota.scope
+    old_limit = quota.tracker.previous('limit')
     event_logger.openstack_tenant_quota.info(
-        '{quota_name} quota limit has been updated for tenant {tenant_name}.',
+        '{quota_name} quota limit has been changed from %s to {limit} for tenant {tenant_name}.' % old_limit,
         event_type='openstack_tenant_quota_limit_updated',
         event_context={
             'quota': quota,

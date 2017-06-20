@@ -50,3 +50,35 @@ class SshKeysHandlersTest(TestCase):
         serialized_tenant = core_utils.serialize_instance(self.tenant)
         mocked_task_call.assert_called_once_with(
             serialized_tenant, 'remove_ssh_key_from_tenant', self.ssh_key.name, self.ssh_key.fingerprint)
+
+
+class LogTenantQuotaUpdateTest(TestCase):
+
+    @patch('nodeconductor_openstack.openstack.handlers.event_logger')
+    def test_logger_called_on_quota_limit_update(self, logger_mock):
+        tenant = factories.TenantFactory()
+        quota = tenant.quotas.first()
+        old_limit = quota.limit
+
+        quota.limit = old_limit + 1
+        quota.save()
+
+        logger_mock.openstack_tenant_quota.info.assert_called_once_with(
+            '{quota_name} quota limit has been changed from %s to {limit} for tenant {tenant_name}.' % old_limit,
+            event_type='openstack_tenant_quota_limit_updated',
+            event_context={
+                'quota': quota,
+                'tenant': tenant,
+                'limit': float(quota.limit),
+            }
+        )
+
+    @patch('nodeconductor_openstack.openstack.handlers.event_logger')
+    def test_logger_is_not_called_if_quota_scope_is_not_tenant(self, logger_mock):
+        provider = factories.OpenStackServiceFactory()
+        quota = provider.quotas.first()
+
+        quota.limit = 10
+        quota.save()
+
+        self.assertFalse(logger_mock.openstack_tenant_quota.info.called)
