@@ -5,6 +5,7 @@ class TenantQuotaLogger(EventLogger):
     quota = 'quotas.Quota'
     tenant = 'openstack.Tenant'
     limit = float
+    old_limit = float
 
     class Meta:
         event_types = ('openstack_tenant_quota_limit_updated',)
