@@ -64,12 +64,13 @@ class LogTenantQuotaUpdateTest(TestCase):
         quota.save()
 
         logger_mock.openstack_tenant_quota.info.assert_called_once_with(
-            '{quota_name} quota limit has been changed from %s to {limit} for tenant {tenant_name}.' % old_limit,
+            '{quota_name} quota limit has been changed from {old_limit} to {limit} for tenant {tenant_name}.',
             event_type='openstack_tenant_quota_limit_updated',
             event_context={
                 'quota': quota,
                 'tenant': tenant,
                 'limit': float(quota.limit),
+                'old_limit': float(old_limit),
             }
         )
 
