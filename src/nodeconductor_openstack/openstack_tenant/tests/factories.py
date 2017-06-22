@@ -208,6 +208,7 @@ class SecurityGroupFactory(factory.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: 'security_group%s' % n)
     settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
 
     @classmethod
     def get_url(cls, sgp=None):
@@ -325,6 +326,7 @@ class NetworkFactory(factory.DjangoModelFactory):
         model = models.Network
 
     name = factory.Sequence(lambda n: 'network%s' % n)
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
     settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
     is_external = False
     type = factory.Sequence(lambda n: 'network type%s' % n)
@@ -336,6 +338,7 @@ class SubNetFactory(factory.DjangoModelFactory):
         model = models.SubNet
 
     name = factory.Sequence(lambda n: 'subnet%s' % n)
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
     settings = factory.SubFactory(OpenStackTenantServiceSettingsFactory)
     network = factory.SubFactory(NetworkFactory)
 
