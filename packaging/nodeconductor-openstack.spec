@@ -1,7 +1,7 @@
 Name: nodeconductor-openstack
 Summary: OpenStack plugin for Waldur
 Group: Development/Libraries
-Version: 0.29.0
+Version: 0.30.0
 Release: 1.el7
 License: MIT
 Url: http://waldur.com
@@ -44,6 +44,9 @@ rm -rf %{buildroot}
 %{python_sitelib}/*
 
 %changelog
+* Thu Jun 22 2017 Jenkins <jenkins@opennodecloud.com> - 0.30.0-1.el7
+- New upstream release
+
 * Fri Jun 9 2017 Jenkins <jenkins@opennodecloud.com> - 0.29.0-1.el7
 - New upstream release
 
