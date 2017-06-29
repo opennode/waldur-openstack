@@ -34,11 +34,7 @@ class BaseBackendTestCase(test.APITransactionTestCase):
 
     def tearDown(self):
         super(BaseBackendTestCase, self).tearDown()
-        self.session_patcher.stop()
-        self.session_recover_patcher.stop()
-        self.keystone_patcher.stop()
-        self.nova_patcher.stop()
-        self.cinder_patcher.stop()
+        mock.patch.stopall()
 
 
 class PullTenantSecurityGroupsTest(BaseBackendTestCase):

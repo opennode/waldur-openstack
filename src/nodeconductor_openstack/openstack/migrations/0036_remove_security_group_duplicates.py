@@ -11,14 +11,21 @@ def remove_duplicates(apps, schema_editor):
 
     for duplicate_id in SecurityGroup.objects.values_list('backend_id', flat=True).annotate(
             duplicates_count=Count('backend_id')).filter(duplicates_count__gt=1):
-        duplicates_query = SecurityGroup.objects.filter(backend_id=duplicate_id)
-        # try to leave only support groups in OK state
-        if duplicates_query.filter(state=OK_STATE).count() > 0:
-            security_group = duplicates_query.filter(state=OK_STATE).first()
-        else:
-            security_group = duplicates_query.first()
 
-        duplicates_query.exclude(id=security_group.id).delete()
+        for spl in SecurityGroup.objects.filter(
+                backend_id=duplicate_id).values_list('service_project_link', flat=True).distinct():
+
+            duplicates_query = SecurityGroup.objects.filter(backend_id=duplicate_id, service_project_link=spl)
+            if duplicates_query.count() < 2:
+                continue
+
+            # try to leave only support groups in OK state
+            if duplicates_query.filter(state=OK_STATE).count() > 0:
+                security_group = duplicates_query.filter(state=OK_STATE).first()
+            else:
+                security_group = duplicates_query.first()
+
+            duplicates_query.exclude(id=security_group.id).delete()
 
 
 class Migration(migrations.Migration):
