@@ -120,6 +120,8 @@ class SecurityGroupFactory(TenantMixin, factory.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: 'security_group%s' % n)
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
+    state = models.SecurityGroup.States.OK
+    backend_id = factory.Sequence(lambda n: 'security_group-id%s' % n)
 
     @classmethod
     def get_url(cls, sgp=None, action=None):

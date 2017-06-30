@@ -1,13 +1,13 @@
 Name: nodeconductor-openstack
 Summary: OpenStack plugin for Waldur
 Group: Development/Libraries
-Version: 0.30.0
+Version: 0.30.1
 Release: 1.el7
 License: MIT
 Url: http://waldur.com
 Source0: %{name}-%{version}.tar.gz
 
-Requires: nodeconductor > 0.139.0
+Requires: waldur-core > 0.139.0
 Requires: python-ceilometerclient >= 2.3.0
 Requires: python-cinderclient >= 1.6.0
 Requires: python-cinderclient < 2.0.0
@@ -44,6 +44,9 @@ rm -rf %{buildroot}
 %{python_sitelib}/*
 
 %changelog
+* Fri Jun 30 2017 Jenkins <jenkins@opennodecloud.com> - 0.30.1-1.el7
+- New upstream release
+
 * Thu Jun 22 2017 Jenkins <jenkins@opennodecloud.com> - 0.30.0-1.el7
 - New upstream release
 
