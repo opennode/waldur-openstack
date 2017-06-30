@@ -7,17 +7,15 @@ from django.db.models import Count
 
 def remove_duplicates(apps, schema_editor):
     SecurityGroup = apps.get_model('openstack', 'SecurityGroup')
+    OpenStackServiceProjectLink = apps.get_model('openstack', 'OpenStackServiceProjectLink')
     OK_STATE = 3
 
-    for duplicate_id in SecurityGroup.objects.values_list('backend_id', flat=True).annotate(
-            duplicates_count=Count('backend_id')).filter(duplicates_count__gt=1):
+    for spl in OpenStackServiceProjectLink.objects.iterator():
+        spl_security_groups = SecurityGroup.objects.filter(service_project_link=spl)
+        for duplicated_backend_id in spl_security_groups.values_list('backend_id', flat=True).annotate(
+                duplicates=Count('backend_id')).filter(duplicates__gt=1):
 
-        for spl in SecurityGroup.objects.filter(
-                backend_id=duplicate_id).values_list('service_project_link', flat=True).distinct():
-
-            duplicates_query = SecurityGroup.objects.filter(backend_id=duplicate_id, service_project_link=spl)
-            if duplicates_query.count() < 2:
-                continue
+            duplicates_query = spl_security_groups.filter(backend_id=duplicated_backend_id)
 
             # try to leave only support groups in OK state
             if duplicates_query.filter(state=OK_STATE).count() > 0:
