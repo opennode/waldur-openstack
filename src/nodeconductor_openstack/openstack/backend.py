@@ -1,3 +1,5 @@
+from itertools import groupby
+
 import logging
 import re
 import uuid
@@ -320,31 +322,13 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        security_group_uuids = []
+        tenant_security_groups = dict()
+        for tenant_id, security_groups in groupby(backend_security_groups, lambda x: x['tenant_id']):
+            tenant_security_groups[tenant_mappings[tenant_id]] = security_groups
+
         with transaction.atomic():
-            for backend_security_group in backend_security_groups:
-                tenant = tenant_mappings[backend_security_group['tenant_id']]
-
-                imported_security_group = self._backend_security_group_to_security_group(
-                    backend_security_group, tenant=tenant, service_project_link=tenant.service_project_link)
-
-                try:
-                    security_group = tenant.security_groups.get(backend_id=imported_security_group.backend_id)
-                except models.SecurityGroup.DoesNotExist:
-                    imported_security_group.save()
-                    security_group = imported_security_group
-                else:
-                    update_pulled_fields(security_group, imported_security_group,
-                                         models.SecurityGroup.get_backend_fields())
-                    handle_resource_update_success(security_group)
-
-                security_group_uuids.append(security_group.uuid)
-                self._extract_security_group_rules(security_group, backend_security_group)
-
-            for security_group in models.SecurityGroup.objects.filter(
-                    state__in=[models.SecurityGroup.States.OK, models.SecurityGroup.States.ERRED],
-                    service_project_link__service__settings=self.settings).exclude(uuid__in=security_group_uuids):
-                handle_resource_not_found(security_group)
+            for tenant, security_groups in tenant_security_groups.items():
+                self._update_tenant_security_groups(tenant, security_groups)
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
@@ -354,26 +338,30 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        security_groups = {group.backend_id: group for group in tenant.security_groups.filter(
-            state__in=[models.SecurityGroup.States.OK, models.SecurityGroup.States.ERRED])}
         with transaction.atomic():
-            for backend_security_group in backend_security_groups:
-                imported_security_group = self._backend_security_group_to_security_group(
-                    backend_security_group, tenant=tenant, service_project_link=tenant.service_project_link)
+            self._update_tenant_security_groups(tenant, backend_security_groups)
 
-                security_group = security_groups.pop(imported_security_group.backend_id, None)
-                if security_group is None:
-                    imported_security_group.save()
-                    security_group = imported_security_group
-                else:
-                    update_pulled_fields(security_group, imported_security_group,
-                                         models.SecurityGroup.get_backend_fields())
-                    handle_resource_update_success(security_group)
+    def _update_tenant_security_groups(self, tenant, backend_security_groups):
+        security_group_uuids = []
+        for backend_security_group in backend_security_groups:
+            imported_security_group = self._backend_security_group_to_security_group(
+                backend_security_group, tenant=tenant, service_project_link=tenant.service_project_link)
 
-                self._extract_security_group_rules(security_group, backend_security_group)
+            try:
+                security_group = tenant.security_groups.get(backend_id=imported_security_group.backend_id)
+            except models.SecurityGroup.DoesNotExist:
+                imported_security_group.save()
+                security_group = imported_security_group
+            else:
+                update_pulled_fields(security_group, imported_security_group,
+                                     models.SecurityGroup.get_backend_fields())
+                handle_resource_update_success(security_group)
 
-            for floating_ip in tenant.security_groups.filter(backend_id__in=security_groups.keys()):
-                handle_resource_not_found(floating_ip)
+            security_group_uuids.append(security_group.uuid)
+            self._extract_security_group_rules(security_group, backend_security_group)
+
+        for security_group in tenant.security_groups.filter(backend_id__in=security_group_uuids):
+            handle_resource_not_found(security_group)
 
     def _backend_security_group_to_security_group(self, backend_security_group, **kwargs):
         security_group = models.SecurityGroup(
