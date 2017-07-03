@@ -1,4 +1,4 @@
-Name: nodeconductor-openstack
+Name: waldur-openstack
 Summary: OpenStack plugin for Waldur
 Group: Development/Libraries
 Version: 0.30.1
@@ -17,6 +17,8 @@ Requires: python-keystoneclient >= 1:2.3.1
 Requires: python-neutronclient >= 4.1.1
 Requires: python-novaclient >= 1:3.3.0
 Requires: python-novaclient < 1:3.4.0
+
+Obsoletes: nodeconductor-openstack
 
 BuildArch: noarch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
