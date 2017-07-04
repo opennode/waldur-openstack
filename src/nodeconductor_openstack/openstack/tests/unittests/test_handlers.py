@@ -83,3 +83,16 @@ class LogTenantQuotaUpdateTest(TestCase):
         quota.save()
 
         self.assertFalse(logger_mock.openstack_tenant_quota.info.called)
+
+
+class UpdateServiceSettingsNameHandlerTest(TestCase):
+
+    def test_settings_name_is_update_when_tenant_is_renamed(self):
+        tenant = factories.TenantFactory()
+        service_settings = structure_factories.ServiceSettingsFactory(scope=tenant, name=tenant.name)
+
+        tenant.name = 'new name'
+        tenant.save()
+
+        service_settings.refresh_from_db()
+        self.assertEqual(service_settings.name, tenant.name)
