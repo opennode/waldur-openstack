@@ -67,6 +67,7 @@ class SnapshotAdmin(structure_admin.ResourceAdmin):
 
 
 class InstanceAdmin(structure_admin.VirtualMachineAdmin):
+    readonly_fields = ('action_details',)
     actions = structure_admin.VirtualMachineAdmin.actions + ['pull']
 
     class Pull(ExecutorAdminAction):
