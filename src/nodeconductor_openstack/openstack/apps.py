@@ -60,3 +60,9 @@ class OpenStackConfig(AppConfig):
             sender=Quota,
             dispatch_uid='openstack.handlers.log_tenant_quota_update',
         )
+
+        signals.post_save.connect(
+            handlers.update_service_settings_name,
+            sender=Tenant,
+            dispatch_uid='openstack.handlers.update_service_settings_name',
+        )

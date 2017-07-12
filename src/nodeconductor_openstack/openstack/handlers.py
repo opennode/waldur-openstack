@@ -6,8 +6,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
-from nodeconductor.structure import filters as structure_filters
-from nodeconductor.structure import permissions as structure_permissions
+from nodeconductor.structure import (filters as structure_filters, permissions as structure_permissions,
+                                     models as structure_models)
 
 from .log import event_logger
 from .models import SecurityGroup, SecurityGroupRule, Tenant
@@ -112,3 +112,18 @@ def log_tenant_quota_update(sender, instance, created=False, **kwargs):
             'limit': float(quota.limit),  # Prevent passing integer
             'old_limit': float(quota.tracker.previous('limit')),
         })
+
+
+def update_service_settings_name(sender, instance, created=False, **kwargs):
+    tenant = instance
+
+    if created or not tenant.tracker.has_changed('name'):
+        return
+
+    try:
+        service_settings = structure_models.ServiceSettings.objects.get(scope=tenant)
+    except structure_models.ServiceSettings.DoesNotExist:
+        return
+    else:
+        service_settings.name = tenant.name
+        service_settings.save()
