@@ -110,6 +110,10 @@ def handle_resource_update_success(resource):
         resource.recover()
         update_fields.append('state')
 
+    if resource.state in (resource.States.UPDATING, resource.States.CREATING):
+        resource.set_ok()
+        update_fields.append('state')
+
     if resource.error_message:
         resource.error_message = ''
         update_fields.append('error_message')
