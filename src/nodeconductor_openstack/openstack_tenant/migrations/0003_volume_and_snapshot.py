@@ -65,9 +65,9 @@ class Migration(migrations.Migration):
                 ('metadata', nodeconductor.core.fields.JSONField(blank=True)),
                 ('image_metadata', nodeconductor.core.fields.JSONField(blank=True)),
                 ('type', models.CharField(max_length=100, blank=True)),
-                ('image', models.ForeignKey(to='openstack_tenant.Image', null=True)),
+                ('image', models.ForeignKey(to='openstack_tenant.Image', blank=True, null=True)),
                 ('service_project_link', models.ForeignKey(related_name='volumes', on_delete=django.db.models.deletion.PROTECT, to='openstack_tenant.OpenStackTenantServiceProjectLink')),
-                ('source_snapshot', models.ForeignKey(related_name='volumes', on_delete=django.db.models.deletion.SET_NULL, to='openstack_tenant.Snapshot', null=True)),
+                ('source_snapshot', models.ForeignKey(related_name='volumes', on_delete=django.db.models.deletion.SET_NULL, to='openstack_tenant.Snapshot', blank=True, null=True)),
                 ('tags', taggit.managers.TaggableManager(to='taggit.Tag', through='taggit.TaggedItem', blank=True, help_text='A comma-separated list of tags.', verbose_name='Tags')),
             ],
             options={

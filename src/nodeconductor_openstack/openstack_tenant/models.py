@@ -132,10 +132,10 @@ class Volume(structure_models.Storage):
         help_text=_('Name of volume as instance device e.g. /dev/vdb.'))
     bootable = models.BooleanField(default=False)
     metadata = JSONField(blank=True)
-    image = models.ForeignKey(Image, null=True)
+    image = models.ForeignKey(Image, blank=True, null=True)
     image_metadata = JSONField(blank=True)
     type = models.CharField(max_length=100, blank=True)
-    source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', null=True, on_delete=models.SET_NULL)
+    source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', blank=True, null=True, on_delete=models.SET_NULL)
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
     action_details = JSONField(default={})
