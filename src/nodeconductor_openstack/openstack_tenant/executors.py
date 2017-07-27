@@ -508,6 +508,9 @@ class InstanceFloatingIPsUpdateExecutor(core_executors.ActionExecutor):
         if detached:
             messages.append('Detached floating IPs: %s.' % ', '.join(detached))
 
+        if not messages:
+            messages.append('Instance floating IPs have been updated.')
+
         return {
             'message': ' '.join(messages),
             'attached': list(attached),
