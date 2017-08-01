@@ -220,6 +220,14 @@ class Tenant(structure_models.PrivateCloud):
             parsed = urlparse.urlparse(settings.backend_url)
             return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
 
+    def format_quota(self, name, limit):
+        if name == self.Quotas.vcpu.name:
+            return int(limit)
+        elif name in (self.Quotas.storage.name, self.Quotas.ram.name):
+            return _('%s GB') % int(limit / 1024)
+        else:
+            return limit
+
 
 class Network(core_models.RuntimeStateMixin, structure_models.SubResource):
     service_project_link = models.ForeignKey(

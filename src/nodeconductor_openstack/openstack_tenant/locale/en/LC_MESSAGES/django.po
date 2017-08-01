@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2017-04-26 08:04+0000\n"
+"POT-Creation-Date: 2017-07-27 09:00+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,7 +19,7 @@ msgstr ""
 
 #: src/nodeconductor_openstack/openstack_tenant/admin.py:47
 #: src/nodeconductor_openstack/openstack_tenant/admin.py:60
-#: src/nodeconductor_openstack/openstack_tenant/admin.py:74
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:75
 msgid "Pull"
 msgstr ""
 
@@ -28,20 +28,16 @@ msgstr ""
 msgid "Snapshot has to be in OK or ERRED state."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/admin.py:78
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:79
 msgid "Instance has to be in OK or ERRED state."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/admin.py:91
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:92
 msgid "Project"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/admin.py:98
+#: src/nodeconductor_openstack/openstack_tenant/admin.py:99
 msgid "Invalid timezone"
-msgstr ""
-
-#: src/nodeconductor_openstack/openstack_tenant/backend.py:587
-msgid "Current installation cannot create instance without a system volume."
 msgstr ""
 
 #: src/nodeconductor_openstack/openstack_tenant/fields.py:29
@@ -81,242 +77,258 @@ msgstr ""
 msgid "Root disk size in MiB"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:61
+#: src/nodeconductor_openstack/openstack_tenant/models.py:64
 msgid "Minimum disk size in MiB"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:62
+#: src/nodeconductor_openstack/openstack_tenant/models.py:65
 msgid "Minimum memory size in MiB"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:89
+#: src/nodeconductor_openstack/openstack_tenant/models.py:96
 msgid "Marks if floating IP has been booked for provisioning."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:122
+#: src/nodeconductor_openstack/openstack_tenant/models.py:103
+msgid "Floating IP"
+msgstr ""
+
+#: src/nodeconductor_openstack/openstack_tenant/models.py:104
+msgid "Floating IPs"
+msgstr ""
+
+#: src/nodeconductor_openstack/openstack_tenant/models.py:131
 msgid "Device should match pattern \"/dev/alphanumeric+\""
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:123
+#: src/nodeconductor_openstack/openstack_tenant/models.py:132
 msgid "Name of volume as instance device e.g. /dev/vdb."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:181
+#: src/nodeconductor_openstack/openstack_tenant/models.py:190
 msgid "Guaranteed time of snapshot retention. If null - keep forever."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:246
+#: src/nodeconductor_openstack/openstack_tenant/models.py:255
 msgid "Flavor disk size in MiB"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:330
+#: src/nodeconductor_openstack/openstack_tenant/models.py:339
 msgid "Guaranteed time of backup retention. If null - keep forever."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:333
+#: src/nodeconductor_openstack/openstack_tenant/models.py:342
 msgid ""
 "Additional information about backup, can be used for backup restoration or "
 "deletion"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:355
+#: src/nodeconductor_openstack/openstack_tenant/models.py:364
 msgid "Retention time in days, if 0 - resource will be kept forever"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:358
+#: src/nodeconductor_openstack/openstack_tenant/models.py:367
 msgid "How many times a resource schedule was called."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/models.py:416
+#: src/nodeconductor_openstack/openstack_tenant/models.py:428
 msgid "List of DNS name servers associated with the subnet."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:25
+#: src/nodeconductor_openstack/openstack_tenant/models.py:431
+msgid "Subnet"
+msgstr ""
+
+#: src/nodeconductor_openstack/openstack_tenant/models.py:432
+msgid "Subnets"
+msgstr ""
+
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:28
 msgid "Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:26
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:29
 msgid "Tenant user username"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:27
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:30
 msgid "Tenant user password"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:30
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:33
 msgid "Tenant ID in OpenStack"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:31
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:34
 msgid "Default availability zone for provisioned instances"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:32
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:35
 msgid ""
 "Flavors matching this regex expression will not be pulled from the backend."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:185
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:188
 msgid "Image must belong to the same service settings"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:190
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:193
 msgid "Snapshot or size should be defined"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:192
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:195
 msgid "It is impossible to define both snapshot and size"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:197
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:200
 #, python-format
 msgid "Volume size should be equal or greater than %s for selected image"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:213
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:216
 #, python-format
 msgid "Disk size should be greater or equal to %s"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:263
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:266
 msgid "Volume can be attached only to shutoff or active instance in OK state."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:266
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:269
 msgid "Volume and instance should belong to the same service and project."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:273
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:276
 #, python-format
 msgid "The supplied device path (%s) is in use."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:278
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:281
 msgid "New volume name."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:279
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:282
 msgid "New volume description."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:390
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:393
 #, python-format
 msgid "Security group with id %s does not exist"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:485
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:488
 msgid "Instance should be connected to at least one network."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:489
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:492
 #, python-format
 msgid ""
 "Subnet %s does not belong to the same service settings as service project "
 "link."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:493
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:496
 #, python-format
 msgid "It is impossible to connect to subnet %s twice."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:501
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:504
 #, python-format
 msgid ""
 "Security group %s does not belong to the same service settings as service "
 "project link."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:508
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:511
 msgid ""
 "Please specify tenant external network to perform floating IP operations."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:512
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:515
 #, python-format
 msgid "SubNet %s is not connected to instance."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:517
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:520
 #, python-format
 msgid "Floating IP %s is already booked for another instance creation"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:521
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:524
 #, python-format
 msgid "Floating IP %s runtime state should be DOWN."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:523
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:526
 #, python-format
 msgid ""
 "Floating IP %s does not belong to the same service settings as service "
 "project link."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:529
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:532
 #, python-format
 msgid "It is impossible to use subnet %s twice."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:634
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:637
 msgid ""
 "Flavor and image must belong to the same service settings as service project "
 "link."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:638
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:641
 #, python-format
 msgid "RAM of flavor is not enough for selected image %s"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:642
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:645
 msgid "Flavor's disk is too small for the selected image."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:647
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:650
 #, python-format
 msgid "System volume size has to be greater than %s"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:754
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:757
 msgid "Floating IP runtime_state must be DOWN."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:756
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:759
 msgid "Floating IP must belong to same settings as instance."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:791
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:794
 msgid "New flavor is the same as current."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:795
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:798
 msgid "New flavor is not within the same service settings"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:799
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:802
 msgid "New flavor disk should be greater than the previous value"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:826
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:829
 msgid "Cannot delete instance. One of its volumes has attached snapshot."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:853
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:856
 #, python-format
 msgid "Security group %s is not within the same service settings"
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:935
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:944
 msgid "New instance name. Leave blank to use source instance name."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:1002
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:1011
 msgid "Flavor is not within services' settings."
 msgstr ""
 
-#: src/nodeconductor_openstack/openstack_tenant/serializers.py:1004
+#: src/nodeconductor_openstack/openstack_tenant/serializers.py:1013
 msgid "Flavor disk size should match system volume size."
 msgstr ""
 
