@@ -1223,7 +1223,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        imported_floating_ip = self._backend_floating_ip_to_floating_ip(backend_floating_ip, floating_ip.tenant)
+        imported_floating_ip = self._backend_floating_ip_to_floating_ip(backend_floating_ip, tenant=floating_ip.tenant)
         update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
 
     @log_backend_action('delete floating ip')
