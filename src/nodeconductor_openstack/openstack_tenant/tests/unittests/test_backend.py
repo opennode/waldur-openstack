@@ -331,3 +331,53 @@ class PullSubnetsTest(BaseBackendTest):
         self.tenant_backend.pull_subnets()
         subnet.refresh_from_db()
         self.assertEqual(subnet.name, 'subnet-1')
+
+
+class PullInstanceTest(BaseBackendTest):
+
+    def setUp(self):
+        super(PullInstanceTest, self).setUp()
+
+        class MockFlavor(object):
+            name = 'flavor_name'
+            disk = 102400
+            ram = 10240
+            vcpus = 1
+
+        class MockInstance(object):
+            name = 'instance_name'
+            id = 'instance_id'
+            created = '2017-08-10'
+            key_name = 'key_name'
+            flavor = {'id': 'flavor_id'}
+            status = 'ERRED'
+            fault = {'message': 'OpenStack Nova error.'}
+
+            def to_dict(self):
+                return {}
+
+        self.nova_client_mock = Mock()
+        self.tenant_backend.nova_client = self.nova_client_mock
+
+        self.nova_client_mock.servers.get.return_value = MockInstance
+        self.nova_client_mock.volumes.get_server_volumes.return_value = []
+        self.nova_client_mock.flavors.get.return_value = MockFlavor
+
+    def test_error_message_is_synchronized(self):
+        instance = self.fixture.instance
+
+        self.tenant_backend.pull_instance(instance)
+        instance.refresh_from_db()
+
+        self.assertEqual(instance.error_message, 'OpenStack Nova error.')
+
+    def test_existing_error_message_is_preserved_if_defined(self):
+        del self.nova_client_mock.servers.get.return_value.fault
+        instance = self.fixture.instance
+        instance.error_message = 'Waldur error.'
+        instance.save()
+
+        self.tenant_backend.pull_instance(instance)
+        instance.refresh_from_db()
+
+        self.assertEqual(instance.error_message, 'Waldur error.')
