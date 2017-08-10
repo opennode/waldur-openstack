@@ -80,6 +80,10 @@ def update_pulled_fields(instance, imported_instance, fields):
             logger.info("%s's with PK %s %s field updated from value '%s' to value '%s'",
                         instance.__class__.__name__, instance.pk, field, current_value, pulled_value)
             modified = True
+    error_message = getattr(imported_instance, 'error_message', '') or getattr(instance, 'error_message', '')
+    if error_message and instance.error_message != error_message:
+        instance.error_message = imported_instance.error_message
+        modified = True
     if modified:
         instance.save()
 
