@@ -15,6 +15,7 @@ from nodeconductor.core import (serializers as core_serializers, fields as core_
                                 signals as core_signals)
 from nodeconductor.structure import serializers as structure_serializers
 from nodeconductor_openstack.openstack import serializers as openstack_serializers
+from nodeconductor_openstack.openstack_base.backend import OpenStackBackendError
 
 from . import models, fields
 
@@ -138,6 +139,68 @@ class SecurityGroupSerializer(structure_serializers.BasePropertySerializer):
                 'cidr': rule.cidr,
             })
         return rules
+
+
+class VolumeImportableSerializer(core_serializers.AugmentedSerializerMixin,
+                                 serializers.HyperlinkedModelSerializer):
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstacktenant-spl-detail',
+        queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
+        write_only=True)
+
+    instance_name = serializers.ReadOnlyField(source='instance.name')
+    instance_uuid = serializers.ReadOnlyField(source='instance.uuid')
+
+    def get_filtered_field_names(self):
+        return 'service_project_link',
+
+    class Meta:
+        model = models.Volume
+        model_fields = ('name', 'description', 'size', 'bootable', 'type',
+                        'backend_id', 'runtime_state', 'instance_name', 'instance_uuid')
+        fields = ('service_project_link', ) + model_fields
+        read_only_fields = model_fields
+
+
+class VolumeImportSerializer(core_serializers.AugmentedSerializerMixin,
+                             serializers.HyperlinkedModelSerializer):
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstacktenant-spl-detail',
+        queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
+        write_only=True)
+
+    class Meta:
+        model = models.Volume
+        fields = (
+            'url', 'uuid', 'name', 'created', 'backend_id', 'service_project_link'
+        )
+        read_only_fields = ('name', 'state')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+        }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        service_project_link = validated_data['service_project_link']
+        backend_id = validated_data['backend_id']
+
+        if models.Volume.objects.filter(
+            service_project_link__service__settings=service_project_link.service.settings,
+            backend_id=backend_id
+        ).exists():
+            raise serializers.ValidationError({
+                'backend_id': _('Volume has been imported already.')
+            })
+
+        try:
+            backend = service_project_link.service.settings.get_backend()
+            volume = backend.import_volume(backend_id, save=True, service_project_link=service_project_link)
+        except OpenStackBackendError as e:
+            raise serializers.ValidationError({
+                'backend_id': _("Can't import volume with ID %s") % validated_data['backend_id']
+            })
+
+        return volume
 
 
 class VolumeSerializer(structure_serializers.BaseResourceSerializer):

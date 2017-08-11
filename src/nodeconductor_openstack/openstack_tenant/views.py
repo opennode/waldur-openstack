@@ -143,7 +143,32 @@ class SecurityGroupViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = filters.SecurityGroupFilter
 
 
+class ResourceImportMixin(object):
+    @decorators.list_route(methods=['get'])
+    def importable_resources(self, request):
+        serializer = self.get_serializer(data=request.GET)
+        serializer.is_valid(raise_exception=True)
+        service_project_link = serializer.validated_data['service_project_link']
+
+        backend = service_project_link.service.settings.get_backend()
+        volumes = getattr(backend, self.importable_resources_backend_method)()
+        serializer = self.get_serializer(volumes, many=True)
+        page = self.paginate_queryset(serializer.data)
+        if page is not None:
+            return self.get_paginated_response(page)
+
+        return response.Response(data=serializer.data, status=status.HTTP_200_OK)
+
+    @decorators.list_route(methods=['post'])
+    def import_resource(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return response.Response(data=serializer.data, status=status.HTTP_201_CREATED)
+
+
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                       ResourceImportMixin,
                                        structure_views.ResourceViewSet)):
     queryset = models.Volume.objects.all()
     serializer_class = serializers.VolumeSerializer
@@ -238,6 +263,10 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     detach_validators = [_is_volume_bootable,
                          core_validators.RuntimeStateValidator('in-use'),
                          core_validators.StateValidator(models.Volume.States.OK)]
+
+    importable_resources_backend_method = 'get_volumes_for_import'
+    importable_resources_serializer_class = serializers.VolumeImportableSerializer
+    import_resource_serializer_class = serializers.VolumeImportSerializer
 
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
