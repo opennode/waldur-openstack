@@ -342,55 +342,6 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
         return tenant
 
 
-class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSerializer):
-    class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
-        fields = structure_serializers.BaseResourceImportSerializer.Meta.fields + ('tenant',)
-
-    tenant = serializers.HyperlinkedRelatedField(
-        queryset=models.Tenant.objects.all(),
-        view_name='openstack-tenant-detail',
-        lookup_field='uuid',
-        write_only=True)
-
-    def get_fields(self):
-        fields = super(BaseTenantImportSerializer, self).get_fields()
-        if 'request' in self.context:
-            request = self.context['request']
-            fields['tenant'].queryset = filter_queryset_for_user(
-                models.Tenant.objects.all(), request.user
-            )
-        return fields
-
-    def validate(self, attrs):
-        attrs = super(BaseTenantImportSerializer, self).validate(attrs)
-        tenant = attrs['tenant']
-        project = attrs['project']
-
-        if tenant.service_project_link.project != project:
-            raise serializers.ValidationError({
-                'project': _('Tenant should belong to the same project.')
-            })
-        return attrs
-
-    def create(self, validated_data):
-        tenant = validated_data['tenant']
-        backend_id = validated_data['backend_id']
-        backend = tenant.get_backend()
-
-        try:
-            return self.import_resource(backend, backend_id)
-        except OpenStackBackendError as e:
-            raise serializers.ValidationError({
-                'backend_id': _("Can't import resource with ID %(backend_id)s. Reason: %(reason)s") % {
-                    'backend_id': backend_id,
-                    'reason': e,
-                }
-            })
-
-    def import_resource(self, backend, backend_id):
-        raise NotImplementedError()
-
-
 subnet_cidr_validator = validators.RegexValidator(
     re.compile(settings.NODECONDUCTOR_OPENSTACK['SUBNET']['CIDR_REGEX']),
     settings.NODECONDUCTOR_OPENSTACK['SUBNET']['CIDR_REGEX_EXPLANATION'],

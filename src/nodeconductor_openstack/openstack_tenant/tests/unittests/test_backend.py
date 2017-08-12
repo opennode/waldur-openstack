@@ -1,7 +1,8 @@
 from __future__ import unicode_literals
 
 from django.test import TestCase
-from mock import Mock
+from cinderclient.v2.volumes import Volume
+import mock
 
 from nodeconductor_openstack.openstack_tenant.backend import OpenStackTenantBackend
 from nodeconductor_openstack.openstack_tenant import models
@@ -15,8 +16,22 @@ class BaseBackendTest(TestCase):
         self.settings = self.fixture.openstack_tenant_service_settings
         self.tenant = self.fixture.openstack_tenant_service_settings.scope
         self.tenant_backend = OpenStackTenantBackend(self.settings)
-        self.neutron_client_mock = Mock()
+        self.neutron_client_mock = mock.Mock()
+        self.cinder_client_mock = mock.Mock()
         self.tenant_backend.neutron_client = self.neutron_client_mock
+        self.tenant_backend.cinder_client = self.cinder_client_mock
+
+    def _get_valid_volume(self, backend_id):
+        return Volume(manager=None, info=dict(
+            name='volume0',
+            size=1,
+            metadata='',
+            description='',
+            volume_type='',
+            status='OK',
+            id=backend_id,
+            bootable='true',
+        ))
 
 
 class PullFloatingIPTest(BaseBackendTest):
@@ -333,6 +348,61 @@ class PullSubnetsTest(BaseBackendTest):
         self.assertEqual(subnet.name, 'subnet-1')
 
 
+class GetVolumesTest(BaseBackendTest):
+
+    def _generate_volumes(self, backend=False, count=1):
+        volumes = []
+        for i in range(count):
+            volume = factories.VolumeFactory()
+            backend_volume = self._get_valid_volume(backend_id=volume.backend_id)
+            if backend:
+                volume.delete()
+            volumes.append(backend_volume)
+
+        return volumes
+
+    def test_all_backend_volumes_are_returned(self):
+        backend_volumes = self._generate_volumes(backend=True, count=2)
+        volumes = backend_volumes + self._generate_volumes()
+        self.cinder_client_mock.volumes.list.return_value = volumes
+
+        result = self.tenant_backend.get_volumes()
+
+        returned_backend_ids = [item.backend_id for item in result]
+        expected_backend_ids = [item.id for item in volumes]
+        self.assertItemsEqual(returned_backend_ids, expected_backend_ids)
+
+
+class ImportVolumeTest(BaseBackendTest):
+
+    def setUp(self):
+        super(ImportVolumeTest, self).setUp()
+        self.spl = self.fixture.spl
+        self.backend_volume_id = 'backend_id'
+        self.backend_volume = self._get_valid_volume(self.backend_volume_id)
+
+        self.cinder_client_mock.volumes.get.return_value = self.backend_volume
+
+    def test_volume_is_imported(self):
+        volume = self.tenant_backend.import_volume(self.backend_volume_id, save=True, service_project_link=self.spl)
+
+        self.assertTrue(models.Volume.objects.filter(backend_id=self.backend_volume_id).exists())
+        self.assertEqual(models.Volume.objects.get(backend_id=self.backend_volume_id).uuid, volume.uuid)
+        self.assertEqual(volume.name, self.backend_volume.name)
+
+    def test_volume_instance_is_not_created_during_import(self):
+        vm = factories.InstanceFactory(backend_id='instance_backend_id', service_project_link=self.spl)
+        self.backend_volume.attachments = [
+            dict(server_id=vm.backend_id)
+        ]
+        volume = self.tenant_backend.import_volume(self.backend_volume_id, save=True, service_project_link=self.spl)
+
+        self.assertIsNotNone(volume.instance)
+        self.assertTrue(models.Volume.objects.filter(backend_id=self.backend_volume_id).exists())
+        self.assertEqual(models.Volume.objects.get(backend_id=self.backend_volume_id).uuid, volume.uuid)
+        self.assertEqual(volume.name, self.backend_volume.name)
+
+
 class PullInstanceTest(BaseBackendTest):
 
     def setUp(self):
@@ -356,7 +426,7 @@ class PullInstanceTest(BaseBackendTest):
             def to_dict(self):
                 return {}
 
-        self.nova_client_mock = Mock()
+        self.nova_client_mock = mock.Mock()
         self.tenant_backend.nova_client = self.nova_client_mock
 
         self.nova_client_mock.servers.get.return_value = MockInstance

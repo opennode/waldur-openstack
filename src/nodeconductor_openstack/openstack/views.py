@@ -1,52 +1,19 @@
-import uuid
-
 from django.conf import settings
 from django.utils import six
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, response, status, serializers as rf_serializers
-from rest_framework.exceptions import ValidationError
 
 from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
-from nodeconductor.structure import (views as structure_views, SupportedServices, filters as structure_filters,
+from nodeconductor.structure import (views as structure_views, filters as structure_filters,
                                      permissions as structure_permissions)
-from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import models, filters, serializers, executors
 
 
-class GenericImportMixin(object):
-    """
-    This mixin selects serializer class by matching resource_type query parameter
-    against model name using import_serializers mapping.
-    """
-    import_serializers = {}
-
-    def _can_import(self):
-        return self.import_serializers != {}
-
-    def get_serializer_class(self):
-        if self.request.method == 'POST' and self.action == 'link':
-            resource_type = self.request.data.get('resource_type') or self.request.query_params.get('resource_type')
-
-            items = self.import_serializers.items()
-            if len(items) == 1:
-                model_cls, serializer_cls = items[0]
-                return serializer_cls
-
-            for model_cls, serializer_cls in items:
-                if resource_type == SupportedServices.get_name_for_model(model_cls):
-                    return serializer_cls
-
-        return super(GenericImportMixin, self).get_serializer_class()
-
-
-class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceViewSet):
+class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
     queryset = models.OpenStackService.objects.all().order_by('id')
     serializer_class = serializers.ServiceSerializer
     import_serializer_class = serializers.TenantImportSerializer
-    import_serializers = {
-        models.Tenant: serializers.TenantImportSerializer,
-    }
 
     def list(self, request, *args, **kwargs):
         """
@@ -112,20 +79,6 @@ class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceVie
         staff user or customer owner.
         """
         return super(OpenStackServiceViewSet, self).retrieve(request, *args, **kwargs)
-
-    def get_import_context(self):
-        context = {'resource_type': self.request.query_params.get('resource_type')}
-        tenant_uuid = self.request.query_params.get('tenant_uuid')
-        if tenant_uuid:
-            try:
-                uuid.UUID(tenant_uuid)
-            except ValueError:
-                raise ValidationError(_('Invalid tenant UUID'))
-            queryset = filter_queryset_for_user(models.Tenant.objects.all(), self.request.user)
-            tenant = queryset.filter(service_project_link__service=self.get_object(),
-                                     uuid=tenant_uuid).first()
-            context['tenant'] = tenant
-        return context
 
 
 class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkViewSet):
