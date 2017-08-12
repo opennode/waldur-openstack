@@ -150,7 +150,7 @@ class ResourceImportMixin(object):
         serializer.is_valid(raise_exception=True)
         service_project_link = serializer.validated_data['service_project_link']
 
-        backend = service_project_link.service.settings.get_backend()
+        backend = service_project_link.get_backend()
         volumes = getattr(backend, self.importable_resources_backend_method)()
         serializer = self.get_serializer(volumes, many=True)
         page = self.paginate_queryset(serializer.data)

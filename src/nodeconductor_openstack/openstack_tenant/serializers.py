@@ -154,27 +154,17 @@ class VolumeImportableSerializer(core_serializers.AugmentedSerializerMixin,
     def get_filtered_field_names(self):
         return 'service_project_link',
 
-    class Meta:
+    class Meta(object):
         model = models.Volume
-        model_fields = ('name', 'description', 'size', 'bootable', 'type',
-                        'backend_id', 'runtime_state', 'instance_name', 'instance_uuid')
-        fields = ('service_project_link', ) + model_fields
+        model_fields = ('name', 'description', 'size', 'bootable', 'type', 'device',
+                        'runtime_state', 'instance_name', 'instance_uuid')
+        fields = ('service_project_link', 'backend_id',) + model_fields
         read_only_fields = model_fields
 
 
-class VolumeImportSerializer(core_serializers.AugmentedSerializerMixin,
-                             serializers.HyperlinkedModelSerializer):
-    service_project_link = serializers.HyperlinkedRelatedField(
-        view_name='openstacktenant-spl-detail',
-        queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
-        write_only=True)
-
-    class Meta:
-        model = models.Volume
-        fields = (
-            'url', 'uuid', 'name', 'created', 'backend_id', 'service_project_link'
-        )
-        read_only_fields = ('name', 'state')
+class VolumeImportSerializer(VolumeImportableSerializer):
+    class Meta(VolumeImportableSerializer.Meta):
+        fields = VolumeImportableSerializer.Meta.fields + ('url', 'uuid', 'created')
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
         }
@@ -193,7 +183,7 @@ class VolumeImportSerializer(core_serializers.AugmentedSerializerMixin,
             })
 
         try:
-            backend = service_project_link.service.settings.get_backend()
+            backend = service_project_link.get_backend()
             volume = backend.import_volume(backend_id, save=True, service_project_link=service_project_link)
         except OpenStackBackendError as e:
             raise serializers.ValidationError({
@@ -436,7 +426,7 @@ class NestedVolumeSerializer(core_serializers.AugmentedSerializerMixin,
 
     class Meta:
         model = models.Volume
-        fields = 'url', 'uuid', 'name', 'state', 'bootable', 'size', 'resource_type'
+        fields = 'url', 'uuid', 'name', 'state', 'bootable', 'size', 'device', 'resource_type'
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'}
         }
