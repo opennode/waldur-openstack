@@ -121,7 +121,7 @@ class FloatingIP(structure_models.ServiceProperty):
         return super(FloatingIP, cls).get_backend_fields() + ('address', 'runtime_state', 'backend_network_id')
 
 
-class Volume(structure_models.Storage):
+class Volume(structure_models.Volume):
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
     instance = models.ForeignKey('Instance', related_name='volumes', blank=True, null=True)
@@ -168,7 +168,7 @@ class Volume(structure_models.Storage):
                                                           'runtime_state', 'device')
 
 
-class Snapshot(structure_models.Storage):
+class Snapshot(structure_models.Snapshot):
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='snapshots', on_delete=models.PROTECT)
     source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.PROTECT)
