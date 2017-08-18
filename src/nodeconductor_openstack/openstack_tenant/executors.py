@@ -490,6 +490,7 @@ class InstancePullExecutor(core_executors.ActionExecutor):
             ),
             core_tasks.BackendMethodTask().si(serialized_instance, 'pull_instance_security_groups'),
             core_tasks.BackendMethodTask().si(serialized_instance, 'pull_instance_internal_ips'),
+            core_tasks.BackendMethodTask().si(serialized_instance, 'pull_instance_floating_ips'),
         )
 
 
