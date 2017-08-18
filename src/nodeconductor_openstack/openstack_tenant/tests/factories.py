@@ -151,8 +151,9 @@ class InstanceFactory(factory.DjangoModelFactory):
         return url if action is None else url + action + '/'
 
     @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstacktenant-instance-list')
+    def get_list_url(cls, action=None):
+        url = 'http://testserver' + reverse('openstacktenant-instance-list')
+        return url if action is None else url + action + '/'
 
     @factory.post_generation
     def volumes(self, create, extracted, **kwargs):

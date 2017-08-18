@@ -144,6 +144,8 @@ class SecurityGroupViewSet(structure_views.BaseServicePropertyViewSet):
 
 
 class ResourceImportMixin(object):
+    import_resource_executor = None
+
     @decorators.list_route(methods=['get'])
     def importable_resources(self, request):
         serializer = self.get_serializer(data=request.GET)
@@ -163,7 +165,10 @@ class ResourceImportMixin(object):
     def import_resource(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        resource = serializer.save()
+        if self.import_resource_executor:
+            self.import_resource_executor.execute(resource)
+
         return response.Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -302,6 +307,7 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 
 class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         ResourceImportMixin,
                                          structure_views.ResourceViewSet)):
     """
     OpenStack instance permissions
@@ -515,6 +521,11 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response(serializer.data, status=status.HTTP_200_OK)
 
     floating_ips_serializer_class = serializers.NestedFloatingIPSerializer
+
+    importable_resources_backend_method = 'get_instances_for_import'
+    importable_resources_serializer_class = serializers.InstanceImportableSerializer
+    import_resource_serializer_class = serializers.InstanceImportSerializer
+    import_resource_executor = executors.InstancePullExecutor
 
 
 class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,

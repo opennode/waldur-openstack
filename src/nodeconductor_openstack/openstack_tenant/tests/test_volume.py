@@ -264,10 +264,10 @@ class BaseVolumeTest(test.APITransactionTestCase):
         return volumes
 
 
-class VolumeImportableTest(BaseVolumeTest):
+class VolumeImportableResourcesTest(BaseVolumeTest):
 
     def setUp(self):
-        super(VolumeImportableTest, self).setUp()
+        super(VolumeImportableResourcesTest, self).setUp()
         self.url = factories.VolumeFactory.get_list_url('importable_resources')
         self.fixture = fixtures.OpenStackTenantFixture()
         self.client.force_authenticate(self.fixture.owner)
