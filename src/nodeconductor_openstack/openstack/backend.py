@@ -600,7 +600,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         ).values_list('backend_id', flat=True))
 
         return [{
-            'id': tenant.id,
+            'backend_id': tenant.id,
             'name': tenant.name,
             'description': tenant.description,
             'type': SupportedServices.get_name_for_model(models.Tenant)
