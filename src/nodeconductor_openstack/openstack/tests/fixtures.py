@@ -1,7 +1,6 @@
 from django.utils.functional import cached_property
 
 from nodeconductor.structure.tests.fixtures import ProjectFixture
-from nodeconductor_assembly_waldur.packages.tests import factories as packages_factories
 
 from . import factories
 from .. import models
@@ -11,10 +10,6 @@ class OpenStackFixture(ProjectFixture):
     @cached_property
     def openstack_service_settings(self):
         return factories.OpenStackServiceSettingsFactory(customer=self.customer)
-
-    @cached_property
-    def openstack_template(self):
-        return packages_factories.PackageTemplateFactory(service_settings=self.openstack_service_settings)
 
     @cached_property
     def openstack_service(self):

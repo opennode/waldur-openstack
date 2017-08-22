@@ -15,11 +15,9 @@ from rest_framework import serializers
 from nodeconductor.core import utils as core_utils, serializers as core_serializers
 from nodeconductor.core.fields import JsonField
 from nodeconductor.quotas import serializers as quotas_serializers
-from nodeconductor.structure import (serializers as structure_serializers, permissions as structure_permissions,
-                                     models as structure_models)
-from nodeconductor_assembly_waldur.packages import models as packages_models
+from nodeconductor.structure import serializers as structure_serializers, permissions as structure_permissions
 
-from . import models, apps
+from . import models
 from .backend import OpenStackBackendError
 
 
