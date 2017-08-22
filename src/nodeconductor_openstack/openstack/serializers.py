@@ -338,51 +338,27 @@ class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
         write_only=True,
         queryset=models.OpenStackServiceProjectLink.objects.all()
     )
-    template = serializers.HyperlinkedRelatedField(
-        view_name='package-template-detail',
-        lookup_field='uuid',
-        write_only=True,
-        queryset=packages_models.PackageTemplate.objects.all()
-    )
     quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
 
     class Meta(object):
         model = models.Tenant
         read_only_fields = ('name', 'availability_zone', 'internal_network_id', 'external_network_id',
                             'user_username', 'user_password', 'quotas')
-        fields = read_only_fields + ('service_project_link', 'template', 'backend_id')
+        fields = read_only_fields + ('service_project_link', 'backend_id')
 
-    def validate_template(self, template):
-        if template.service_settings.type != apps.OpenStackConfig.service_name:
-            raise serializers.ValidationError(_('Template should be related to OpenStack service settings.'))
+    def validate_backend_id(self, backend_id):
+        if models.Tenant.objects.filter(backend_id=backend_id).exists():
+            raise serializers.ValidationError(_('Such tenant is already registered'))
 
-        if template.service_settings.state != template.service_settings.States.OK:
-            raise serializers.ValidationError(_('Template\'s settings must be in OK state.'))
-
-        if template.archived:
-            raise serializers.ValidationError(_('New package cannot be created for archived template.'))
-
-        return template
-
-    def validate(self, attrs):
-        template = attrs['template']
-        attrs = super(TenantImportSerializer, self).validate(attrs)
-        spl = attrs['service_project_link']
-        if spl.service.settings != template.service_settings:
-            raise serializers.ValidationError(
-                _('Template and service project link should be connected to the same service settings.'))
-
-        return attrs
+        return backend_id
 
     def create(self, validated_data):
         service_project_link = validated_data['service_project_link']
         backend = service_project_link.service.get_backend()
         backend_id = validated_data['backend_id']
-        template = validated_data.pop('template')
 
         try:
             tenant = backend.import_tenant(backend_id, service_project_link)
-            tenant.set_package(template)
         except OpenStackBackendError as e:
             raise serializers.ValidationError({
                 'backend_id': _('Can\'t import tenant with ID %(backend_id)s. Reason: %(reason)s') % {

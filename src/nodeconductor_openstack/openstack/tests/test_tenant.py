@@ -5,7 +5,6 @@ from mock import patch
 from rest_framework import test, status
 
 from nodeconductor.structure.tests import factories as structure_factories
-from nodeconductor_assembly_waldur.packages.tests import factories as packages_factories
 from nodeconductor_openstack.openstack.models import Tenant
 from nodeconductor_openstack.openstack.tests.helpers import override_openstack_settings
 
@@ -499,7 +498,7 @@ class SecurityGroupCreateTest(BaseTenantActionsTest):
 @ddt
 class TenantImportableResourcesTest(BaseTenantActionsTest):
 
-    @data('staff')
+    @data('staff', 'owner')
     @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.get_tenants_for_import')
     def test_user_can_list_importable_resources(self, user, get_tenants_for_import_mock):
         self.client.force_authenticate(getattr(self.fixture, user))
@@ -517,7 +516,7 @@ class TenantImportableResourcesTest(BaseTenantActionsTest):
         self.assertItemsEqual(returned_backend_ids, expected_backend_ids)
         get_tenants_for_import_mock.assert_called()
 
-    @data('owner', 'admin', 'manager')
+    @data('admin', 'manager')
     def test_user_does_not_have_permissions_to_list_resources(self, user):
         self.client.force_authenticate(getattr(self.fixture, user))
         url = factories.TenantFactory.get_list_url('importable_resources')
@@ -536,23 +535,22 @@ class TenantImportTest(BaseTenantActionsTest):
         self.backend_tenant = self._generate_backend_tenants()[0]
         self.url = factories.TenantFactory.get_list_url('import_resource')
 
-    def _form_payload(self, backend_id, template):
+    def _form_payload(self, backend_id):
         return {
             'backend_id': backend_id,
-            'template': packages_factories.PackageTemplateFactory.get_url(template),
             'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(self.spl),
         }
 
+    @data('staff', 'owner')
     @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
-    def test_tenant_is_imported(self, import_tenant_mock):
-        self.client.force_authenticate(self.fixture.staff)
+    def test_tenant_is_imported(self, user, import_tenant_mock):
+        self.client.force_authenticate(getattr(self.fixture, user))
 
         def import_instance(backend_id, service_project_link=None, save=True):
             return factories.TenantFactory(backend_id=backend_id)
 
         import_tenant_mock.side_effect = import_instance
-        template = self.fixture.openstack_template
-        payload = self._form_payload(self.backend_tenant.backend_id, template)
+        payload = self._form_payload(self.backend_tenant.backend_id)
 
         response = self.client.post(self.url, payload)
 
@@ -561,53 +559,20 @@ class TenantImportTest(BaseTenantActionsTest):
         self.assertTrue(models.Tenant.objects.filter(backend_id=self.backend_tenant.backend_id).exists())
         import_tenant_mock.assert_called()
 
-    @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
-    def test_tenant_cannot_be_imported_if_spl_and_template_belong_to_different_settings(self, import_tenant_mock):
-        self.client.force_authenticate(self.fixture.staff)
-        template = self.fixture.openstack_template
-        template.service_settings = factories.OpenStackServiceSettingsFactory()
-        template.save()
-        payload = self._form_payload(self.backend_tenant.backend_id, template)
+    @data('admin', 'manager')
+    def test_user_cannot_import_tenant(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+        payload = self._form_payload(self.backend_tenant.backend_id)
 
         response = self.client.post(self.url, payload)
 
-        self.assertEquals(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEquals(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
 
-    @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
-    def test_tenant_cannot_be_imported_if_template_belongs_to_different_app_type(self, import_tenant_mock):
+    def test_tenant_cannot_be_imported_if_backend_id_exists_already(self):
         self.client.force_authenticate(self.fixture.staff)
-        template = self.fixture.openstack_template
-        template.service_settings.type = 'Azure'
-        template.service_settings.save()
-        payload = self._form_payload(self.backend_tenant.backend_id, template)
+        self.backend_tenant.save()
+        payload = self._form_payload(self.backend_tenant.backend_id)
 
         response = self.client.post(self.url, payload)
 
-        self.assertEquals(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('template', response.data)
-
-    @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
-    def test_tenant_cannot_be_imported_if_template_service_settings_state_is_not_OK(self, import_tenant_mock):
-        self.client.force_authenticate(self.fixture.staff)
-        template = self.fixture.openstack_template
-        template.service_settings.state = template.service_settings.States.ERRED
-        template.service_settings.save()
-        payload = self._form_payload(self.backend_tenant.backend_id, template)
-
-        response = self.client.post(self.url, payload)
-
-        self.assertEquals(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('template', response.data)
-
-    @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
-    def test_tenant_cannot_be_imported_if_template_is_archived(self, import_tenant_mock):
-        self.client.force_authenticate(self.fixture.staff)
-        template = self.fixture.openstack_template
-        template.archived = True
-        template.save()
-        payload = self._form_payload(self.backend_tenant.backend_id, template)
-
-        response = self.client.post(self.url, payload)
-
-        self.assertEquals(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('template', response.data)
+        self.assertEquals(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
