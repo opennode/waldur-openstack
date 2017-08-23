@@ -26,7 +26,7 @@ install_requires = [
 
 setup(
     name='nodeconductor-openstack',
-    version='0.33.2',
+    version='0.34.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://waldur.com',
