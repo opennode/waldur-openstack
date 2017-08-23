@@ -414,7 +414,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
 
     def import_volume(self, backend_volume_id, save=True, service_project_link=None):
-        """ Restore NC Volume instance based on backend data. """
+        """ Restore Waldur volume instance based on backend data. """
         cinder = self.cinder_client
         try:
             backend_volume = cinder.volumes.get(backend_volume_id)
@@ -425,6 +425,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             volume.service_project_link = service_project_link
         if save:
             volume.save()
+
         return volume
 
     def _backend_volume_to_volume(self, backend_volume):
@@ -450,6 +451,12 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         if getattr(backend_volume, 'attachments', False):
             if 'device' in backend_volume.attachments[0]:
                 volume.device = backend_volume.attachments[0]['device']
+
+            if 'server_id' in backend_volume.attachments[0]:
+                volume.instance = models.Instance.objects.filter(
+                    service_project_link__service__settings=self.settings,
+                    backend_id=backend_volume.attachments[0]['server_id'],
+                ).first()
         return volume
 
     def get_volumes(self):
@@ -459,6 +466,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         except cinder_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
         return [self._backend_volume_to_volume(backend_volume) for backend_volume in backend_volumes]
+
+    def get_volumes_for_import(self):
+        return self._get_backend_resource(models.Volume, self.get_volumes())
 
     @log_backend_action()
     def pull_volume(self, volume, update_fields=None):
@@ -824,14 +834,14 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
         instance = self._backend_instance_to_instance(backend_instance, flavor)
         with transaction.atomic():
-            # import instance volumes, or use existed if they already exist in NodeConductor.
+            # import instance volumes, or use existed if they already exist in Waldur.
             volumes = []
             for backend_volume_id in attached_volume_ids:
                 try:
                     volumes.append(models.Volume.objects.get(
                         service_project_link__service__settings=self.settings, backend_id=backend_volume_id))
                 except models.Volume.DoesNotExist:
-                    volumes.append(self.import_volume(backend_volume_id, save=save))
+                    volumes.append(self.import_volume(backend_volume_id, save, service_project_link))
 
             if service_project_link:
                 instance.service_project_link = service_project_link
@@ -871,6 +881,11 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             backend_id=backend_instance.id,
         )
 
+    def _get_backend_resource(self, model, resources):
+        registered_backend_ids = model.objects.filter(
+            service_project_link__service__settings=self.settings).values_list('backend_id', flat=True)
+        return [instance for instance in resources if instance.backend_id not in registered_backend_ids]
+
     def get_instances(self):
         nova = self.nova_client
         try:
@@ -885,6 +900,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             instance_flavor = backend_flavors_map[backend_instance.flavor['id']]
             instances.append(self._backend_instance_to_instance(backend_instance, instance_flavor))
         return instances
+
+    def get_instances_for_import(self):
+        return self._get_backend_resource(models.Instance, self.get_instances())
 
     @log_backend_action()
     def pull_instance(self, instance, update_fields=None):

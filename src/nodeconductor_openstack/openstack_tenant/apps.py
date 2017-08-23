@@ -123,3 +123,9 @@ class OpenStackTenantConfig(AppConfig):
             sender=ServiceSettings,
             dispatch_uid='openstack.handlers.copy_flavor_exclude_regex_to_openstacktenant_service_settings',
         )
+
+        signals.post_save.connect(
+            handlers.create_service_from_tenant,
+            sender=Tenant,
+            dispatch_uid='openstack.handlers.create_service_from_tenant',
+        )

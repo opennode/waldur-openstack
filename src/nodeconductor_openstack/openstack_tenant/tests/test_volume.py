@@ -1,6 +1,7 @@
 from ddt import ddt, data
 from django.conf import settings
 from rest_framework import test, status
+import mock
 
 from nodeconductor.structure.models import ProjectRole
 from nodeconductor.structure.tests import factories as structure_factories
@@ -249,3 +250,83 @@ class VolumeCreateSnapshotScheduleTest(test.APITransactionTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['timezone'], settings.TIME_ZONE)
+
+
+class BaseVolumeTest(test.APITransactionTestCase):
+
+    def _generate_backend_volumes(self, count=1):
+        volumes = []
+        for i in range(count):
+            volume = factories.VolumeFactory()
+            volume.delete()
+            volumes.append(volume)
+
+        return volumes
+
+
+class VolumeImportableResourcesTest(BaseVolumeTest):
+
+    def setUp(self):
+        super(VolumeImportableResourcesTest, self).setUp()
+        self.url = factories.VolumeFactory.get_list_url('importable_resources')
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.client.force_authenticate(self.fixture.owner)
+
+    @mock.patch('nodeconductor_openstack.openstack_tenant.backend.OpenStackTenantBackend.get_volumes_for_import')
+    def test_importable_volumes_are_returned(self, get_volumes_mock):
+        backend_volumes = self._generate_backend_volumes()
+        get_volumes_mock.return_value = backend_volumes
+        data = {'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl)}
+
+        response = self.client.get(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEquals(len(response.data), len(backend_volumes))
+        returned_backend_ids = [item['backend_id'] for item in response.data]
+        expected_backend_ids = [item.backend_id for item in backend_volumes]
+        self.assertItemsEqual(returned_backend_ids, expected_backend_ids)
+        get_volumes_mock.assert_called()
+
+
+class VolumeImportTest(BaseVolumeTest):
+
+    def setUp(self):
+        super(VolumeImportTest, self).setUp()
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.url = factories.VolumeFactory.get_list_url('import_resource')
+        self.client.force_authenticate(self.fixture.owner)
+
+    @mock.patch('nodeconductor_openstack.openstack_tenant.backend.OpenStackTenantBackend.import_volume')
+    def test_backend_volume_is_imported(self, import_volume_mock):
+        backend_id = 'backend_id'
+
+        def import_volume(backend_id, save, service_project_link):
+            return self._generate_backend_volumes()[0]
+
+        import_volume_mock.side_effect = import_volume
+
+        payload = {
+            'backend_id': backend_id,
+            'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl),
+        }
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    @mock.patch('nodeconductor_openstack.openstack_tenant.backend.OpenStackTenantBackend.import_volume')
+    def test_backend_volume_cannot_be_imported_if_it_is_registered_in_waldur(self, import_volume_mock):
+        volume = factories.VolumeFactory(service_project_link=self.fixture.spl)
+
+        def import_volume(backend_id, save, service_project_link):
+            return volume
+
+        import_volume_mock.side_effect = import_volume
+        payload = {
+            'backend_id': volume.backend_id,
+            'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl),
+        }
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

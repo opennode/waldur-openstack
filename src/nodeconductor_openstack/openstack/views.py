@@ -1,52 +1,47 @@
-import uuid
-
 from django.conf import settings
 from django.utils import six
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, response, status, serializers as rf_serializers
-from rest_framework.exceptions import ValidationError
 
 from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
-from nodeconductor.structure import (views as structure_views, SupportedServices, filters as structure_filters,
+from nodeconductor.structure import (views as structure_views, filters as structure_filters,
                                      permissions as structure_permissions)
-from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import models, filters, serializers, executors
 
 
-class GenericImportMixin(object):
-    """
-    This mixin selects serializer class by matching resource_type query parameter
-    against model name using import_serializers mapping.
-    """
-    import_serializers = {}
+class ResourceImportMixin(object):
+    import_resource_executor = None
 
-    def _can_import(self):
-        return self.import_serializers != {}
+    @decorators.list_route(methods=['get'])
+    def importable_resources(self, request):
+        serializer = self.get_serializer(data=request.GET)
+        serializer.is_valid(raise_exception=True)
+        service_project_link = serializer.validated_data['service_project_link']
 
-    def get_serializer_class(self):
-        if self.request.method == 'POST' and self.action == 'link':
-            resource_type = self.request.data.get('resource_type') or self.request.query_params.get('resource_type')
+        backend = service_project_link.get_backend()
+        resources = getattr(backend, self.importable_resources_backend_method)()
+        serializer = self.get_serializer(resources, many=True)
+        page = self.paginate_queryset(serializer.data)
+        if page is not None:
+            return self.get_paginated_response(page)
 
-            items = self.import_serializers.items()
-            if len(items) == 1:
-                model_cls, serializer_cls = items[0]
-                return serializer_cls
+        return response.Response(data=serializer.data, status=status.HTTP_200_OK)
 
-            for model_cls, serializer_cls in items:
-                if resource_type == SupportedServices.get_name_for_model(model_cls):
-                    return serializer_cls
+    @decorators.list_route(methods=['post'])
+    def import_resource(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        resource = serializer.save()
+        if self.import_resource_executor:
+            self.import_resource_executor.execute(resource)
 
-        return super(GenericImportMixin, self).get_serializer_class()
+        return response.Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
 
-class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceViewSet):
+class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
     queryset = models.OpenStackService.objects.all().order_by('id')
     serializer_class = serializers.ServiceSerializer
-    import_serializer_class = serializers.TenantImportSerializer
-    import_serializers = {
-        models.Tenant: serializers.TenantImportSerializer,
-    }
 
     def list(self, request, *args, **kwargs):
         """
@@ -112,20 +107,6 @@ class OpenStackServiceViewSet(GenericImportMixin, structure_views.BaseServiceVie
         staff user or customer owner.
         """
         return super(OpenStackServiceViewSet, self).retrieve(request, *args, **kwargs)
-
-    def get_import_context(self):
-        context = {'resource_type': self.request.query_params.get('resource_type')}
-        tenant_uuid = self.request.query_params.get('tenant_uuid')
-        if tenant_uuid:
-            try:
-                uuid.UUID(tenant_uuid)
-            except ValueError:
-                raise ValidationError(_('Invalid tenant UUID'))
-            queryset = filter_queryset_for_user(models.Tenant.objects.all(), self.request.user)
-            tenant = queryset.filter(service_project_link__service=self.get_object(),
-                                     uuid=tenant_uuid).first()
-            context['tenant'] = tenant
-        return context
 
 
 class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkViewSet):
@@ -236,7 +217,9 @@ class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass
         return super(FloatingIPViewSet, self).list(request, *args, **kwargs)
 
 
-class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
+class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                       ResourceImportMixin,
+                                       structure_views.ResourceViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
     filter_class = structure_filters.BaseResourceFilter
@@ -244,6 +227,12 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     pull_executor = executors.TenantPullExecutor
+
+    importable_resources_backend_method = 'get_tenants_for_import'
+    importable_resources_serializer_class = serializers.TenantImportableSerializer
+    importable_resources_permissions = [structure_permissions.is_staff]
+    import_resource_serializer_class = serializers.TenantImportSerializer
+    import_resource_permissions = [structure_permissions.is_staff]
 
     def delete_permission_check(request, view, obj=None):
         if not obj:

@@ -16,7 +16,6 @@ from nodeconductor.core import utils as core_utils, serializers as core_serializ
 from nodeconductor.core.fields import JsonField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers, permissions as structure_permissions
-from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import models
 from .backend import OpenStackBackendError
@@ -320,14 +319,40 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
         return security_group
 
 
-class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer):
+class TenantImportableSerializer(serializers.Serializer):
+    backend_id = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    description = serializers.CharField(read_only=True)
+    type = serializers.CharField(read_only=True)
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        queryset=models.OpenStackServiceProjectLink.objects.all(),
+        write_only=True)
 
-    class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
+
+class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        write_only=True,
+        queryset=models.OpenStackServiceProjectLink.objects.all()
+    )
+    quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
+
+    class Meta(object):
         model = models.Tenant
+        read_only_fields = ('name', 'availability_zone', 'internal_network_id', 'external_network_id',
+                            'user_username', 'user_password', 'quotas')
+        fields = read_only_fields + ('service_project_link', 'backend_id')
+
+    def validate_backend_id(self, backend_id):
+        if models.Tenant.objects.filter(backend_id=backend_id).exists():
+            raise serializers.ValidationError(_('Tenant with ID "%s" is already registered.') % backend_id)
+
+        return backend_id
 
     def create(self, validated_data):
         service_project_link = validated_data['service_project_link']
-        backend = self.context['service'].get_backend()
+        backend = service_project_link.service.get_backend()
         backend_id = validated_data['backend_id']
 
         try:
@@ -339,56 +364,8 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
                     'reason': e,
                 }
             })
+
         return tenant
-
-
-class BaseTenantImportSerializer(structure_serializers.BaseResourceImportSerializer):
-    class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
-        fields = structure_serializers.BaseResourceImportSerializer.Meta.fields + ('tenant',)
-
-    tenant = serializers.HyperlinkedRelatedField(
-        queryset=models.Tenant.objects.all(),
-        view_name='openstack-tenant-detail',
-        lookup_field='uuid',
-        write_only=True)
-
-    def get_fields(self):
-        fields = super(BaseTenantImportSerializer, self).get_fields()
-        if 'request' in self.context:
-            request = self.context['request']
-            fields['tenant'].queryset = filter_queryset_for_user(
-                models.Tenant.objects.all(), request.user
-            )
-        return fields
-
-    def validate(self, attrs):
-        attrs = super(BaseTenantImportSerializer, self).validate(attrs)
-        tenant = attrs['tenant']
-        project = attrs['project']
-
-        if tenant.service_project_link.project != project:
-            raise serializers.ValidationError({
-                'project': _('Tenant should belong to the same project.')
-            })
-        return attrs
-
-    def create(self, validated_data):
-        tenant = validated_data['tenant']
-        backend_id = validated_data['backend_id']
-        backend = tenant.get_backend()
-
-        try:
-            return self.import_resource(backend, backend_id)
-        except OpenStackBackendError as e:
-            raise serializers.ValidationError({
-                'backend_id': _("Can't import resource with ID %(backend_id)s. Reason: %(reason)s") % {
-                    'backend_id': backend_id,
-                    'reason': e,
-                }
-            })
-
-    def import_resource(self, backend, backend_id):
-        raise NotImplementedError()
 
 
 subnet_cidr_validator = validators.RegexValidator(

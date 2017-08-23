@@ -4,6 +4,7 @@ from rest_framework import decorators, response, status, exceptions, serializers
 
 from nodeconductor.core import exceptions as core_exceptions, validators as core_validators
 from nodeconductor.structure import views as structure_views, filters as structure_filters
+from nodeconductor_openstack.openstack.views import ResourceImportMixin
 
 from . import models, serializers, filters, executors
 
@@ -144,6 +145,7 @@ class SecurityGroupViewSet(structure_views.BaseServicePropertyViewSet):
 
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                       ResourceImportMixin,
                                        structure_views.ResourceViewSet)):
     queryset = models.Volume.objects.all()
     serializer_class = serializers.VolumeSerializer
@@ -239,6 +241,10 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                          core_validators.RuntimeStateValidator('in-use'),
                          core_validators.StateValidator(models.Volume.States.OK)]
 
+    importable_resources_backend_method = 'get_volumes_for_import'
+    importable_resources_serializer_class = serializers.VolumeImportableSerializer
+    import_resource_serializer_class = serializers.VolumeImportSerializer
+
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
                                          structure_views.ResourceViewSet)):
@@ -273,6 +279,7 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 
 class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         ResourceImportMixin,
                                          structure_views.ResourceViewSet)):
     """
     OpenStack instance permissions
@@ -486,6 +493,11 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response(serializer.data, status=status.HTTP_200_OK)
 
     floating_ips_serializer_class = serializers.NestedFloatingIPSerializer
+
+    importable_resources_backend_method = 'get_instances_for_import'
+    importable_resources_serializer_class = serializers.InstanceImportableSerializer
+    import_resource_serializer_class = serializers.InstanceImportSerializer
+    import_resource_executor = executors.InstancePullExecutor
 
 
 class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,

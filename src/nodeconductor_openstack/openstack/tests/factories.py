@@ -174,6 +174,7 @@ class TenantFactory(factory.DjangoModelFactory):
     service_project_link = factory.SubFactory(OpenStackServiceProjectLinkFactory)
     state = models.Tenant.States.OK
     external_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
 
     user_username = factory.Sequence(lambda n: 'tenant user%d' % n)
     user_password = core_utils.pwgen()
@@ -186,8 +187,9 @@ class TenantFactory(factory.DjangoModelFactory):
         return url if action is None else url + action + '/'
 
     @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstack-tenant-list')
+    def get_list_url(cls, action=None):
+        url = 'http://testserver' + reverse('openstack-tenant-list')
+        return url if action is None else url + action + '/'
 
 
 class NetworkFactory(factory.DjangoModelFactory):

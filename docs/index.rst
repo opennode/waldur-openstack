@@ -12,6 +12,7 @@ Guide
    installation
    description
    backups-migration
+   resource-import
    instance-states
 
 Endpoints

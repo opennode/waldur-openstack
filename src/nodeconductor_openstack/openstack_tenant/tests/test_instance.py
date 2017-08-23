@@ -590,3 +590,78 @@ class InstanceBackupTest(test.APITransactionTestCase):
         return {
             'name': 'backup_name'
         }
+
+
+class BaseInstanceImportTest(test.APITransactionTestCase):
+
+    def setUp(self):
+        self.fixture = fixtures.OpenStackTenantFixture()
+
+    def _generate_backend_instances(self, count=1):
+        instances = []
+        for i in range(count):
+            instance = factories.InstanceFactory()
+            instance.delete()
+            instances.append(instance)
+
+        return instances
+
+
+class InstanceImportableResourcesTest(BaseInstanceImportTest):
+
+    def setUp(self):
+        super(InstanceImportableResourcesTest, self).setUp()
+        self.url = factories.InstanceFactory.get_list_url('importable_resources')
+        self.client.force_authenticate(self.fixture.owner)
+
+    @mock.patch('nodeconductor_openstack.openstack_tenant.backend.OpenStackTenantBackend.get_instances_for_import')
+    def test_importable_volumes_are_returned(self, get_instances_for_import_mock):
+        backend_instances = self._generate_backend_instances()
+        get_instances_for_import_mock.return_value = backend_instances
+        data = {'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl)}
+
+        response = self.client.get(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEquals(len(response.data), len(backend_instances))
+        returned_backend_ids = [item['backend_id'] for item in response.data]
+        expected_backend_ids = [item.backend_id for item in backend_instances]
+        self.assertItemsEqual(returned_backend_ids, expected_backend_ids)
+        get_instances_for_import_mock.assert_called()
+
+
+class InstanceImportTest(BaseInstanceImportTest):
+
+    def setUp(self):
+        super(InstanceImportTest, self).setUp()
+        self.url = factories.InstanceFactory.get_list_url('import_resource')
+        self.client.force_authenticate(self.fixture.owner)
+
+    def _get_payload(self, backend_id):
+        return {
+            'backend_id': backend_id,
+            'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl),
+        }
+
+    @mock.patch('nodeconductor_openstack.openstack_tenant.executors.InstancePullExecutor.execute')
+    @mock.patch('nodeconductor_openstack.openstack_tenant.backend.OpenStackTenantBackend.import_instance')
+    def test_instance_can_be_imported(self, import_instance_mock, resource_import_execute_mock):
+        backend_id = 'backend_id'
+
+        def import_instance(backend_id, save, service_project_link):
+            return self._generate_backend_instances()[0]
+
+        import_instance_mock.side_effect = import_instance
+        payload = self._get_payload(backend_id)
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        resource_import_execute_mock.assert_called()
+
+    def test_existing_instance_cannot_be_imported(self):
+        payload = self._get_payload(factories.InstanceFactory().backend_id)
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)

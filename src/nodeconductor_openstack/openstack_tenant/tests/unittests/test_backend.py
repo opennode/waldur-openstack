@@ -1,7 +1,10 @@
 from __future__ import unicode_literals
 
 from django.test import TestCase
-from mock import Mock
+from cinderclient.v2.volumes import Volume
+from novaclient.v2.servers import Server
+from novaclient.v2.flavors import Flavor
+import mock
 
 from nodeconductor_openstack.openstack_tenant.backend import OpenStackTenantBackend
 from nodeconductor_openstack.openstack_tenant import models
@@ -15,8 +18,43 @@ class BaseBackendTest(TestCase):
         self.settings = self.fixture.openstack_tenant_service_settings
         self.tenant = self.fixture.openstack_tenant_service_settings.scope
         self.tenant_backend = OpenStackTenantBackend(self.settings)
-        self.neutron_client_mock = Mock()
+        self.neutron_client_mock = mock.Mock()
+        self.cinder_client_mock = mock.Mock()
+        self.nova_client_mock = mock.Mock()
         self.tenant_backend.neutron_client = self.neutron_client_mock
+        self.tenant_backend.cinder_client = self.cinder_client_mock
+        self.tenant_backend.nova_client = self.nova_client_mock
+
+    def _get_valid_volume(self, backend_id):
+        return Volume(manager=None, info=dict(
+            name='volume-%s' % backend_id,
+            size=1,
+            metadata='',
+            description='',
+            volume_type='',
+            status='OK',
+            id=backend_id,
+            bootable='true',
+        ))
+
+    def _get_valid_instance(self, backend_id):
+        return Server(manager=None, info={
+            'id': backend_id,
+            'name': 'server-%s' % backend_id,
+            'status': 'ACTIVE',
+            'key_name': '',
+            'created': '2012-04-23T08:10:00Z',
+            'OS-SRV-USG:launched_at': '2012-04-23T09:15'
+        })
+
+    def _get_valid_flavor(self, backend_id):
+        return Flavor(manager=None, info=dict(
+            name='m1.small',
+            disk=10,
+            vcpus=2,
+            ram=4096,
+            id=backend_id,
+        ))
 
 
 class PullFloatingIPTest(BaseBackendTest):
@@ -331,3 +369,211 @@ class PullSubnetsTest(BaseBackendTest):
         self.tenant_backend.pull_subnets()
         subnet.refresh_from_db()
         self.assertEqual(subnet.name, 'subnet-1')
+
+
+class GetVolumesTest(BaseBackendTest):
+
+    def _generate_volumes(self, backend=False, count=1):
+        volumes = []
+        for i in range(count):
+            volume = factories.VolumeFactory()
+            backend_volume = self._get_valid_volume(backend_id=volume.backend_id)
+            if backend:
+                volume.delete()
+            volumes.append(backend_volume)
+
+        return volumes
+
+    def test_all_backend_volumes_are_returned(self):
+        backend_volumes = self._generate_volumes(backend=True, count=2)
+        volumes = backend_volumes + self._generate_volumes()
+        self.cinder_client_mock.volumes.list.return_value = volumes
+
+        result = self.tenant_backend.get_volumes()
+
+        returned_backend_ids = [item.backend_id for item in result]
+        expected_backend_ids = [item.id for item in volumes]
+        self.assertItemsEqual(returned_backend_ids, expected_backend_ids)
+
+
+class ImportVolumeTest(BaseBackendTest):
+
+    def setUp(self):
+        super(ImportVolumeTest, self).setUp()
+        self.spl = self.fixture.spl
+        self.backend_volume_id = 'backend_id'
+        self.backend_volume = self._get_valid_volume(self.backend_volume_id)
+
+        self.cinder_client_mock.volumes.get.return_value = self.backend_volume
+
+    def test_volume_is_imported(self):
+        volume = self.tenant_backend.import_volume(self.backend_volume_id, save=True, service_project_link=self.spl)
+
+        self.assertTrue(models.Volume.objects.filter(backend_id=self.backend_volume_id).exists())
+        self.assertEqual(models.Volume.objects.get(backend_id=self.backend_volume_id).uuid, volume.uuid)
+        self.assertEqual(volume.name, self.backend_volume.name)
+
+    def test_volume_instance_is_not_created_during_import(self):
+        vm = factories.InstanceFactory(backend_id='instance_backend_id', service_project_link=self.spl)
+        self.backend_volume.attachments = [
+            dict(server_id=vm.backend_id)
+        ]
+        volume = self.tenant_backend.import_volume(self.backend_volume_id, save=True, service_project_link=self.spl)
+
+        self.assertIsNotNone(volume.instance)
+        self.assertTrue(models.Volume.objects.filter(backend_id=self.backend_volume_id).exists())
+        self.assertEqual(models.Volume.objects.get(backend_id=self.backend_volume_id).uuid, volume.uuid)
+        self.assertEqual(volume.name, self.backend_volume.name)
+
+
+class PullInstanceTest(BaseBackendTest):
+
+    def setUp(self):
+        super(PullInstanceTest, self).setUp()
+
+        class MockFlavor(object):
+            name = 'flavor_name'
+            disk = 102400
+            ram = 10240
+            vcpus = 1
+
+        class MockInstance(object):
+            name = 'instance_name'
+            id = 'instance_id'
+            created = '2017-08-10'
+            key_name = 'key_name'
+            flavor = {'id': 'flavor_id'}
+            status = 'ERRED'
+            fault = {'message': 'OpenStack Nova error.'}
+
+            def to_dict(self):
+                return {}
+
+        self.nova_client_mock = mock.Mock()
+        self.tenant_backend.nova_client = self.nova_client_mock
+
+        self.nova_client_mock.servers.get.return_value = MockInstance
+        self.nova_client_mock.volumes.get_server_volumes.return_value = []
+        self.nova_client_mock.flavors.get.return_value = MockFlavor
+
+    def test_error_message_is_synchronized(self):
+        instance = self.fixture.instance
+
+        self.tenant_backend.pull_instance(instance)
+        instance.refresh_from_db()
+
+        self.assertEqual(instance.error_message, 'OpenStack Nova error.')
+
+    def test_existing_error_message_is_preserved_if_defined(self):
+        del self.nova_client_mock.servers.get.return_value.fault
+        instance = self.fixture.instance
+        instance.error_message = 'Waldur error.'
+        instance.save()
+
+        self.tenant_backend.pull_instance(instance)
+        instance.refresh_from_db()
+
+        self.assertEqual(instance.error_message, 'Waldur error.')
+
+
+class GetInstancesTest(BaseBackendTest):
+
+    def setUp(self):
+        super(GetInstancesTest, self).setUp()
+
+    def _generate_instances(self, backend=False, count=1):
+        instances = []
+        for i in range(count):
+            instance = factories.InstanceFactory()
+            backend_instance = self._get_valid_instance(backend_id=instance.backend_id)
+            if backend:
+                instance.delete()
+            instances.append(backend_instance)
+
+        return instances
+
+    def test_all_instances_returned(self):
+        backend_instances = self._generate_instances(backend=True, count=3)
+        instances = backend_instances + self._generate_instances()
+        flavors = []
+        for instance in instances:
+            flavor = self._get_valid_flavor(backend_id=instance.id)
+            instance.flavor = flavor._info
+            flavors.append(flavor)
+
+        self.nova_client_mock.servers.list.return_value = instances
+        self.nova_client_mock.flavors.list.return_value = flavors
+
+        result = self.tenant_backend.get_instances()
+
+        returned_backend_ids = [item.backend_id for item in result]
+        expected_backend_ids = [item.id for item in instances]
+        self.assertItemsEqual(returned_backend_ids, expected_backend_ids)
+
+
+class ImportInstanceTest(BaseBackendTest):
+
+    def setUp(self):
+        super(ImportInstanceTest, self).setUp()
+        self.spl = self.fixture.spl
+        self.backend_id = 'instance_id'
+        self.backend_instance = self._get_valid_instance(self.backend_id)
+        self.nova_client_mock.servers.get.return_value = self.backend_instance
+
+        backend_flavor = self._get_valid_flavor(self.backend_id)
+        self.backend_instance.flavor = backend_flavor._info
+        self.nova_client_mock.flavors.get.return_value = backend_flavor
+
+    def test_backend_instance_without_volumes_is_imported(self):
+        self.nova_client_mock.volumes.get_server_volumes.return_value = []
+
+        instance = self.tenant_backend.import_instance(self.backend_id, save=True, service_project_link=self.spl)
+
+        self.assertEquals(instance.backend_id, self.backend_id)
+        self.assertTrue(models.Instance.objects.filter(backend_id=self.backend_id).exists())
+        self.assertEquals(models.Instance.objects.get(backend_id=self.backend_id).uuid, instance.uuid)
+        self.assertEquals(instance.name, self.backend_instance.name)
+
+    def test_volume_is_attached_to_imported_instance_if_they_are_registered(self):
+        expected_volume = factories.VolumeFactory(service_project_link=self.spl)
+        backend_volume = self._get_valid_volume(backend_id=expected_volume.backend_id)
+        backend_volume.volumeId = backend_volume.id
+        self.nova_client_mock.volumes.get_server_volumes.return_value = [backend_volume]
+        self.cinder_client_mock.volumes.get.return_value = backend_volume
+
+        instance = self.tenant_backend.import_instance(self.backend_id, save=True, service_project_link=self.spl)
+
+        self.assertEquals(instance.backend_id, self.backend_id)
+        self.assertEquals(models.Volume.objects.count(), 1)
+        self.assertEquals(instance.volumes.count(), 1)
+        actual_backend_ids = [v.backend_id for v in instance.volumes.all()]
+        self.assertItemsEqual([backend_volume.id], actual_backend_ids)
+
+    def test_instance_is_imported_with_attached_volume(self):
+        volume_backend_id = 'volume_id'
+        backend_volume = self._get_valid_volume(backend_id=volume_backend_id)
+        backend_volume.volumeId = backend_volume.id
+        self.nova_client_mock.volumes.get_server_volumes.return_value = [backend_volume]
+        self.cinder_client_mock.volumes.get.return_value = backend_volume
+
+        instance = self.tenant_backend.import_instance(self.backend_id,
+                                                       save=True,
+                                                       service_project_link=self.spl)
+
+        self.assertEquals(instance.backend_id, self.backend_id)
+        self.assertEquals(models.Volume.objects.count(), 1)
+        self.assertEquals(instance.volumes.count(), 1)
+        actual_backend_ids = [v.backend_id for v in instance.volumes.all()]
+        self.assertItemsEqual([backend_volume.id], actual_backend_ids)
+
+    def test_instance_error_message_is_filled_if_fault_is_provided_by_backend(self):
+        expected_error_message = 'An error occured displaying an error'
+        self.backend_instance.fault = dict(message=expected_error_message)
+        self.nova_client_mock.volumes.get_server_volumes.return_value = []
+
+        instance = self.tenant_backend.import_instance(self.backend_id,
+                                                       save=True,
+                                                       service_project_link=self.spl)
+
+        self.assertEquals(instance.backend_id, self.backend_id)
+        self.assertEquals(instance.error_message, expected_error_message)

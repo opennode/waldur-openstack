@@ -120,7 +120,7 @@ class VolumeFactory(factory.DjangoModelFactory):
     name = factory.Sequence(lambda n: 'volume%s' % n)
     service_project_link = factory.SubFactory(OpenStackTenantServiceProjectLinkFactory)
     size = 10 * 1024
-    backend_id = factory.LazyAttribute(lambda _: uuid.uuid4())
+    backend_id = factory.LazyAttribute(lambda _: str(uuid.uuid4()))
 
     @classmethod
     def get_url(cls, instance=None, action=None):
@@ -130,8 +130,9 @@ class VolumeFactory(factory.DjangoModelFactory):
         return url if action is None else url + action + '/'
 
     @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstacktenant-volume-list')
+    def get_list_url(cls, action=None):
+        url = 'http://testserver' + reverse('openstacktenant-volume-list')
+        return url if action is None else url + action + '/'
 
 
 class InstanceFactory(factory.DjangoModelFactory):
@@ -140,6 +141,7 @@ class InstanceFactory(factory.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: 'instance%s' % n)
     service_project_link = factory.SubFactory(OpenStackTenantServiceProjectLinkFactory)
+    backend_id = factory.Sequence(lambda n: 'backend_id_%s' % n)
 
     @classmethod
     def get_url(cls, instance=None, action=None):
@@ -149,8 +151,9 @@ class InstanceFactory(factory.DjangoModelFactory):
         return url if action is None else url + action + '/'
 
     @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstacktenant-instance-list')
+    def get_list_url(cls, action=None):
+        url = 'http://testserver' + reverse('openstacktenant-instance-list')
+        return url if action is None else url + action + '/'
 
     @factory.post_generation
     def volumes(self, create, extracted, **kwargs):
