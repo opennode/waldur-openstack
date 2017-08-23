@@ -13,17 +13,11 @@ from . import models, filters, serializers, executors
 class ResourceImportMixin(object):
     import_resource_executor = None
 
-    def _check_permissions(self, request, obj):
-        permissions = getattr(self, '%s_permissions' % self.action, [])
-        for permission_check in permissions:
-            permission_check(request, self, obj)
-
     @decorators.list_route(methods=['get'])
     def importable_resources(self, request):
         serializer = self.get_serializer(data=request.GET)
         serializer.is_valid(raise_exception=True)
         service_project_link = serializer.validated_data['service_project_link']
-        self._check_permissions(request, service_project_link)
 
         backend = service_project_link.get_backend()
         resources = getattr(backend, self.importable_resources_backend_method)()
@@ -38,7 +32,6 @@ class ResourceImportMixin(object):
     def import_resource(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self._check_permissions(request, serializer.validated_data['service_project_link'])
         resource = serializer.save()
         if self.import_resource_executor:
             self.import_resource_executor.execute(resource)
@@ -237,9 +230,9 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
     importable_resources_backend_method = 'get_tenants_for_import'
     importable_resources_serializer_class = serializers.TenantImportableSerializer
-    importable_resources_permissions = [structure_permissions.is_owner]
+    importable_resources_permissions = [structure_permissions.is_staff]
     import_resource_serializer_class = serializers.TenantImportSerializer
-    import_resource_permissions = [structure_permissions.is_owner]
+    import_resource_permissions = [structure_permissions.is_staff]
 
     def delete_permission_check(request, view, obj=None):
         if not obj:

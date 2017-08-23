@@ -498,10 +498,9 @@ class SecurityGroupCreateTest(BaseTenantActionsTest):
 @ddt
 class TenantImportableResourcesTest(BaseTenantActionsTest):
 
-    @data('staff', 'owner')
     @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.get_tenants_for_import')
-    def test_user_can_list_importable_resources(self, user, get_tenants_for_import_mock):
-        self.client.force_authenticate(getattr(self.fixture, user))
+    def test_user_can_list_importable_resources(self, get_tenants_for_import_mock):
+        self.client.force_authenticate(self.fixture.staff)
         backend_tenants = self._generate_backend_tenants(2)
         get_tenants_for_import_mock.return_value = backend_tenants
         url = factories.TenantFactory.get_list_url('importable_resources')
@@ -516,7 +515,7 @@ class TenantImportableResourcesTest(BaseTenantActionsTest):
         self.assertItemsEqual(returned_backend_ids, expected_backend_ids)
         get_tenants_for_import_mock.assert_called()
 
-    @data('admin', 'manager')
+    @data('admin', 'manager', 'owner')
     def test_user_does_not_have_permissions_to_list_resources(self, user):
         self.client.force_authenticate(getattr(self.fixture, user))
         url = factories.TenantFactory.get_list_url('importable_resources')
@@ -541,10 +540,9 @@ class TenantImportTest(BaseTenantActionsTest):
             'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(self.spl),
         }
 
-    @data('staff', 'owner')
     @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
-    def test_tenant_is_imported(self, user, import_tenant_mock):
-        self.client.force_authenticate(getattr(self.fixture, user))
+    def test_tenant_is_imported(self, import_tenant_mock):
+        self.client.force_authenticate(self.fixture.staff)
 
         def import_instance(backend_id, service_project_link=None, save=True):
             return factories.TenantFactory(backend_id=backend_id)
@@ -559,7 +557,7 @@ class TenantImportTest(BaseTenantActionsTest):
         self.assertTrue(models.Tenant.objects.filter(backend_id=self.backend_tenant.backend_id).exists())
         import_tenant_mock.assert_called()
 
-    @data('admin', 'manager')
+    @data('admin', 'manager', 'owner')
     def test_user_cannot_import_tenant(self, user):
         self.client.force_authenticate(getattr(self.fixture, user))
         payload = self._form_payload(self.backend_tenant.backend_id)

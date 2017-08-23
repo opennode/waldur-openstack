@@ -346,7 +346,7 @@ class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
 
     def validate_backend_id(self, backend_id):
         if models.Tenant.objects.filter(backend_id=backend_id).exists():
-            raise serializers.ValidationError(_('Such tenant is already registered'))
+            raise serializers.ValidationError(_('Tenant with ID "%s" is already registered.') % backend_id)
 
         return backend_id
 
