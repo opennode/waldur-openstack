@@ -1,7 +1,6 @@
 from __future__ import unicode_literals
 
 from ddt import data, ddt
-
 from rest_framework import status
 from rest_framework import test
 

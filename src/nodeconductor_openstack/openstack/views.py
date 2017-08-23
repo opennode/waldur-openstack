@@ -10,10 +10,38 @@ from nodeconductor.structure import (views as structure_views, filters as struct
 from . import models, filters, serializers, executors
 
 
+class ResourceImportMixin(object):
+    import_resource_executor = None
+
+    @decorators.list_route(methods=['get'])
+    def importable_resources(self, request):
+        serializer = self.get_serializer(data=request.GET)
+        serializer.is_valid(raise_exception=True)
+        service_project_link = serializer.validated_data['service_project_link']
+
+        backend = service_project_link.get_backend()
+        resources = getattr(backend, self.importable_resources_backend_method)()
+        serializer = self.get_serializer(resources, many=True)
+        page = self.paginate_queryset(serializer.data)
+        if page is not None:
+            return self.get_paginated_response(page)
+
+        return response.Response(data=serializer.data, status=status.HTTP_200_OK)
+
+    @decorators.list_route(methods=['post'])
+    def import_resource(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        resource = serializer.save()
+        if self.import_resource_executor:
+            self.import_resource_executor.execute(resource)
+
+        return response.Response(data=serializer.data, status=status.HTTP_201_CREATED)
+
+
 class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
     queryset = models.OpenStackService.objects.all().order_by('id')
     serializer_class = serializers.ServiceSerializer
-    import_serializer_class = serializers.TenantImportSerializer
 
     def list(self, request, *args, **kwargs):
         """
@@ -189,7 +217,9 @@ class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass
         return super(FloatingIPViewSet, self).list(request, *args, **kwargs)
 
 
-class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
+class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                       ResourceImportMixin,
+                                       structure_views.ResourceViewSet)):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
     filter_class = structure_filters.BaseResourceFilter
@@ -197,6 +227,12 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, st
     create_executor = executors.TenantCreateExecutor
     update_executor = executors.TenantUpdateExecutor
     pull_executor = executors.TenantPullExecutor
+
+    importable_resources_backend_method = 'get_tenants_for_import'
+    importable_resources_serializer_class = serializers.TenantImportableSerializer
+    importable_resources_permissions = [structure_permissions.is_staff]
+    import_resource_serializer_class = serializers.TenantImportSerializer
+    import_resource_permissions = [structure_permissions.is_staff]
 
     def delete_permission_check(request, view, obj=None):
         if not obj:

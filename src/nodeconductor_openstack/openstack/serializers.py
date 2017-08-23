@@ -16,7 +16,6 @@ from nodeconductor.core import utils as core_utils, serializers as core_serializ
 from nodeconductor.core.fields import JsonField
 from nodeconductor.quotas import serializers as quotas_serializers
 from nodeconductor.structure import serializers as structure_serializers, permissions as structure_permissions
-from nodeconductor.structure.managers import filter_queryset_for_user
 
 from . import models
 from .backend import OpenStackBackendError
@@ -320,14 +319,40 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
         return security_group
 
 
-class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer):
+class TenantImportableSerializer(serializers.Serializer):
+    backend_id = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    description = serializers.CharField(read_only=True)
+    type = serializers.CharField(read_only=True)
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        queryset=models.OpenStackServiceProjectLink.objects.all(),
+        write_only=True)
 
-    class Meta(structure_serializers.BaseResourceImportSerializer.Meta):
+
+class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstack-spl-detail',
+        write_only=True,
+        queryset=models.OpenStackServiceProjectLink.objects.all()
+    )
+    quotas = quotas_serializers.QuotaSerializer(many=True, read_only=True)
+
+    class Meta(object):
         model = models.Tenant
+        read_only_fields = ('name', 'availability_zone', 'internal_network_id', 'external_network_id',
+                            'user_username', 'user_password', 'quotas')
+        fields = read_only_fields + ('service_project_link', 'backend_id')
+
+    def validate_backend_id(self, backend_id):
+        if models.Tenant.objects.filter(backend_id=backend_id).exists():
+            raise serializers.ValidationError(_('Tenant with ID "%s" is already registered.') % backend_id)
+
+        return backend_id
 
     def create(self, validated_data):
         service_project_link = validated_data['service_project_link']
-        backend = self.context['service'].get_backend()
+        backend = service_project_link.service.get_backend()
         backend_id = validated_data['backend_id']
 
         try:
@@ -339,6 +364,7 @@ class TenantImportSerializer(structure_serializers.BaseResourceImportSerializer)
                     'reason': e,
                 }
             })
+
         return tenant
 
 

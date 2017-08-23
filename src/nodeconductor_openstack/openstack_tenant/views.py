@@ -4,6 +4,7 @@ from rest_framework import decorators, response, status, exceptions, serializers
 
 from nodeconductor.core import exceptions as core_exceptions, validators as core_validators
 from nodeconductor.structure import views as structure_views, filters as structure_filters
+from nodeconductor_openstack.openstack.views import ResourceImportMixin
 
 from . import models, serializers, filters, executors
 
@@ -141,35 +142,6 @@ class SecurityGroupViewSet(structure_views.BaseServicePropertyViewSet):
     serializer_class = serializers.SecurityGroupSerializer
     lookup_field = 'uuid'
     filter_class = filters.SecurityGroupFilter
-
-
-class ResourceImportMixin(object):
-    import_resource_executor = None
-
-    @decorators.list_route(methods=['get'])
-    def importable_resources(self, request):
-        serializer = self.get_serializer(data=request.GET)
-        serializer.is_valid(raise_exception=True)
-        service_project_link = serializer.validated_data['service_project_link']
-
-        backend = service_project_link.get_backend()
-        volumes = getattr(backend, self.importable_resources_backend_method)()
-        serializer = self.get_serializer(volumes, many=True)
-        page = self.paginate_queryset(serializer.data)
-        if page is not None:
-            return self.get_paginated_response(page)
-
-        return response.Response(data=serializer.data, status=status.HTTP_200_OK)
-
-    @decorators.list_route(methods=['post'])
-    def import_resource(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        resource = serializer.save()
-        if self.import_resource_executor:
-            self.import_resource_executor.execute(resource)
-
-        return response.Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
 
 class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,

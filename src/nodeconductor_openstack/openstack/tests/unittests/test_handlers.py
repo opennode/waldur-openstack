@@ -5,6 +5,8 @@ from nodeconductor.core import utils as core_utils
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.tests import factories as structure_factories
 
+from nodeconductor_openstack.openstack import apps
+
 from .. import factories
 
 
@@ -131,7 +133,9 @@ class UpdateServiceSettingsNameHandlerTest(TestCase):
 
     def test_settings_name_is_update_when_tenant_is_renamed(self):
         tenant = factories.TenantFactory()
-        service_settings = structure_factories.ServiceSettingsFactory(scope=tenant, name=tenant.name)
+        service_settings = structure_factories.ServiceSettingsFactory(scope=tenant,
+                                                                      name=tenant.name,
+                                                                      type=apps.OpenStackConfig.service_name)
 
         tenant.name = 'new name'
         tenant.save()

@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
 from nodeconductor.structure import (filters as structure_filters, permissions as structure_permissions,
                                      models as structure_models)
+from nodeconductor_openstack.openstack import apps
 
 from .log import event_logger
 from .models import SecurityGroup, SecurityGroupRule, Tenant
@@ -124,7 +125,8 @@ def update_service_settings_name(sender, instance, created=False, **kwargs):
         return
 
     try:
-        service_settings = structure_models.ServiceSettings.objects.get(scope=tenant)
+        service_settings = structure_models.ServiceSettings.objects.get(scope=tenant,
+                                                                        type=apps.OpenStackConfig.service_name)
     except structure_models.ServiceSettings.DoesNotExist:
         return
     else:

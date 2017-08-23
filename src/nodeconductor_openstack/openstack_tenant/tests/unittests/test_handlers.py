@@ -8,13 +8,13 @@ from nodeconductor.structure.tests import factories as structure_factories
 from nodeconductor_openstack.openstack.tests import factories as openstack_factories
 
 from .. import factories
-from ... import models
+from ... import models, apps
 
 
 class SecurityGroupHandlerTest(TestCase):
     def setUp(self):
         self.tenant = openstack_factories.TenantFactory()
-        self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
+        self.service_settings = openstack_factories.OpenStackServiceSettingsFactory(scope=self.tenant)
 
     def test_security_group_create(self):
         openstack_security_group = openstack_factories.SecurityGroupFactory(
@@ -103,7 +103,7 @@ class SecurityGroupHandlerTest(TestCase):
 class FloatingIPHandlerTest(TestCase):
     def setUp(self):
         self.tenant = openstack_factories.TenantFactory()
-        self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
+        self.service_settings = openstack_factories.OpenStackServiceSettingsFactory(scope=self.tenant)
 
     def test_floating_ip_create(self):
         openstack_floating_ip = openstack_factories.FloatingIPFactory(
@@ -182,7 +182,7 @@ class TenantChangePasswordTest(TestCase):
 class NetworkHandlerTest(TestCase):
     def setUp(self):
         self.tenant = openstack_factories.TenantFactory()
-        self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
+        self.service_settings = openstack_factories.OpenStackServiceSettingsFactory(scope=self.tenant)
 
     def test_network_create(self):
         openstack_network = openstack_factories.NetworkFactory(
@@ -227,7 +227,7 @@ class SubNetHandlerTest(TestCase):
     def setUp(self):
         self.tenant = openstack_factories.TenantFactory()
         self.openstack_network = openstack_factories.NetworkFactory(tenant=self.tenant)
-        self.service_settings = structure_factories.ServiceSettingsFactory(scope=self.tenant)
+        self.service_settings = openstack_factories.OpenStackServiceSettingsFactory(scope=self.tenant)
         self.network = factories.NetworkFactory(
             settings=self.service_settings,
             backend_id=self.openstack_network.backend_id
@@ -334,7 +334,7 @@ class CopyCertificationsTest(TestCase):
         instance = factories.InstanceFactory()
         certification = structure_factories.ServiceCertificationFactory()
         instance.service_project_link.service.settings.certifications.add(certification)
-        
+
         settings = factories.OpenStackTenantServiceSettingsFactory(scope=instance)
 
         self.assertFalse(settings.certifications.exists())
@@ -343,3 +343,39 @@ class CopyCertificationsTest(TestCase):
         settings = factories.OpenStackTenantServiceSettingsFactory(scope=None)
 
         self.assertFalse(settings.certifications.exists())
+
+
+class CreateServiceFromTenantTest(TestCase):
+
+    def test_service_is_created_on_tenant_creation(self):
+        tenant = openstack_factories.TenantFactory()
+
+        self.assertTrue(structure_models.ServiceSettings.objects.filter(scope=tenant).exists())
+        service_settings = structure_models.ServiceSettings.objects.get(
+            scope=tenant,
+            type=apps.OpenStackTenantConfig.service_name,
+        )
+        self.assertEquals(service_settings.name, tenant.name)
+        self.assertEquals(service_settings.customer, tenant.service_project_link.project.customer)
+        self.assertEquals(service_settings.username, tenant.user_username)
+        self.assertEquals(service_settings.password, tenant.user_password)
+        self.assertEquals(service_settings.domain, tenant.service_project_link.service.settings.domain)
+        self.assertEquals(service_settings.backend_url, tenant.service_project_link.service.settings.backend_url)
+        self.assertEquals(service_settings.type, apps.OpenStackTenantConfig.service_name)
+        self.assertEquals(service_settings.options['tenant_id'], tenant.backend_id)
+        self.assertEquals(service_settings.options['availability_zone'], tenant.availability_zone)
+
+        self.assertTrue(models.OpenStackTenantService.objects.filter(
+            settings=service_settings,
+            customer=tenant.service_project_link.project.customer
+        ).exists())
+
+        service = models.OpenStackTenantService.objects.get(
+            settings=service_settings,
+            customer=tenant.service_project_link.project.customer,
+        )
+
+        self.assertTrue(models.OpenStackTenantServiceProjectLink.objects.filter(
+            service=service,
+            project=tenant.service_project_link.project,
+        ).exists())

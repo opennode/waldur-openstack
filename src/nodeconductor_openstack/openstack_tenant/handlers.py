@@ -200,7 +200,8 @@ class BaseSynchronizationHandler(object):
 
     def get_service_settings(self, resource):
         try:
-            return structure_models.ServiceSettings.objects.get(scope=self.get_tenant(resource))
+            return structure_models.ServiceSettings.objects.get(scope=self.get_tenant(resource),
+                                                                type=openstack_apps.OpenStackConfig.service_name)
         except (django_exceptions.ObjectDoesNotExist, django_exceptions.MultipleObjectsReturned):
             return
 
@@ -383,3 +384,42 @@ def copy_flavor_exclude_regex_to_openstacktenant_service_settings(sender, instan
     admin_settings = tenant.service_project_link.service.settings
     instance.options['flavor_exclude_regex'] = admin_settings.options.get('flavor_exclude_regex', '')
     instance.save(update_fields=['options'])
+
+
+def create_service_from_tenant(sender, instance, created=False, **kwargs):
+    if not created:
+        return
+
+    if structure_models.ServiceSettings.objects.filter(
+        scope=instance,
+        type=apps.OpenStackTenantConfig.service_name,
+    ).exists():
+        return
+
+    tenant = instance
+    admin_settings = tenant.service_project_link.service.settings
+    customer = tenant.service_project_link.project.customer
+    service_settings = structure_models.ServiceSettings.objects.create(
+        name=tenant.name,
+        scope=tenant,
+        customer=customer,
+        type=apps.OpenStackTenantConfig.service_name,
+        backend_url=admin_settings.backend_url,
+        username=tenant.user_username,
+        password=tenant.user_password,
+        domain=admin_settings.domain,
+        options={
+            'availability_zone': tenant.availability_zone,
+            'tenant_id': tenant.backend_id,
+        },
+    )
+    service = models.OpenStackTenantService.objects.create(
+        settings=service_settings,
+        customer=customer,
+    )
+
+    models.OpenStackTenantServiceProjectLink.objects.create(
+        service=service,
+        project=tenant.service_project_link.project,
+    )
+
