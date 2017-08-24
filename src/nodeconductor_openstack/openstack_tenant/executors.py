@@ -728,6 +728,7 @@ class SnapshotRestorationExecutor(core_executors.CreateExecutor):
         _tasks = [
             tasks.ThrottleProvisionTask().si(
                 serialized_volume, 'create_volume', state_transition='begin_creating'),
+            core_tasks.BackendMethodTask().si(serialized_volume, 'remove_bootable_flag'),
             tasks.PollRuntimeStateTask().si(
                 serialized_volume, 'pull_volume_runtime_state', success_state='available', erred_state='error',
             ).set(countdown=30),
