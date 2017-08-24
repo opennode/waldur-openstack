@@ -471,6 +471,17 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         return self._get_backend_resource(models.Volume, self.get_volumes())
 
     @log_backend_action()
+    def remove_bootable_flag(self, volume):
+        cinder = self.cinder_client
+        try:
+            backend_volume = cinder.volumes.get(volume.backend_id)
+            cinder.volumes.set_bootable(backend_volume, False)
+        except cinder_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+        volume.bootable = False
+        volume.save(update_fields=['bootable'])
+
+    @log_backend_action()
     def pull_volume(self, volume, update_fields=None):
         import_time = timezone.now()
         imported_volume = self.import_volume(volume.backend_id, save=False)

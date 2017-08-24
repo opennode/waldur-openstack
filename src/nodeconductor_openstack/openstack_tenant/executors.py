@@ -731,6 +731,7 @@ class SnapshotRestorationExecutor(core_executors.CreateExecutor):
             tasks.PollRuntimeStateTask().si(
                 serialized_volume, 'pull_volume_runtime_state', success_state='available', erred_state='error',
             ).set(countdown=30),
+            core_tasks.BackendMethodTask().si(serialized_volume, 'remove_bootable_flag'),
             core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'),
         ]
 
