@@ -571,6 +571,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             six.reraise(OpenStackBackendError, e)
         return [self._backend_snapshot_to_snapshot(backend_snapshot) for backend_snapshot in backend_snapshots]
 
+    def get_snapshots_for_import(self):
+        return self._get_backend_resource(models.Snapshot, self.get_snapshots())
+
     @log_backend_action()
     def pull_snapshot(self, snapshot, update_fields=None):
         import_time = timezone.now()

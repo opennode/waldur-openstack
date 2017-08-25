@@ -185,7 +185,7 @@ class VolumeImportSerializer(VolumeImportableSerializer):
         try:
             backend = service_project_link.get_backend()
             volume = backend.import_volume(backend_id, save=True, service_project_link=service_project_link)
-        except OpenStackBackendError as e:
+        except OpenStackBackendError:
             raise serializers.ValidationError({
                 'backend_id': _("Can't import volume with ID %s") % validated_data['backend_id']
             })
@@ -417,6 +417,59 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
             'source_volume_description': volume.description,
             'source_volume_image_metadata': volume.image_metadata,
         }
+
+
+class SnapshotImportableSerializer(core_serializers.AugmentedSerializerMixin,
+                                   serializers.HyperlinkedModelSerializer):
+    service_project_link = serializers.HyperlinkedRelatedField(
+        view_name='openstacktenant-spl-detail',
+        queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
+        write_only=True)
+    source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
+
+    def get_filtered_field_names(self):
+        return 'service_project_link',
+
+    class Meta(object):
+        model = models.Snapshot
+        model_fields = ('name', 'description', 'size', 'action', 'action_details',
+                        'metadata', 'runtime_state', 'state', 'source_volume_name', 'source_volume_name')
+        fields = ('service_project_link', 'backend_id') + model_fields
+        read_only_fields = model_fields
+        extra_kwargs = dict(
+            source_volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
+        )
+
+
+class SnapshotImportSerializer(SnapshotImportableSerializer):
+    class Meta(SnapshotImportableSerializer.Meta):
+        fields = SnapshotImportableSerializer.Meta.fields + ('url', 'uuid', 'created')
+        extra_kwargs = {
+            'url': {'lookup_field': 'uuid'},
+        }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        service_project_link = validated_data['service_project_link']
+        backend_id = validated_data['backend_id']
+
+        if models.Snapshot.objects.filter(
+            service_project_link__service__settings=service_project_link.service.settings,
+            backend_id=backend_id
+        ).exists():
+            raise serializers.ValidationError({
+                'backend_id': _('Snapshot has been imported already.')
+            })
+
+        try:
+            backend = service_project_link.get_backend()
+            snapshot = backend.import_snapshot(backend_id, save=True, service_project_link=service_project_link)
+        except OpenStackBackendError:
+            raise serializers.ValidationError({
+                'backend_id': _("Can't import snapshot with ID %s") % validated_data['backend_id']
+            })
+
+        return snapshot
 
 
 class NestedVolumeSerializer(core_serializers.AugmentedSerializerMixin,

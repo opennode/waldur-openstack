@@ -247,6 +247,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
 
 class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
+                                         ResourceImportMixin,
                                          structure_views.ResourceViewSet)):
     queryset = models.Snapshot.objects.all().order_by('name')
     serializer_class = serializers.SnapshotSerializer
@@ -276,6 +277,10 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         return response.Response(serializer.data, status=status.HTTP_200_OK)
 
     restorations_serializer_class = serializers.SnapshotRestorationSerializer
+
+    importable_resources_backend_method = 'get_snapshots_for_import'
+    importable_resources_serializer_class = serializers.SnapshotImportableSerializer
+    import_resource_serializer_class = serializers.SnapshotImportSerializer
 
 
 class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
