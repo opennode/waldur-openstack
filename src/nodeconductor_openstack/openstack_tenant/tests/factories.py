@@ -288,8 +288,9 @@ class SnapshotFactory(factory.DjangoModelFactory):
         return url if action is None else url + action + '/'
 
     @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstacktenant-snapshot-list')
+    def get_list_url(cls, action=None):
+        url = 'http://testserver' + reverse('openstacktenant-snapshot-list')
+        return url if action is None else url + action + '/'
 
 
 class SnapshotRestorationFactory(factory.DjangoModelFactory):

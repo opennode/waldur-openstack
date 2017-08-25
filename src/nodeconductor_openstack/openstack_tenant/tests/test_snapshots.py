@@ -1,5 +1,6 @@
 from ddt import ddt, data
 from rest_framework import test, status
+import mock
 
 from nodeconductor_openstack.openstack_tenant import models
 
@@ -157,3 +158,82 @@ class SnapshotRetrieveTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 0)
 
+
+class BaseSnapshotImportTest(test.APITransactionTestCase):
+
+    def _generate_backend_snapshots(self, count=1):
+        snapshots = []
+        for i in range(count):
+            snapshot = factories.SnapshotFactory()
+            snapshot.delete()
+            snapshots.append(snapshot)
+
+        return snapshots
+
+
+class SnapshotImportableResourcesTest(BaseSnapshotImportTest):
+
+    def setUp(self):
+        super(SnapshotImportableResourcesTest, self).setUp()
+        self.url = factories.SnapshotFactory.get_list_url('importable_resources')
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.client.force_authenticate(self.fixture.owner)
+
+    @mock.patch('nodeconductor_openstack.openstack_tenant.backend.OpenStackTenantBackend.get_snapshots_for_import')
+    def test_importable_volumes_are_returned(self, get_volumes_mock):
+        backend_snapshots = self._generate_backend_snapshots()
+        get_volumes_mock.return_value = backend_snapshots
+        data = {'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl)}
+
+        response = self.client.get(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEquals(len(response.data), len(backend_snapshots))
+        returned_backend_ids = [item['backend_id'] for item in response.data]
+        expected_backend_ids = [item.backend_id for item in backend_snapshots]
+        self.assertItemsEqual(returned_backend_ids, expected_backend_ids)
+        get_volumes_mock.assert_called()
+
+
+class SnapshotImportResourceTest(BaseSnapshotImportTest):
+
+    def setUp(self):
+        super(SnapshotImportResourceTest, self).setUp()
+        self.url = factories.SnapshotFactory.get_list_url('import_resource')
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.client.force_authenticate(self.fixture.owner)
+
+    @mock.patch('nodeconductor_openstack.openstack_tenant.backend.OpenStackTenantBackend.import_snapshot')
+    def test_backend_volume_is_imported(self, import_snapshot_mock):
+        backend_id = 'backend_id'
+
+        def import_snapshot(backend_id, save, service_project_link):
+            return self._generate_backend_snapshots()[0]
+
+        import_snapshot_mock.side_effect = import_snapshot
+
+        payload = {
+            'backend_id': backend_id,
+            'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl),
+        }
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    @mock.patch('nodeconductor_openstack.openstack_tenant.backend.OpenStackTenantBackend.import_snapshot')
+    def test_backend_volume_cannot_be_imported_if_it_is_registered_in_waldur(self, import_snapshot_mock):
+        snapshot = factories.SnapshotFactory(service_project_link=self.fixture.spl)
+
+        def import_snapshot(backend_id, save, service_project_link):
+            return snapshot
+
+        import_snapshot_mock.side_effect = import_snapshot
+        payload = {
+            'backend_id': snapshot.backend_id,
+            'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl),
+        }
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
