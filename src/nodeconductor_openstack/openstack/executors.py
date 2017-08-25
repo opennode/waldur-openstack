@@ -103,7 +103,7 @@ class TenantImportExecutor(core_executors.ActionExecutor):
             core_tasks.BackendMethodTask().si(serialized_tenant,
                                               'add_admin_user_to_tenant',
                                               state_transition='begin_updating'),
-            core_tasks.BackendMethodTask().si(serialized_tenant, 'update_tenant_user'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'create_or_update_tenant_user'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_quotas'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_floating_ips'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_security_groups'),

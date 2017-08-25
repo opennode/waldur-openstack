@@ -575,7 +575,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    def update_tenant_user(self, tenant):
+    def create_or_update_tenant_user(self, tenant):
         keystone = self.keystone_client
 
         try:
