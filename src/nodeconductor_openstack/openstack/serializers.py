@@ -365,6 +365,11 @@ class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
                 }
             })
 
+        slugified_name = slugify(tenant.name)[:30]
+        tenant.user_username = slugified_name + '-user'
+        tenant.user_password = core_utils.pwgen()
+        tenant.save()
+
         return tenant
 
 

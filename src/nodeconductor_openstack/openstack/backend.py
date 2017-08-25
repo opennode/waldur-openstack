@@ -575,12 +575,26 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    @log_backend_action('change password for tenant user')
-    def change_tenant_user_password(self, tenant):
+    def update_tenant_user(self, tenant):
         keystone = self.keystone_client
 
         try:
             keystone_user = keystone.users.find(name=tenant.user_username)
+        except keystone_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        if keystone_user:
+            self.change_tenant_user_password(tenant, keystone_user)
+        else:
+            self.create_tenant_user(tenant)
+
+    @log_backend_action('change password for tenant user')
+    def change_tenant_user_password(self, tenant, keystone_user=None):
+        keystone = self.keystone_client
+
+        try:
+            if not keystone_user:
+                keystone_user = keystone.users.find(name=tenant.user_username)
             keystone.users.update(user=keystone_user, password=tenant.user_password)
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)

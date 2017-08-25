@@ -26,6 +26,8 @@ class BaseTenantActionsTest(test.APITransactionTestCase):
         for i in range(0, count):
             tenant = factories.TenantFactory()
             tenant.delete()
+            tenant.user_username = ''
+            tenant.user_password = ''
             tenants.append(tenant)
 
         return tenants
@@ -540,14 +542,17 @@ class TenantImportTest(BaseTenantActionsTest):
             'service_project_link': factories.OpenStackServiceProjectLinkFactory.get_url(self.spl),
         }
 
-    @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
-    def test_tenant_is_imported(self, import_tenant_mock):
-        self.client.force_authenticate(self.fixture.staff)
+    def _setup_import_tenant(self, import_tenant_mock):
 
         def import_instance(backend_id, service_project_link=None, save=True):
             return factories.TenantFactory(backend_id=backend_id)
 
         import_tenant_mock.side_effect = import_instance
+
+    @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
+    def test_tenant_is_imported(self, import_tenant_mock):
+        self.client.force_authenticate(self.fixture.staff)
+        self._setup_import_tenant(import_tenant_mock)
         payload = self._form_payload(self.backend_tenant.backend_id)
 
         response = self.client.post(self.url, payload)
@@ -574,3 +579,31 @@ class TenantImportTest(BaseTenantActionsTest):
         response = self.client.post(self.url, payload)
 
         self.assertEquals(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+
+    @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
+    def test_imported_tenant_has_user_password_and_username(self, import_tenant_mock):
+        self.client.force_authenticate(self.fixture.staff)
+        self._setup_import_tenant(import_tenant_mock)
+        payload = self._form_payload(self.backend_tenant.backend_id)
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEquals(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEquals(response.data['backend_id'], self.backend_tenant.backend_id)
+        self.assertIsNotNone(response.data['user_username'])
+        self.assertIsNotNone(response.data['user_password'])
+
+    @patch('nodeconductor_openstack.openstack.backend.OpenStackBackend.import_tenant')
+    def test_imported_tenant_settings_have_username_and_password_set(self, import_tenant_mock):
+        self.client.force_authenticate(self.fixture.staff)
+        self._setup_import_tenant(import_tenant_mock)
+        payload = self._form_payload(self.backend_tenant.backend_id)
+
+        response = self.client.post(self.url, payload)
+
+        self.assertEquals(response.status_code, status.HTTP_201_CREATED, response.data)
+        tenant = models.Tenant.objects.get(backend_id=self.backend_tenant.backend_id)
+        from nodeconductor.structure.models import ServiceSettings
+        service_settings = ServiceSettings.objects.get(scope=tenant)
+        self.assertEquals(tenant.user_username, service_settings.username)
+        self.assertEquals(tenant.user_password, service_settings.password)
