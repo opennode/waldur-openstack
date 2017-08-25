@@ -3,6 +3,7 @@ import logging
 from celery import chain
 
 from nodeconductor.core import tasks as core_tasks, executors as core_executors, utils as core_utils
+from nodeconductor.structure import models as structure_models, executors as structure_executors
 
 from . import tasks
 
@@ -92,6 +93,40 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
     @classmethod
     def get_failure_signature(cls, tenant, serialized_tenant, **kwargs):
         return tasks.TenantCreateErrorTask().s(serialized_tenant)
+
+
+class TenantImportExecutor(core_executors.ActionExecutor):
+
+    @classmethod
+    def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
+        tasks = [
+            core_tasks.BackendMethodTask().si(serialized_tenant,
+                                              'add_admin_user_to_tenant',
+                                              state_transition='begin_updating'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'create_or_update_tenant_user'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_quotas'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_floating_ips'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_security_groups'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'detect_external_network'),
+        ]
+
+        service_settings = structure_models.ServiceSettings.objects.get(scope=tenant)
+        serialized_service_settings = core_utils.serialize_instance(service_settings)
+        create_service_settings = structure_executors.ServiceSettingsCreateExecutor.get_task_signature(
+            service_settings, serialized_service_settings)
+
+        return chain(*tasks) | create_service_settings
+
+    @classmethod
+    def get_success_signature(cls, tenant, serialized_tenant, **kwargs):
+        service_settings = service_settings = structure_models.ServiceSettings.objects.get(scope=tenant)
+        serialized_service_settings = core_utils.serialize_instance(service_settings)
+        tasks = [
+            core_tasks.StateTransitionTask().si(serialized_tenant, state_transition='set_ok'),
+            core_tasks.StateTransitionTask().si(serialized_service_settings, state_transition='set_ok')
+        ]
+
+        return chain(*tasks)
 
 
 class TenantUpdateExecutor(core_executors.UpdateExecutor):

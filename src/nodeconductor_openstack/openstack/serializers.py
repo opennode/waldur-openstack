@@ -365,6 +365,10 @@ class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
                 }
             })
 
+        tenant.user_username = models.Tenant.generate_username(tenant.name)
+        tenant.user_password = core_utils.pwgen()
+        tenant.save()
+
         return tenant
 
 
@@ -426,7 +430,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             return attrs
 
         if not attrs.get('user_username'):
-            attrs['user_username'] = slugify(attrs['name'])[:30] + '-user'
+            attrs['user_username'] = models.Tenant.generate_username(attrs['name'])
 
         service_settings = attrs['service_project_link'].service.settings
         neighbour_tenants = models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
@@ -448,9 +452,9 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         if not validated_data.get('availability_zone'):
             validated_data['availability_zone'] = spl.service.settings.get_option('availability_zone') or ''
         # init tenant user username(if not defined) and password
-        slugified_name = slugify(validated_data['name'])[:30]
+        slugified_name = slugify(validated_data['name'])[:25]
         if not validated_data.get('user_username'):
-            validated_data['user_username'] = slugified_name + '-user'
+            validated_data['user_username'] = models.Tenant.generate_username(validated_data['name'])
         validated_data['user_password'] = core_utils.pwgen()
 
         subnet_cidr = validated_data.pop('subnet_cidr')
