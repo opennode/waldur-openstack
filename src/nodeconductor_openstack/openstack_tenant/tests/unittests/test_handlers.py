@@ -162,9 +162,9 @@ class FloatingIPHandlerTest(TestCase):
         self.assertEqual(models.FloatingIP.objects.count(), 0)
 
 
-class TenantChangePasswordTest(TestCase):
+class TenantChangeCredentialsTest(TestCase):
 
-    def test_service_settings_password_updates_when_tenant_user_password_changes(self):
+    def test_service_settings_password_and_username_are_updated_when_tenant_user_password_changes(self):
         tenant = openstack_factories.TenantFactory()
         service_settings = structure_models.ServiceSettings.objects.first()
         service_settings.scope = tenant
@@ -172,11 +172,14 @@ class TenantChangePasswordTest(TestCase):
         service_settings.save()
 
         new_password = 'new_password'
+        new_username = 'new_username'
 
         tenant.user_password = new_password
+        tenant.user_username = new_username
         tenant.save()
         service_settings.refresh_from_db()
         self.assertEqual(service_settings.password, new_password)
+        self.assertEqual(service_settings.username, new_username)
 
 
 class NetworkHandlerTest(TestCase):

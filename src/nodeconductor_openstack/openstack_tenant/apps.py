@@ -101,9 +101,9 @@ class OpenStackTenantConfig(AppConfig):
         )
 
         signals.post_save.connect(
-            handlers.update_service_settings_password,
+            handlers.update_service_settings_credentials,
             sender=Tenant,
-            dispatch_uid='openstack.handlers.update_service_settings_password',
+            dispatch_uid='openstack.handlers.update_service_settings_credentials',
         )
 
         signals.m2m_changed.connect(

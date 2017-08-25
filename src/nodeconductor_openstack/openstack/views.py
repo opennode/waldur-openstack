@@ -233,6 +233,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     importable_resources_permissions = [structure_permissions.is_staff]
     import_resource_serializer_class = serializers.TenantImportSerializer
     import_resource_permissions = [structure_permissions.is_staff]
+    import_resource_executor = executors.TenantImportExecutor
 
     def delete_permission_check(request, view, obj=None):
         if not obj:

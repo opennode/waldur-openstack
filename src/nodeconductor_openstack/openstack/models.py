@@ -2,12 +2,13 @@ from __future__ import unicode_literals
 import urlparse
 
 from django.db import models
+from django.template.defaultfilters import slugify
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 from nodeconductor.core.fields import JSONField
 from model_utils import FieldTracker
 
-from nodeconductor.core import models as core_models
+from nodeconductor.core import models as core_models, utils as core_utils
 from nodeconductor.logging.loggers import LoggableMixin
 from nodeconductor.quotas.fields import QuotaField, UsageAggregatorQuotaField, CounterQuotaField
 from nodeconductor.quotas.models import QuotaModelMixin
@@ -199,6 +200,15 @@ class Tenant(structure_models.PrivateCloud):
     user_password = models.CharField(max_length=50, blank=True)
 
     tracker = FieldTracker()
+
+    @classmethod
+    def generate_username(cls, name):
+        """
+        Generates random valid tenant user name based on tenant name
+        :param name: tenant name
+        :return: username
+        """
+        return slugify(name)[:25] + '-user-%s' % core_utils.pwgen(4)
 
     def get_backend(self):
         return self.service_project_link.service.get_backend(tenant_id=self.backend_id)
