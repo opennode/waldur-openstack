@@ -580,13 +580,12 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         try:
             keystone_user = keystone.users.find(name=tenant.user_username)
+        except keystone_exceptions.NotFound:
+            self.create_tenant_user(tenant)
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
-
-        if keystone_user:
-            self.change_tenant_user_password(tenant, keystone_user)
         else:
-            self.create_tenant_user(tenant)
+            self.change_tenant_user_password(tenant, keystone_user)
 
     @log_backend_action('change password for tenant user')
     def change_tenant_user_password(self, tenant, keystone_user=None):
