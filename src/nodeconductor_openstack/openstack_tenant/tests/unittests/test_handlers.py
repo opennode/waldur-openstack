@@ -11,10 +11,19 @@ from .. import factories
 from ... import models, apps
 
 
-class SecurityGroupHandlerTest(TestCase):
+class BaseServicePropertyTest(TestCase):
+
     def setUp(self):
         self.tenant = openstack_factories.TenantFactory()
-        self.service_settings = openstack_factories.OpenStackServiceSettingsFactory(scope=self.tenant)
+        self.service_settings = structure_models.ServiceSettings.objects.get(
+            scope=self.tenant,
+            type=apps.OpenStackTenantConfig.service_name)
+
+
+class SecurityGroupHandlerTest(BaseServicePropertyTest):
+
+    def setUp(self):
+        super(SecurityGroupHandlerTest, self).setUp()
 
     def test_security_group_create(self):
         openstack_security_group = openstack_factories.SecurityGroupFactory(
@@ -100,10 +109,9 @@ class SecurityGroupHandlerTest(TestCase):
         self.assertEqual(models.SecurityGroup.objects.count(), 1)
 
 
-class FloatingIPHandlerTest(TestCase):
+class FloatingIPHandlerTest(BaseServicePropertyTest):
     def setUp(self):
-        self.tenant = openstack_factories.TenantFactory()
-        self.service_settings = openstack_factories.OpenStackServiceSettingsFactory(scope=self.tenant)
+        super(FloatingIPHandlerTest, self).setUp()
 
     def test_floating_ip_create(self):
         openstack_floating_ip = openstack_factories.FloatingIPFactory(
@@ -182,10 +190,9 @@ class TenantChangeCredentialsTest(TestCase):
         self.assertEqual(service_settings.username, new_username)
 
 
-class NetworkHandlerTest(TestCase):
+class NetworkHandlerTest(BaseServicePropertyTest):
     def setUp(self):
-        self.tenant = openstack_factories.TenantFactory()
-        self.service_settings = openstack_factories.OpenStackServiceSettingsFactory(scope=self.tenant)
+        super(NetworkHandlerTest, self).setUp()
 
     def test_network_create(self):
         openstack_network = openstack_factories.NetworkFactory(
@@ -225,12 +232,11 @@ class NetworkHandlerTest(TestCase):
         self.assertEqual(models.Network.objects.count(), 0)
 
 
-class SubNetHandlerTest(TestCase):
-
+class SubNetHandlerTest(BaseServicePropertyTest):
     def setUp(self):
-        self.tenant = openstack_factories.TenantFactory()
+        super(SubNetHandlerTest, self).setUp()
+
         self.openstack_network = openstack_factories.NetworkFactory(tenant=self.tenant)
-        self.service_settings = openstack_factories.OpenStackServiceSettingsFactory(scope=self.tenant)
         self.network = factories.NetworkFactory(
             settings=self.service_settings,
             backend_id=self.openstack_network.backend_id

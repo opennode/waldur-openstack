@@ -202,7 +202,7 @@ class BaseSynchronizationHandler(object):
     def get_service_settings(self, resource):
         try:
             return structure_models.ServiceSettings.objects.get(scope=self.get_tenant(resource),
-                                                                type=openstack_apps.OpenStackConfig.service_name)
+                                                                type=apps.OpenStackTenantConfig.service_name)
         except (django_exceptions.ObjectDoesNotExist, django_exceptions.MultipleObjectsReturned):
             return
 
@@ -302,6 +302,9 @@ class SecurityGroupHandler(BaseSynchronizationHandler):
 
     def update_service_property(self, resource, settings):
         service_property = super(SecurityGroupHandler, self).update_service_property(resource, settings)
+        if not service_property:
+            return
+
         service_property.rules.all().delete()
         group_rules = self.map_rules(service_property, resource)
         service_property.rules.bulk_create(group_rules)
