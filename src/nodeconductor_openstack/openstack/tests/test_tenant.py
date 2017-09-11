@@ -165,6 +165,93 @@ class TenantCreateTest(BaseTenantActionsTest):
         self.assertIsNotNone(tenant.user_password)
         self.assertEqual(tenant.user_username, payload['user_username'])
 
+    @override_openstack_settings(DEFAULT_SECURITY_GROUPS=(
+        {
+            'name': 'allow-all',
+            'description': 'Security group for any access',
+            'rules': (
+                {
+                    'protocol': 'icmp',
+                    'cidr': '0.0.0.0/0',
+                    'icmp_type': -1,
+                    'icmp_code': -1,
+                },
+                {
+                    'protocol': 'tcp',
+                    'cidr': '0.0.0.0/0',
+                    'from_port': 1,
+                    'to_port': 65535,
+                },
+            ),
+        },
+        {
+            'name': 'ssh',
+            'description': 'Security group for secure shell access',
+            'rules': (
+                {
+                    'protocol': 'tcp',
+                    'cidr': '0.0.0.0/0',
+                    'from_port': 22,
+                    'to_port': 22,
+                },
+            ),
+        },
+    ))
+    def test_default_security_groups_are_created(self):
+        expected_security_groups = settings.NODECONDUCTOR_OPENSTACK['DEFAULT_SECURITY_GROUPS']
+        self.client.force_authenticate(self.fixture.staff)
+
+        response = self.client.post(self.url, data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        tenant = models.Tenant.objects.get(name=self.valid_data['name'])
+        self.assertEqual(len(expected_security_groups), tenant.security_groups.count())
+        allow_all = expected_security_groups[0]
+        tenant_sg = tenant.security_groups.get(name='allow-all')
+        expected_icmp_rule = [rule for rule in allow_all['rules'] if rule['protocol'] == 'icmp'][0]
+        icmp_rule = tenant_sg.rules.get(protocol='icmp')
+        self.assertEqual(expected_icmp_rule['icmp_type'], icmp_rule.from_port)
+        self.assertEqual(expected_icmp_rule['icmp_code'], icmp_rule.to_port)
+
+    @override_openstack_settings(DEFAULT_SECURITY_GROUPS=(
+        {
+            'description': 'Security group for any access',
+            'rules': (
+                {
+                    'protocol': 'icmp',
+                    'cidr': '0.0.0.0/0',
+                    'icmp_type': -1,
+                    'icmp_code': -1,
+                },
+                {
+                    'protocol': 'tcp',
+                    'cidr': '0.0.0.0/0',
+                    'from_port': 1,
+                    'to_port': 65535,
+                },
+            ),
+        },
+    ))
+    def test_tenant_is_not_created_if_configured_security_groups_have_no_name(self):
+        self.client.force_authenticate(self.fixture.staff)
+
+        response = self.client.post(self.url, data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @override_openstack_settings(DEFAULT_SECURITY_GROUPS=(
+        {
+            'name': 'allow-all',
+            'description': 'Security group for any access',
+        },
+    ))
+    def test_tenant_is_not_created_if_configured_security_groups_rules_are_not_present(self):
+        self.client.force_authenticate(self.fixture.staff)
+
+        response = self.client.post(self.url, data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
 
 class TenantUpdateTest(BaseTenantActionsTest):
 

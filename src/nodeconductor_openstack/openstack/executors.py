@@ -107,6 +107,8 @@ class TenantImportExecutor(core_executors.ActionExecutor):
             core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_quotas'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_floating_ips'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_security_groups'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'import_tenant_networks'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'import_tenant_subnets'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'detect_external_network'),
         ]
 
@@ -119,7 +121,7 @@ class TenantImportExecutor(core_executors.ActionExecutor):
 
     @classmethod
     def get_success_signature(cls, tenant, serialized_tenant, **kwargs):
-        service_settings = service_settings = structure_models.ServiceSettings.objects.get(scope=tenant)
+        service_settings = structure_models.ServiceSettings.objects.get(scope=tenant)
         serialized_service_settings = core_utils.serialize_instance(service_settings)
         tasks = [
             core_tasks.StateTransitionTask().si(serialized_tenant, state_transition='set_ok'),
