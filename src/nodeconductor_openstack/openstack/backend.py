@@ -376,24 +376,27 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         return security_group
 
-    def pull_networks(self, tenants=None):
-        neutron = self.neutron_client
+    def pull_networks(self):
+        tenants = models.Tenant.objects.exclude(backend_id='').filter(
+            state=models.Tenant.States.OK,
+            service_project_link__service__settings=self.settings,
+        ).prefetch_related('networks')
 
-        if tenants is None:
-            tenants = models.Tenant.objects.filter(
-                state=models.Tenant.States.OK,
-                service_project_link__service__settings=self.settings,
-            ).prefetch_related('networks')
+        self._pull_networks(tenants)
+
+    def _pull_tenant_networks(self, tenant):
+        return self._pull_networks([tenant])
+
+    def _pull_networks(self, tenants):
+        neutron = self.neutron_client
         tenant_mappings = {tenant.backend_id: tenant for tenant in tenants}
-        if not tenant_mappings:
-            return
 
         try:
             backend_networks = neutron.list_networks(tenant_id=tenant_mappings.keys())['networks']
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        network_uuids = []
+        networks = []
         with transaction.atomic():
             for backend_network in backend_networks:
                 tenant = tenant_mappings[backend_network['tenant_id']]
@@ -410,12 +413,15 @@ class OpenStackBackend(BaseOpenStackBackend):
                     update_pulled_fields(network, imported_network, models.Network.get_backend_fields())
                     handle_resource_update_success(network)
 
-                network_uuids.append(network.uuid)
+                networks.append(network)
 
+            networks_uuid = [network.uuid for network in networks]
             for network in models.Network.objects.filter(
                     state__in=[models.Network.States.OK, models.Network.States.ERRED],
-                    service_project_link__service__settings=self.settings).exclude(uuid__in=network_uuids):
+                    service_project_link__service__settings=self.settings).exclude(uuid__in=networks_uuid):
                 handle_resource_not_found(network)
+
+        return networks
 
     def _backend_network_to_network(self, backend_network, **kwargs):
         network = models.Network(
@@ -476,6 +482,10 @@ class OpenStackBackend(BaseOpenStackBackend):
                     state__in=[models.SubNet.States.OK, models.SubNet.States.ERRED],
                     service_project_link__service__settings=self.settings).exclude(uuid__in=subnet_uuids):
                 handle_resource_not_found(subnet)
+
+    @log_backend_action()
+    def import_tenant_subnets(self, tenant):
+        self.pull_subnets(tenant.networks.iterator())
 
     def _backend_subnet_to_subnet(self, backend_subnet, **kwargs):
         subnet = models.SubNet(
@@ -608,9 +618,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         except keystone_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        cur_tenants = set(models.Tenant.objects.filter(
-            service_project_link__service__settings=self.settings
-        ).values_list('backend_id', flat=True))
+        cur_tenants = set(models.Tenant.objects.values_list('backend_id', flat=True))
 
         return [{
             'backend_id': tenant.id,
@@ -1131,6 +1139,15 @@ class OpenStackBackend(BaseOpenStackBackend):
         else:
             network.decrease_backend_quotas_usage()
 
+    @log_backend_action()
+    def import_tenant_networks(self, tenant):
+        networks = self._pull_tenant_networks(tenant)
+        if networks:
+            # XXX: temporary fix - right now backend logic is based on statement "one tenant has one network"
+            # We need to fix this in the future.
+            tenant.internal_network_id = networks[0].backend_id
+            tenant.save()
+
     def import_network(self, network_backend_id):
         neutron = self.neutron_admin_client
         try:
@@ -1324,7 +1341,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         try:
             if external:
                 if (not router.get('external_gateway_info') or
-                            router['external_gateway_info'].get('network_id') != network_id):
+                        router['external_gateway_info'].get('network_id') != network_id):
                     neutron.add_gateway_router(router['id'], {'network_id': network_id})
                     logger.info('External network %s was connected to the router %s.', network_id, router['name'])
                 else:

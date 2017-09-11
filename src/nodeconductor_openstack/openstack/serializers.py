@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+import copy
 import logging
 import re
 
@@ -425,7 +426,23 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             raise serializers.ValidationError(message)
         return spl
 
+    def validate_security_groups_configuration(self):
+        nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
+        config_groups = nc_settings.get('DEFAULT_SECURITY_GROUPS', [])
+        for group in config_groups:
+            sg_name = group.get('name')
+            if sg_name in (None, ''):
+                raise serializers.ValidationError(
+                    _('Skipping misconfigured security group: parameter "name" not found or is empty.'))
+
+            rules = group.get('rules')
+            if type(rules) not in (list, tuple):
+                raise serializers.ValidationError(
+                    _('Skipping misconfigured security group: parameter "rules" should be list or tuple.'))
+
     def validate(self, attrs):
+        self.validate_security_groups_configuration()
+
         if self.instance is not None or not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
             return attrs
 
@@ -475,6 +492,33 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
                 allocation_pools=_generate_subnet_allocation_pool(subnet_cidr),
                 dns_nameservers=spl.service.settings.options.get('dns_nameservers', [])
             )
+
+            nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
+            config_groups = copy.deepcopy(nc_settings.get('DEFAULT_SECURITY_GROUPS', []))
+
+            for group in config_groups:
+                sg_name = group.get('name')
+                sg_description = group.get('description', None)
+                sg = models.SecurityGroup.objects.get_or_create(
+                    service_project_link=tenant.service_project_link,
+                    tenant=tenant,
+                    description=sg_description,
+                    name=sg_name)[0]
+
+                for rule in group.get('rules'):
+                    if 'icmp_type' in rule:
+                        rule['from_port'] = rule.pop('icmp_type')
+                    if 'icmp_code' in rule:
+                        rule['to_port'] = rule.pop('icmp_code')
+
+                    try:
+                        rule = models.SecurityGroupRule(security_group=sg, **rule)
+                        rule.full_clean()
+                    except serializers.ValidationError as e:
+                        logger.error('Failed to create rule for security group %s: %s.' % (sg_name, e))
+                    else:
+                        rule.save()
+
         return tenant
 
 

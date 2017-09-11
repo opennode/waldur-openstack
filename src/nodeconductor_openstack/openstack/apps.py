@@ -35,12 +35,6 @@ class OpenStackConfig(AppConfig):
                 )
             )
 
-        signals.post_save.connect(
-            handlers.create_initial_security_groups,
-            sender=Tenant,
-            dispatch_uid='openstack.handlers.create_initial_security_groups',
-        )
-
         for model in (structure_models.Project, structure_models.Customer):
             structure_signals.structure_role_revoked.connect(
                 handlers.remove_ssh_key_from_tenants,

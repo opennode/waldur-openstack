@@ -1,19 +1,19 @@
-from ddt import ddt, data
-import mock
 import urllib
 import uuid
 
 from cinderclient import exceptions as cinder_exceptions
+from ddt import ddt, data
 from django.conf import settings
 from django.test import override_settings
 from novaclient import exceptions as nova_exceptions
 from rest_framework import status, test
+import mock
 
+from nodeconductor_openstack.openstack.tests.unittests import test_backend
 from nodeconductor.structure.tests import factories as structure_factories
-from nodeconductor_openstack.openstack.tests.test_backend import BaseBackendTestCase
 
-from .. import models, views
 from . import factories, fixtures
+from .. import models, views
 
 
 @ddt
@@ -177,7 +177,7 @@ class InstanceCreateTest(test.APITransactionTestCase):
         self.assertIn('internal_ips_set', response.data)
 
 
-class InstanceDeleteTest(BaseBackendTestCase):
+class InstanceDeleteTest(test_backend.BaseBackendTestCase):
     def setUp(self):
         super(InstanceDeleteTest, self).setUp()
         self.instance = factories.InstanceFactory(
