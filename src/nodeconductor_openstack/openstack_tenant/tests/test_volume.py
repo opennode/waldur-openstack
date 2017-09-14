@@ -330,3 +330,47 @@ class VolumeImportTest(BaseVolumeTest):
         response = self.client.post(self.url, payload)
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class VolumeCreateTest(test.APITransactionTestCase):
+    def setUp(self):
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.settings = self.fixture.openstack_tenant_service_settings
+        self.image = factories.ImageFactory(settings=self.settings)
+        self.image_url = factories.ImageFactory.get_url(self.image)
+        self.spl_url = factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl)
+        self.client.force_authenticate(self.fixture.owner)
+
+    def test_image_name_populated_on_volume_creation(self):
+        url = factories.VolumeFactory.get_list_url()
+        payload = {
+            'name': 'Test volume',
+            'image': self.image_url,
+            'service_project_link': self.spl_url,
+            'size': 10240
+        }
+
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['image_name'], self.image.name)
+
+    def test_volume_image_name_populated_on_instance_creation(self):
+        flavor = factories.FlavorFactory(settings=self.settings)
+        flavor_url = factories.FlavorFactory.get_url(flavor)
+        subnet_url = factories.SubNetFactory.get_url(self.fixture.subnet)
+        url = factories.InstanceFactory.get_list_url()
+
+        payload = {
+            'name': 'Test instance',
+            'image': self.image_url,
+            'service_project_link': self.spl_url,
+            'flavor': flavor_url,
+            'system_volume_size': 20480,
+            'internal_ips_set': [{'subnet': subnet_url}],
+        }
+
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        system_volume = response.data['volumes'][0]
+        self.assertEqual(system_volume['image_name'], self.image.name)
