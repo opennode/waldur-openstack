@@ -10,13 +10,11 @@ Source0: %{name}-%{version}.tar.gz
 Requires: waldur-core >= 0.145.5
 Requires: python-ceilometerclient >= 2.3.0
 Requires: python-cinderclient >= 1.6.0
-Requires: python-cinderclient < 2.0.0
 Requires: python-glanceclient >= 1:2.0.0
 Requires: python-iptools >= 0.6.1
 Requires: python-keystoneclient >= 1:2.3.1
 Requires: python-neutronclient >= 4.1.1
 Requires: python-novaclient >= 1:3.3.0
-Requires: python-novaclient < 1:3.4.0
 
 Obsoletes: nodeconductor-openstack
 
