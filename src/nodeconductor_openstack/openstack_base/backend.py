@@ -16,7 +16,7 @@ from cinderclient.v2 import client as cinder_client
 from glanceclient.v1 import client as glance_client
 from keystoneclient.v3 import client as keystone_client
 from neutronclient.v2_0 import client as neutron_client
-from novaclient.v2 import client as nova_client
+from novaclient import client as nova_client
 
 from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
@@ -203,7 +203,7 @@ class OpenStackClient(object):
     @property
     def nova(self):
         try:
-            return nova_client.Client(session=self.session.keystone_session)
+            return nova_client.Client(version='2', session=self.session.keystone_session)
         except nova_exceptions.ClientException as e:
             logger.exception('Failed to create nova client: %s', e)
             six.reraise(OpenStackBackendError, e)
