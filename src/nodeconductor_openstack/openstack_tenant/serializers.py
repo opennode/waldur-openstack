@@ -210,11 +210,11 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         model = models.Volume
         fields = structure_serializers.BaseResourceSerializer.Meta.fields + (
             'source_snapshot', 'size', 'bootable', 'metadata',
-            'image', 'image_metadata', 'type', 'runtime_state',
+            'image', 'image_metadata', 'image_name', 'type', 'runtime_state',
             'device', 'action', 'action_details', 'instance', 'instance_name',
         )
         read_only_fields = structure_serializers.BaseResourceSerializer.Meta.read_only_fields + (
-            'image_metadata', 'bootable', 'source_snapshot', 'runtime_state', 'device', 'metadata',
+            'image_metadata', 'image_name', 'bootable', 'source_snapshot', 'runtime_state', 'device', 'metadata',
             'action', 'instance', 'type',
         )
         protected_fields = structure_serializers.BaseResourceSerializer.Meta.protected_fields + (
@@ -257,6 +257,8 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
     def create(self, validated_data):
         if not validated_data.get('size'):
             validated_data['size'] = validated_data['snapshot'].size
+        if validated_data.get('image'):
+            validated_data['image_name'] = validated_data['image'].name
         return super(VolumeSerializer, self).create(validated_data)
 
 
@@ -479,7 +481,7 @@ class NestedVolumeSerializer(core_serializers.AugmentedSerializerMixin,
 
     class Meta:
         model = models.Volume
-        fields = 'url', 'uuid', 'name', 'state', 'bootable', 'size', 'device', 'resource_type'
+        fields = 'url', 'uuid', 'name', 'image_name', 'state', 'bootable', 'size', 'device', 'resource_type'
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'}
         }
@@ -814,6 +816,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             service_project_link=spl,
             size=system_volume_size,
             image=image,
+            image_name=image.name,
             bootable=True,
         )
         volumes.append(system_volume)

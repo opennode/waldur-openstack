@@ -17,58 +17,6 @@ from .models import SecurityGroup, SecurityGroupRule, Tenant
 logger = logging.getLogger(__name__)
 
 
-class SecurityGroupCreateException(Exception):
-    pass
-
-
-def create_initial_security_groups(sender, instance=None, created=False, **kwargs):
-    if not created:
-        return
-
-    nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
-    config_groups = nc_settings.get('DEFAULT_SECURITY_GROUPS', [])
-
-    for group in config_groups:
-        try:
-            create_security_group(instance, group)
-        except SecurityGroupCreateException as e:
-            logger.error(e)
-
-
-def create_security_group(tenant, group):
-    sg_name = group.get('name')
-    if sg_name in (None, ''):
-        raise SecurityGroupCreateException(
-            'Skipping misconfigured security group: parameter "name" not found or is empty.')
-
-    rules = group.get('rules')
-    if type(rules) not in (list, tuple):
-        raise SecurityGroupCreateException(
-            'Skipping misconfigured security group: parameter "rules" should be list or tuple.')
-
-    sg_description = group.get('description', None)
-    sg = SecurityGroup.objects.get_or_create(
-        service_project_link=tenant.service_project_link,
-        tenant=tenant,
-        description=sg_description,
-        name=sg_name)[0]
-
-    for rule in rules:
-        if 'icmp_type' in rule:
-            rule['from_port'] = rule.pop('icmp_type')
-        if 'icmp_code' in rule:
-            rule['to_port'] = rule.pop('icmp_code')
-
-        try:
-            rule = SecurityGroupRule(security_group=sg, **rule)
-            rule.full_clean()
-        except ValidationError as e:
-            logger.error('Failed to create rule for security group %s: %s.' % (sg_name, e))
-        else:
-            rule.save()
-    return sg
-
-
 def remove_ssh_key_from_tenants(sender, structure, user, role, **kwargs):
     """ Delete user ssh keys from tenants that he does not have access now. """
     tenants = Tenant.objects.filter(**{sender.__name__.lower(): structure})
