@@ -294,7 +294,7 @@ class SecurityGroupHandler(BaseSynchronizationHandler):
         ) for rule in openstack_security_group.rules.iterator()]
 
     def create_service_property(self, resource, settings):
-        service_property = super(SecurityGroupHandler, self).create_service_property(resource, settings)
+        service_property, _ = super(SecurityGroupHandler, self).create_service_property(resource, settings)
         if resource.rules.count() > 0:
             group_rules = self.map_rules(service_property, resource)
             service_property.rules.bulk_create(group_rules)
