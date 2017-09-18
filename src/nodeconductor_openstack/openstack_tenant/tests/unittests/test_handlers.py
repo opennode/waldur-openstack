@@ -30,6 +30,9 @@ class SecurityGroupHandlerTest(BaseServicePropertyTest):
             tenant=self.tenant,
             state=StateMixin.States.CREATING
         )
+
+        openstack_security_rule = openstack_factories.SecurityGroupRuleFactory(security_group=openstack_security_group)
+
         self.assertEqual(models.SecurityGroup.objects.count(), 0)
 
         openstack_security_group.set_ok()
@@ -40,6 +43,10 @@ class SecurityGroupHandlerTest(BaseServicePropertyTest):
             settings=self.service_settings,
             backend_id=openstack_security_group.backend_id
         ).exists())
+        security_group_property = models.SecurityGroup.objects.get(settings=self.service_settings,
+                                                                   backend_id=openstack_security_group.backend_id)
+
+        self.assertTrue(security_group_property.rules.filter(backend_id=openstack_security_rule.backend_id).exists())
 
     def test_security_group_update(self):
         openstack_security_group = openstack_factories.SecurityGroupFactory(

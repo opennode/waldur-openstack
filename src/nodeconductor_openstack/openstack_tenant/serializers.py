@@ -27,6 +27,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                         structure_serializers.BaseServiceSerializer):
     SERVICE_ACCOUNT_FIELDS = {
         'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)'),
+        'domain': _('Tenant domain'),
         'username': _('Tenant user username'),
         'password': _('Tenant user password'),
     }
