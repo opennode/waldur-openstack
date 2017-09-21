@@ -328,7 +328,8 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if (instance.state == models.Instance.States.OK and
                 instance.runtime_state == models.Instance.RuntimeStates.SHUTOFF):
             return
-        raise core_exceptions.IncorrectStateException(_('Instance should be shutoff and OK or erred.'))
+        raise core_exceptions.IncorrectStateException(_('Instance should be shutoff and OK or erred. '
+                                                        'Please contact support.'))
 
     def destroy(self, request, uuid=None):
         """
