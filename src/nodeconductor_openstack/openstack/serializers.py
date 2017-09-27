@@ -569,7 +569,7 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstack-spl-detail',
         read_only=True)
     cidr = serializers.CharField(
-        validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24')
+        validators=[subnet_cidr_validator], required=False, initial='192.168.42.0/24')
     allocation_pools = JsonField(read_only=True)
     network_name = serializers.CharField(source='network.name', read_only=True)
     tenant = serializers.HyperlinkedRelatedField(

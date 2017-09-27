@@ -60,3 +60,15 @@ class SubNetUpdateActionTest(BaseSubNetTest):
         response = self.client.put(self.url, self.request_data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         executor_action_mock.assert_called_once()
+
+    def test_subnet_update_does_not_reset_cidr(self):
+        CIDR = '10.1.0.0/24'
+        subnet = self.fixture.subnet
+        subnet.cidr = CIDR
+        subnet.save()
+
+        response = self.client.put(self.url, self.request_data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        subnet.refresh_from_db()
+        self.assertEqual(subnet.cidr, CIDR)
