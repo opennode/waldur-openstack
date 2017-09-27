@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.utils.translation import ugettext_lazy as _
 
-from nodeconductor.core.admin import ExecutorAdminAction
+from nodeconductor.core.admin import ExecutorAdminAction, format_json_field
 from nodeconductor.structure import admin as structure_admin
 
 from . import executors, models
@@ -40,7 +40,45 @@ class SecurityGroupAdmin(structure_admin.BackendModelAdmin):
     list_display = ('name', 'settings')
 
 
-class VolumeAdmin(structure_admin.ResourceAdmin):
+class MetadataMixin(admin.ModelAdmin):
+    def get_readonly_fields(self, request, obj=None):
+        return super(MetadataMixin, self).get_readonly_fields(request, obj) + ('format_metadata',)
+
+    def format_metadata(self, obj):
+        return format_json_field(obj.metadata)
+
+    format_metadata.allow_tags = True
+    format_metadata.short_description = _('Metadata')
+
+
+class ImageMetadataMixin(admin.ModelAdmin):
+    def get_readonly_fields(self, request, obj=None):
+        return super(ImageMetadataMixin, self).get_readonly_fields(request, obj) + ('format_image_metadata',)
+
+    def format_image_metadata(self, obj):
+        return format_json_field(obj.image_metadata)
+
+    format_image_metadata.allow_tags = True
+    format_image_metadata.short_description = _('Image metadata')
+
+
+class ActionDetailsMixin(admin.ModelAdmin):
+    def get_readonly_fields(self, request, obj=None):
+        return super(ActionDetailsMixin, self).get_readonly_fields(request, obj) + ('format_action_details',)
+
+    def format_action_details(self, obj):
+        return format_json_field(obj.action_details)
+
+    format_action_details.allow_tags = True
+    format_action_details.short_description = _('Action details')
+
+
+class VolumeAdmin(MetadataMixin,
+                  ImageMetadataMixin,
+                  ActionDetailsMixin,
+                  structure_admin.ResourceAdmin):
+
+    exclude = ('metadata', 'image_metadata', 'action_details')
 
     class Pull(ExecutorAdminAction):
         executor = executors.SnapshotPullExecutor
@@ -66,9 +104,9 @@ class SnapshotAdmin(structure_admin.ResourceAdmin):
     pull = Pull()
 
 
-class InstanceAdmin(structure_admin.VirtualMachineAdmin):
-    readonly_fields = ('action_details',)
+class InstanceAdmin(ActionDetailsMixin, structure_admin.VirtualMachineAdmin):
     actions = structure_admin.VirtualMachineAdmin.actions + ['pull']
+    exclude = ('action_details',)
 
     class Pull(ExecutorAdminAction):
         executor = executors.InstancePullExecutor
@@ -81,10 +119,11 @@ class InstanceAdmin(structure_admin.VirtualMachineAdmin):
     pull = Pull()
 
 
-class BackupAdmin(admin.ModelAdmin):
+class BackupAdmin(MetadataMixin, admin.ModelAdmin):
     readonly_fields = ('created', 'kept_until')
     list_filter = ('uuid', 'state')
     list_display = ('uuid', 'instance', 'state', 'project')
+    exclude = ('metadata',)
 
     def project(self, obj):
         return obj.instance.service_project_link.project
