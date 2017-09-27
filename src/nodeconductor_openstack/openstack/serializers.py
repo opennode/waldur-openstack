@@ -598,6 +598,8 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
             attrs['network'] = network = self.context['view'].get_object()
             if network.subnets.count() >= 1:
                 raise serializers.ValidationError(_('Internal network cannot have more than one subnet.'))
+            if 'cidr' not in attrs:
+                attrs['cidr'] = '192.168.42.0/24'
             cidr = attrs['cidr']
             if models.SubNet.objects.filter(cidr=cidr, network__tenant=network.tenant).exists():
                 raise serializers.ValidationError(_('Subnet with cidr "%s" is already registered') % cidr)
