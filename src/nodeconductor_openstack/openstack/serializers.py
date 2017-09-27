@@ -569,7 +569,7 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstack-spl-detail',
         read_only=True)
     cidr = serializers.CharField(
-        validators=[subnet_cidr_validator], default='192.168.42.0/24', initial='192.168.42.0/24')
+        validators=[subnet_cidr_validator], required=False, initial='192.168.42.0/24')
     allocation_pools = JsonField(read_only=True)
     network_name = serializers.CharField(source='network.name', read_only=True)
     tenant = serializers.HyperlinkedRelatedField(
@@ -598,6 +598,8 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
             attrs['network'] = network = self.context['view'].get_object()
             if network.subnets.count() >= 1:
                 raise serializers.ValidationError(_('Internal network cannot have more than one subnet.'))
+            if 'cidr' not in attrs:
+                attrs['cidr'] = '192.168.42.0/24'
             cidr = attrs['cidr']
             if models.SubNet.objects.filter(cidr=cidr, network__tenant=network.tenant).exists():
                 raise serializers.ValidationError(_('Subnet with cidr "%s" is already registered') % cidr)
