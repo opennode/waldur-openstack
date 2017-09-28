@@ -1328,8 +1328,11 @@ class OpenStackBackend(BaseOpenStackBackend):
 
     def _create_router(self, router_name, tenant_id):
         neutron = self.neutron_client
+        create_ha_routers = bool(self.settings.options.get('create_ha_routers'))
+        options = {'router': {'name': router_name, 'tenant_id': tenant_id, 'ha': create_ha_routers}}
+
         try:
-            router = neutron.create_router({'router': {'name': router_name, 'tenant_id': tenant_id}})['router']
+            router = neutron.create_router(options)['router']
             logger.info('Router %s has been created.', router['name'])
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
