@@ -44,6 +44,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'access_url': _('Publicly accessible OpenStack dashboard URL'),
         'dns_nameservers': _('Default value for new subnets DNS name servers. Should be defined as list.'),
         'flavor_exclude_regex': _('Flavors matching this regex expression will not be pulled from the backend.'),
+        'create_ha_routers': _('Create highly available Neutron routers.'),
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
@@ -69,6 +70,9 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
             },
             'access_url': {
                 'label': 'Access URL',
+            },
+            'create_ha_routers': {
+                'default_value': False,
             },
         }
 
