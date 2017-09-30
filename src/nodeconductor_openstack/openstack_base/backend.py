@@ -198,12 +198,12 @@ class OpenStackClient(object):
 
     @property
     def keystone(self):
-        return keystone_client.Client(session=self.session.keystone_session)
+        return keystone_client.Client(session=self.session.keystone_session, interface='public')
 
     @property
     def nova(self):
         try:
-            return nova_client.Client(version='2', session=self.session.keystone_session)
+            return nova_client.Client(version='2', session=self.session.keystone_session, endpoint_type='publicURL')
         except nova_exceptions.ClientException as e:
             logger.exception('Failed to create nova client: %s', e)
             six.reraise(OpenStackBackendError, e)
