@@ -399,7 +399,11 @@ class OpenStackBackend(BaseOpenStackBackend):
         networks = []
         with transaction.atomic():
             for backend_network in backend_networks:
-                tenant = tenant_mappings[backend_network['tenant_id']]
+                tenant = tenant_mappings.get(backend_network['tenant_id'])
+                if not tenant:
+                    logger.debug('Skipping network %s synchronization because its tenant %s is not available.',
+                                 backend_network['id'], backend_network['tenant_id'])
+                    continue
 
                 imported_network = self._backend_network_to_network(
                     backend_network, tenant=tenant, service_project_link=tenant.service_project_link)
