@@ -30,7 +30,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                         structure_serializers.BaseServiceSerializer):
 
     SERVICE_ACCOUNT_FIELDS = {
-        'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)'),
+        'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v3)'),
         'username': _('Administrative user'),
         'domain': _('Domain name. If not defined default domain will be used.'),
         'password': '',
