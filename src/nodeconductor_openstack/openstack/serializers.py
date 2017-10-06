@@ -310,6 +310,11 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
             rule.full_clean(exclude=['security_group'])
         return value
 
+    def validate_name(self, value):
+        if value == 'default':
+            raise serializers.ValidationError(_('Default security group is managed by OpenStack itself.'))
+        return value
+
     def create(self, validated_data):
         rules = validated_data.pop('rules', [])
         validated_data['tenant'] = tenant = self.context['view'].get_object()

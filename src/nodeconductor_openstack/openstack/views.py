@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.utils import six
 from django.utils.translation import ugettext_lazy as _
-from rest_framework import decorators, response, status, serializers as rf_serializers
+from rest_framework import decorators, exceptions, response, status, serializers as rf_serializers
 
 from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
 from nodeconductor.structure import (views as structure_views, filters as structure_filters,
@@ -165,7 +165,15 @@ class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetacl
     filter_class = filters.SecurityGroupFilter
     disabled_actions = ['create', 'pull']  # pull operation should be implemented in WAL-323
 
+    def default_security_group_validator(security_group):
+        if security_group.name == 'default':
+            raise exceptions.ValidationError(_('Default security group name and description are not editable.'))
+
+    update_validators = partial_update_validators = structure_views.ResourceViewSet.update_validators + [
+        default_security_group_validator
+    ]
     update_executor = executors.SecurityGroupUpdateExecutor
+
     delete_executor = executors.SecurityGroupDeleteExecutor
 
     @decorators.detail_route(methods=['POST'])
