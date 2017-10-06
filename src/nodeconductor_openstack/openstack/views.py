@@ -168,7 +168,7 @@ class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetacl
     def default_security_group_validator(security_group):
         if security_group.name == 'default':
             raise exceptions.ValidationError({
-                'name': _('Default security group name and description are not editable.')
+                'name': _('Default security group is managed by OpenStack itself.')
             })
 
     update_validators = partial_update_validators = structure_views.ResourceViewSet.update_validators + [
@@ -176,6 +176,9 @@ class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetacl
     ]
     update_executor = executors.SecurityGroupUpdateExecutor
 
+    destroy_validators = structure_views.ResourceViewSet.destroy_validators + [
+        default_security_group_validator
+    ]
     delete_executor = executors.SecurityGroupDeleteExecutor
 
     @decorators.detail_route(methods=['POST'])
