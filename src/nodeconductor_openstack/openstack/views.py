@@ -167,7 +167,9 @@ class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetacl
 
     def default_security_group_validator(security_group):
         if security_group.name == 'default':
-            raise exceptions.ValidationError(_('Default security group name and description are not editable.'))
+            raise exceptions.ValidationError({
+                'name': _('Default security group name and description are not editable.')
+            })
 
     update_validators = partial_update_validators = structure_views.ResourceViewSet.update_validators + [
         default_security_group_validator
