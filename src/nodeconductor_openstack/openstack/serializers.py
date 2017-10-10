@@ -30,7 +30,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                         structure_serializers.BaseServiceSerializer):
 
     SERVICE_ACCOUNT_FIELDS = {
-        'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)'),
+        'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v3)'),
         'username': _('Administrative user'),
         'domain': _('Domain name. If not defined default domain will be used.'),
         'password': '',
@@ -308,6 +308,11 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
                 raise serializers.ValidationError(
                     _('Cannot add existed rule with id %s to new security group') % rule.id)
             rule.full_clean(exclude=['security_group'])
+        return value
+
+    def validate_name(self, value):
+        if value == 'default':
+            raise serializers.ValidationError(_('Default security group is managed by OpenStack itself.'))
         return value
 
     def create(self, validated_data):

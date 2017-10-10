@@ -50,6 +50,29 @@ class SecurityGroupUpdateTest(BaseSecurityGroupTest):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
+    @data('patch', 'put')
+    def test_default_security_group_name_can_not_be_updated(self, method):
+        self.client.force_authenticate(self.fixture.staff)
+        self.security_group.name = 'default'
+        self.security_group.save()
+
+        update = getattr(self.client, method)
+        response = update(self.url, data={'name': 'new_name'})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @data('patch', 'put')
+    def test_security_group_name_can_not_become_default(self, method):
+        self.client.force_authenticate(self.fixture.staff)
+        self.security_group.name = 'ssh'
+        self.security_group.save()
+
+        update = getattr(self.client, method)
+        response = update(self.url, data={'name': 'default'})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue('name' in response.data)
+
 
 class SecurityGroupSetRulesTest(BaseSecurityGroupTest):
 
@@ -149,12 +172,20 @@ class SecurityGroupDeleteTest(BaseSecurityGroupTest):
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
 
+    def test_default_security_group_name_can_not_be_deleted(self):
+        self.client.force_authenticate(self.fixture.staff)
+        self.security_group.name = 'default'
+        self.security_group.save()
+
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
 
 @ddt
-class SecurityGroupRetreiveTest(BaseSecurityGroupTest):
+class SecurityGroupRetrieveTest(BaseSecurityGroupTest):
 
     def setUp(self):
-        super(SecurityGroupRetreiveTest, self).setUp()
+        super(SecurityGroupRetrieveTest, self).setUp()
         self.security_group = factories.SecurityGroupFactory(
             service_project_link=self.fixture.openstack_spl,
             tenant=self.fixture.tenant,
