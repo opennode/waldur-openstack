@@ -26,7 +26,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
                         core_serializers.RequiredFieldsMixin,
                         structure_serializers.BaseServiceSerializer):
     SERVICE_ACCOUNT_FIELDS = {
-        'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v2.0)'),
+        'backend_url': _('Keystone auth URL (e.g. http://keystone.example.com:5000/v3)'),
         'domain': _('Tenant domain'),
         'username': _('Tenant user username'),
         'password': _('Tenant user password'),
@@ -35,6 +35,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         'tenant_id': _('Tenant ID in OpenStack'),
         'availability_zone': _('Default availability zone for provisioned instances'),
         'flavor_exclude_regex': _('Flavors matching this regex expression will not be pulled from the backend.'),
+        'external_network_id': _('It is used to automatically assign floating IP to your virtual machine.'),
     }
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
@@ -43,7 +44,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
         extra_field_options = {
             'backend_url': {
                 'label': 'API URL',
-                'default_value': 'http://keystone.example.com:5000/v2.0',
+                'default_value': 'http://keystone.example.com:5000/v3',
             },
             'tenant_id': {
                 'label': 'Tenant ID',
@@ -51,6 +52,9 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
             'availability_zone': {
                 'placeholder': 'default',
             },
+            'external_network_id': {
+                'required': True,
+            }
         }
 
 

@@ -322,12 +322,15 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         if instance.backups.exists():
             raise core_exceptions.IncorrectStateException(_('Cannot delete instance that has backups.'))
 
-    def _is_shutoff_and_ok_or_erred(instance):
+    def _can_destroy_instance(instance):
         if instance.state == models.Instance.States.ERRED:
             return
         if (instance.state == models.Instance.States.OK and
                 instance.runtime_state == models.Instance.RuntimeStates.SHUTOFF):
             return
+        if (instance.state == models.Instance.States.OK and
+                instance.runtime_state == models.Instance.RuntimeStates.ACTIVE):
+            raise core_exceptions.IncorrectStateException(_('Please stop the instance before its removal.'))
         raise core_exceptions.IncorrectStateException(_('Instance should be shutoff and OK or erred. '
                                                         'Please contact support.'))
 
@@ -373,7 +376,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
 
         return response.Response({'status': _('destroy was scheduled')}, status=status.HTTP_202_ACCEPTED)
 
-    destroy_validators = [_is_shutoff_and_ok_or_erred, _has_backups]
+    destroy_validators = [_can_destroy_instance, _has_backups]
     destroy_serializer_class = serializers.InstanceDeleteSerializer
 
     @decorators.detail_route(methods=['post'])
@@ -388,8 +391,14 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.InstanceFlavorChangeExecutor().execute(instance, flavor=flavor, old_flavor_name=old_flavor_name)
         return response.Response({'status': _('change_flavor was scheduled')}, status=status.HTTP_202_ACCEPTED)
 
+    def _can_change_flavor(instance):
+        if (instance.state == models.Instance.States.OK and
+                instance.runtime_state == models.Instance.RuntimeStates.ACTIVE):
+            raise core_exceptions.IncorrectStateException(_('Please stop the instance before changing its flavor.'))
+
     change_flavor_serializer_class = serializers.InstanceFlavorChangeSerializer
-    change_flavor_validators = [core_validators.StateValidator(models.Instance.States.OK),
+    change_flavor_validators = [_can_change_flavor,
+                                core_validators.StateValidator(models.Instance.States.OK),
                                 core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
 
     @decorators.detail_route(methods=['post'])
@@ -398,7 +407,13 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.InstanceStartExecutor().execute(instance)
         return response.Response({'status': _('start was scheduled')}, status=status.HTTP_202_ACCEPTED)
 
-    start_validators = [core_validators.StateValidator(models.Instance.States.OK),
+    def _can_start_instance(instance):
+        if (instance.state == models.Instance.States.OK and
+                instance.runtime_state == models.Instance.RuntimeStates.ACTIVE):
+            raise core_exceptions.IncorrectStateException(_('Instance is already active.'))
+
+    start_validators = [_can_start_instance,
+                        core_validators.StateValidator(models.Instance.States.OK),
                         core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.SHUTOFF)]
     start_serializer_class = rf_serializers.Serializer
 
@@ -408,7 +423,13 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.InstanceStopExecutor().execute(instance)
         return response.Response({'status': _('stop was scheduled')}, status=status.HTTP_202_ACCEPTED)
 
-    stop_validators = [core_validators.StateValidator(models.Instance.States.OK),
+    def _can_stop_instance(instance):
+        if (instance.state == models.Instance.States.OK and
+                instance.runtime_state == models.Instance.RuntimeStates.SHUTOFF):
+            raise core_exceptions.IncorrectStateException(_('Instance is already stopped.'))
+
+    stop_validators = [_can_stop_instance,
+                       core_validators.StateValidator(models.Instance.States.OK),
                        core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
     stop_serializer_class = rf_serializers.Serializer
 
@@ -418,7 +439,13 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         executors.InstanceRestartExecutor().execute(instance)
         return response.Response({'status': _('restart was scheduled')}, status=status.HTTP_202_ACCEPTED)
 
-    restart_validators = [core_validators.StateValidator(models.Instance.States.OK),
+    def _can_restart_instance(instance):
+        if (instance.state == models.Instance.States.OK and
+                instance.runtime_state == models.Instance.RuntimeStates.SHUTOFF):
+            raise core_exceptions.IncorrectStateException(_('Please start instance first.'))
+
+    restart_validators = [_can_restart_instance,
+                          core_validators.StateValidator(models.Instance.States.OK),
                           core_validators.RuntimeStateValidator(models.Instance.RuntimeStates.ACTIVE)]
     restart_serializer_class = rf_serializers.Serializer
 
