@@ -102,7 +102,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
     def pull_flavors(self):
         nova = self.nova_client
         try:
-            flavors = nova.flavors.findall(is_public=True)
+            flavors = nova.flavors.findall()
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -127,12 +127,12 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                         'disk': self.gb2mb(backend_flavor.disk),
                     })
 
-            models.Flavor.objects.filter(backend_id__in=cur_flavors.keys()).delete()
+            models.Flavor.objects.filter(backend_id__in=cur_flavors.keys(), settings=self.settings).delete()
 
     def pull_images(self):
         glance = self.glance_client
         try:
-            images = [image for image in glance.images.list() if image.is_public and not image.deleted]
+            images = [image for image in glance.images.list() if not image.deleted]
         except glance_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
@@ -149,7 +149,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                         'min_disk': self.gb2mb(backend_image.min_disk),
                     })
 
-            models.Image.objects.filter(backend_id__in=cur_images.keys()).delete()
+            models.Image.objects.filter(backend_id__in=cur_images.keys(), settings=self.settings).delete()
 
     def pull_floating_ips(self):
         # method assumes that instance internal IPs is up to date.
