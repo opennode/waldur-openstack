@@ -113,3 +113,8 @@ class OpenStackExtension(NodeConductorExtension):
                 'args': (),
             },
         }
+
+    @staticmethod
+    def get_cleanup_executor():
+        from .executors import OpenStackCleanupExecutor
+        return OpenStackCleanupExecutor
