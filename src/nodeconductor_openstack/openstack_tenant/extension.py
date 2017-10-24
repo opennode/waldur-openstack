@@ -52,3 +52,8 @@ class OpenStackTenantExtension(NodeConductorExtension):
                 'args': (),
             },
         }
+
+    @staticmethod
+    def get_cleanup_executor():
+        from .executors import OpenStackTenantCleanupExecutor
+        return OpenStackTenantCleanupExecutor

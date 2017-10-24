@@ -2,7 +2,11 @@ from __future__ import unicode_literals
 
 from celery import chain
 
-from nodeconductor.core import executors as core_executors, tasks as core_tasks, utils as core_utils
+from nodeconductor.core import executors as core_executors
+from nodeconductor.core import tasks as core_tasks
+from nodeconductor.core import utils as core_utils
+from nodeconductor.structure import executors as structure_executors
+from nodeconductor_openstack.openstack import executors as openstack_executors
 from nodeconductor_openstack.openstack import tasks as openstack_tasks
 
 from . import tasks, models
@@ -746,3 +750,19 @@ class SnapshotRestorationExecutor(core_executors.CreateExecutor):
     def get_failure_signature(cls, snapshot_restoration, serialized_snapshot_restoration, **kwargs):
         serialized_volume = core_utils.serialize_instance(snapshot_restoration.volume)
         return core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_erred')
+
+
+class OpenStackTenantCleanupExecutor(structure_executors.BaseCleanupExecutor):
+    related_executor = openstack_executors.OpenStackCleanupExecutor
+
+    pre_models = (
+        models.SnapshotSchedule,
+        models.BackupSchedule,
+    )
+
+    executors = (
+        (models.Snapshot, SnapshotDeleteExecutor),
+        (models.Backup, BackupDeleteExecutor),
+        (models.Instance, InstanceDeleteExecutor),
+        (models.Volume, VolumeDeleteExecutor),
+    )

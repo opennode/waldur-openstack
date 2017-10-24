@@ -106,7 +106,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         # There could be leftovers of key duplicates: remove them all
         keys = nova.keypairs.findall(fingerprint=fingerprint)
         for key in keys:
-            # Remove only keys created with NC
+            # Remove only keys created with Waldur
             if key.name == key_name:
                 nova.keypairs.delete(key)
 
@@ -545,7 +545,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         imported_tenant = self.import_tenant(tenant.backend_id, save=False)
 
         tenant.refresh_from_db()
-        # if tenant was not modified in NC database after import.
+        # if tenant was not modified in Waldur database after import.
         if tenant.modified < import_time:
             update_pulled_fields(tenant, imported_tenant, ('name', 'description'))
 
