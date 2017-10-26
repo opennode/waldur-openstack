@@ -338,6 +338,12 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
                 success_state='ACTIVE',
                 erred_state='ERRED',
             ).set(countdown=5 if not index else 0))
+
+        shared_tenant = instance.service_project_link.service.settings.scope
+        if shared_tenant:
+            serialized_executor = core_utils.serialize_class(openstack_executors.TenantPullFloatingIPsExecutor)
+            serialized_tenant = core_utils.serialize_instance(shared_tenant)
+            _tasks.append(core_tasks.ExecutorTask().si(serialized_executor, serialized_tenant))
         return chain(*_tasks)
 
     @classmethod
@@ -417,6 +423,13 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
                 core_utils.serialize_instance(floating_ip),
                 'pull_floating_ip_runtime_state',
             ).set(countdown=5 if not index else 0))
+
+        shared_tenant = instance.service_project_link.service.settings.scope
+        if shared_tenant:
+            serialized_executor = core_utils.serialize_class(openstack_executors.TenantPullFloatingIPsExecutor)
+            serialized_tenant = core_utils.serialize_instance(shared_tenant)
+            _tasks.append(core_tasks.ExecutorTask().si(serialized_executor, serialized_tenant))
+
         return _tasks
 
     @classmethod
