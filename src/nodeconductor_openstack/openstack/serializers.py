@@ -460,7 +460,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             attrs['user_username'] = models.Tenant.generate_username(attrs['name'])
 
         service_settings = attrs['service_project_link'].service.settings
-        domain = service_settings.get('domain')
+        domain = service_settings.domain
         if domain:
             neighbour_tenants = models.Tenant.objects.filter(
                 service_project_link__service__settings__backend_url=service_settings.backend_url,
