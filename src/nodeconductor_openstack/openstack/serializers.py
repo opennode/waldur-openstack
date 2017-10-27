@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core import validators
 from django.contrib.auth import password_validation
 from django.db import transaction
+from django.db.models import Q
 from django.template.defaultfilters import slugify
 from django.utils.translation import ugettext_lazy as _
 from netaddr import IPNetwork
@@ -459,7 +460,21 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             attrs['user_username'] = models.Tenant.generate_username(attrs['name'])
 
         service_settings = attrs['service_project_link'].service.settings
-        neighbour_tenants = models.Tenant.objects.filter(service_project_link__service__settings=service_settings)
+        domain = service_settings.get('domain')
+        if domain:
+            neighbour_tenants = models.Tenant.objects.filter(
+                service_project_link__service__settings__backend_url=service_settings.backend_url,
+                service_project_link__service__settings__domain=domain,
+            )
+        else:
+            neighbour_tenants = models.Tenant.objects.filter(
+                service_project_link__service__settings__backend_url=service_settings.backend_url)\
+                .filter(
+                    Q(service_project_link__service__settings__domain='') |
+                    Q(service_project_link__service__settings__domain__iexact='default')
+            )
+
+        # validate username
         existing_usernames = [service_settings.username] + list(neighbour_tenants.values_list('user_username', flat=True))
         user_username = attrs['user_username']
         if user_username in existing_usernames:
@@ -470,6 +485,15 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             'blacklisted_usernames', settings.NODECONDUCTOR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
         if user_username in blacklisted_usernames:
             raise serializers.ValidationError(_('Name "%s" cannot be used as tenant user username.') % user_username)
+
+        # validate tenant name
+        existing_tenant_names = [service_settings.options.get('tenant_name', 'admin')] + list(neighbour_tenants.values_list('name', flat=True))
+        tenant_name = attrs['name']
+        if tenant_name in existing_tenant_names:
+            raise serializers.ValidationError({
+                'name': _('Name "%s" is already registered. Please choose another one.' % tenant_name),
+            })
+
         return attrs
 
     def create(self, validated_data):
