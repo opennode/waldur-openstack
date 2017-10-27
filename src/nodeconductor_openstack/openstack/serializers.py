@@ -450,16 +450,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
                 raise serializers.ValidationError(
                     _('Skipping misconfigured security group: parameter "rules" should be list or tuple.'))
 
-    def validate(self, attrs):
-        self.validate_security_groups_configuration()
-
-        if self.instance is not None or not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
-            return attrs
-
-        if not attrs.get('user_username'):
-            attrs['user_username'] = models.Tenant.generate_username(attrs['name'])
-
-        service_settings = attrs['service_project_link'].service.settings
+    def _get_neighbour_tenants(self, service_settings):
         domain = service_settings.domain
         if domain:
             neighbour_tenants = models.Tenant.objects.filter(
@@ -468,31 +459,58 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             )
         else:
             neighbour_tenants = models.Tenant.objects.filter(
-                service_project_link__service__settings__backend_url=service_settings.backend_url)\
-                .filter(
-                    Q(service_project_link__service__settings__domain='') |
-                    Q(service_project_link__service__settings__domain__iexact='default')
+                service_project_link__service__settings__backend_url=service_settings.backend_url)
+            neighbour_tenants = neighbour_tenants.filter(
+                Q(service_project_link__service__settings__domain='') |
+                Q(service_project_link__service__settings__domain__isnull=True) |
+                Q(service_project_link__service__settings__domain__iexact='default')
             )
+        return neighbour_tenants
 
-        # validate username
-        existing_usernames = [service_settings.username] + list(neighbour_tenants.values_list('user_username', flat=True))
-        user_username = attrs['user_username']
-        if user_username in existing_usernames:
-            raise serializers.ValidationError(
-                _('Name "%s" is already registered. Please choose another one.') % user_username)
-
-        blacklisted_usernames = service_settings.options.get(
-            'blacklisted_usernames', settings.NODECONDUCTOR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
-        if user_username in blacklisted_usernames:
-            raise serializers.ValidationError(_('Name "%s" cannot be used as tenant user username.') % user_username)
-
-        # validate tenant name
-        existing_tenant_names = [service_settings.options.get('tenant_name', 'admin')] + list(neighbour_tenants.values_list('name', flat=True))
-        tenant_name = attrs['name']
+    def _validate_tenant_name(self, service_settings, tenant_name):
+        neighbour_tenants = self._get_neighbour_tenants(service_settings)
+        existing_tenant_names = [service_settings.options.get('tenant_name', 'admin')] +\
+                                list(neighbour_tenants.values_list('name', flat=True))
         if tenant_name in existing_tenant_names:
             raise serializers.ValidationError({
                 'name': _('Name "%s" is already registered. Please choose another one.' % tenant_name),
             })
+
+    def _validate_username(self, service_settings, username):
+        neighbour_tenants = self._get_neighbour_tenants(service_settings)
+        existing_usernames = [service_settings.username] + list(neighbour_tenants.values_list('user_username', flat=True))
+        if username in existing_usernames:
+            raise serializers.ValidationError(
+                _('Name "%s" is already registered. Please choose another one.') % username)
+
+        blacklisted_usernames = service_settings.options.get(
+            'blacklisted_usernames', settings.NODECONDUCTOR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
+        if username in blacklisted_usernames:
+            raise serializers.ValidationError(_('Name "%s" cannot be used as tenant user username.') % username)
+
+    def validate(self, attrs):
+        self.validate_security_groups_configuration()
+
+        if self.instance is not None:
+            service_settings = self.instance.service_project_link.service.settings
+        else:
+            service_settings = attrs['service_project_link'].service.settings
+
+        # validate tenant name
+        if self.instance is not None and attrs.get('name'):
+            if self.instance.name != attrs['name']:
+                self._validate_tenant_name(service_settings, attrs['name'])
+        else:
+            self._validate_tenant_name(service_settings, attrs['name'])
+
+        # username generation/validation
+        if self.instance is not None or not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
+            return attrs
+        else:
+            if not attrs.get('user_username'):
+                attrs['user_username'] = models.Tenant.generate_username(attrs['name'])
+
+            self._validate_username(service_settings, attrs.get('user_username'))
 
         return attrs
 
