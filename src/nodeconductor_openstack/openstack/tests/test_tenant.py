@@ -141,19 +141,7 @@ class TenantCreateTest(BaseTenantActionsTest):
         self.fixture.tenant.name = 'tenant_name'
         self.fixture.tenant.save()
         data = self.valid_data.copy()
-        data['name'] = self.fixture.tenant.tenant_name
-
-        response = self.client.post(self.url, data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(models.Tenant.objects.filter(name=data['name']).count(), 1)
-
-    def test_cannot_create_tenant_with_duplicated_tenant_name_with_multiple_domains(self):
-        self.client.force_authenticate(self.fixture.staff)
-        self.fixture.tenant.name = 'tenant_name'
-        self.fixture.tenant.save()
-        data = self.valid_data.copy()
-        data['name'] = self.fixture.tenant.tenant_name
+        data['name'] = self.fixture.tenant.tenant.name
 
         response = self.client.post(self.url, data=data)
 
