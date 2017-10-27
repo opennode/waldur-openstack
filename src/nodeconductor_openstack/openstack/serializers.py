@@ -452,20 +452,19 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
     def _get_neighbour_tenants(self, service_settings):
         domain = service_settings.domain
-        if domain:
-            neighbour_tenants = models.Tenant.objects.filter(
-                service_project_link__service__settings__backend_url=service_settings.backend_url,
-                service_project_link__service__settings__domain=domain,
-            )
-        else:
-            neighbour_tenants = models.Tenant.objects.filter(
-                service_project_link__service__settings__backend_url=service_settings.backend_url)
-            neighbour_tenants = neighbour_tenants.filter(
+        backend_url = service_settings.backend_url
+        tenants = models.Tenant.objects.filter(service_project_link__service__settings__backend_url=backend_url)
+        if domain in (None, '', 'default'):
+            tenants = tenants.filter(
                 Q(service_project_link__service__settings__domain='') |
                 Q(service_project_link__service__settings__domain__isnull=True) |
                 Q(service_project_link__service__settings__domain__iexact='default')
             )
-        return neighbour_tenants
+        else:
+            tenants = tenants.filter(
+                service_project_link__service__settings__domain=domain
+            )
+        return tenants
 
     def _validate_tenant_name(self, service_settings, tenant_name):
         neighbour_tenants = self._get_neighbour_tenants(service_settings)
@@ -478,15 +477,19 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
     def _validate_username(self, service_settings, username):
         neighbour_tenants = self._get_neighbour_tenants(service_settings)
-        existing_usernames = [service_settings.username] + list(neighbour_tenants.values_list('user_username', flat=True))
+        existing_usernames = [service_settings.username] + \
+                             list(neighbour_tenants.values_list('user_username', flat=True))
         if username in existing_usernames:
-            raise serializers.ValidationError(
-                _('Name "%s" is already registered. Please choose another one.') % username)
+            raise serializers.ValidationError({
+                'user_username': _('Name "%s" is already registered. Please choose another one.') % username
+            })
 
         blacklisted_usernames = service_settings.options.get(
             'blacklisted_usernames', settings.NODECONDUCTOR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
         if username in blacklisted_usernames:
-            raise serializers.ValidationError(_('Name "%s" cannot be used as tenant user username.') % username)
+            raise serializers.ValidationError({
+                'user_username': _('Name "%s" cannot be used as tenant user username.') % username
+            })
 
     def validate(self, attrs):
         self.validate_security_groups_configuration()
