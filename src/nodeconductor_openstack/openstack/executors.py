@@ -2,10 +2,13 @@ import logging
 
 from celery import chain
 
-from nodeconductor.core import tasks as core_tasks, executors as core_executors, utils as core_utils
-from nodeconductor.structure import models as structure_models, executors as structure_executors
+from nodeconductor.core import executors as core_executors
+from nodeconductor.core import tasks as core_tasks
+from nodeconductor.core import utils as core_utils
+from nodeconductor.structure import executors as structure_executors
+from nodeconductor.structure import models as structure_models
 
-from . import tasks
+from . import models, tasks
 
 
 logger = logging.getLogger(__name__)
@@ -388,3 +391,13 @@ class SubNetPullExecutor(core_executors.ActionExecutor):
     def get_task_signature(cls, subnet, serialized_subnet, **kwargs):
         return core_tasks.BackendMethodTask().si(
             serialized_subnet, 'pull_subnet', state_transition='begin_updating')
+
+
+class OpenStackCleanupExecutor(structure_executors.BaseCleanupExecutor):
+    executors = (
+        (models.SecurityGroup, SecurityGroupDeleteExecutor),
+        (models.FloatingIP, FloatingIPDeleteExecutor),
+        (models.SubNet, SubNetDeleteExecutor),
+        (models.Network, NetworkDeleteExecutor),
+        (models.Tenant, TenantDeleteExecutor),
+    )

@@ -535,7 +535,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         return snapshot
 
     def import_snapshot(self, backend_snapshot_id, save=True, service_project_link=None):
-        """ Restore NC Snapshot instance based on backend data. """
+        """ Restore Waldur Snapshot instance based on backend data. """
         cinder = self.cinder_client
         try:
             backend_snapshot = cinder.volume_snapshots.get(backend_snapshot_id)
@@ -1105,7 +1105,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 security_group = models.SecurityGroup.objects.get(settings=self.settings, backend_id=group_id)
             except models.SecurityGroup.DoesNotExist:
                 logger.exception(
-                    'Security group with id %s does not exist at NC. Tenant : %s' % (group_id, instance.tenant))
+                    'Security group with id %s does not exist at Waldur. Tenant : %s' % (group_id, instance.tenant))
             else:
                 instance.security_groups.add(security_group)
 
