@@ -94,10 +94,20 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             except KeyError:
                 handle_resource_not_found(instance)
             else:
-                update_pulled_fields(instance, backend_instance, models.Instance.get_backend_fields())
+                self.update_instance_fields(instance, backend_instance)
                 # XXX: can be optimized after https://goo.gl/BZKo8Y will be resolved.
                 self.pull_instance_security_groups(instance)
                 handle_resource_update_success(instance)
+
+    def update_instance_fields(self, instance, backend_instance):
+        # Preserve flavor fields in Waldur database if flavor is deleted in OpenStack
+        fields = set(models.Instance.get_backend_fields())
+        flavor_fields = {'flavor_name', 'flavor_disk', 'ram', 'cores', 'disk'}
+        if not backend_instance.flavor_name:
+            fields = fields - flavor_fields
+        fields = list(fields)
+
+        update_pulled_fields(instance, backend_instance, fields)
 
     def pull_flavors(self):
         nova = self.nova_client
@@ -867,7 +877,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
         return instance
 
-    def _backend_instance_to_instance(self, backend_instance, backend_flavor):
+    def _backend_instance_to_instance(self, backend_instance, backend_flavor=None):
         # parse launch time
         try:
             d = dateparse.parse_datetime(backend_instance.to_dict()['OS-SRV-USG:launched_at'])
@@ -879,21 +889,23 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             if timezone.is_naive(d):
                 launch_time = timezone.make_aware(d, timezone.utc)
 
-        return models.Instance(
+        instance = models.Instance(
             name=backend_instance.name or backend_instance.id,
             key_name=backend_instance.key_name or '',
             start_time=launch_time,
             state=models.Instance.States.OK,
             runtime_state=backend_instance.status,
             created=dateparse.parse_datetime(backend_instance.created),
-
-            flavor_name=backend_flavor.name,
-            flavor_disk=backend_flavor.disk,
-            cores=backend_flavor.vcpus,
-            ram=backend_flavor.ram,
-
             backend_id=backend_instance.id,
         )
+
+        if backend_flavor:
+            instance.flavor_name = backend_flavor.name
+            instance.flavor_disk = backend_flavor.disk
+            instance.cores = backend_flavor.vcpus
+            instance.ram = backend_flavor.ram
+
+        return instance
 
     def _get_backend_resource(self, model, resources):
         registered_backend_ids = model.objects.filter(
@@ -911,7 +923,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         backend_flavors_map = {flavor.id: flavor for flavor in backend_flavors}
         instances = []
         for backend_instance in backend_instances:
-            instance_flavor = backend_flavors_map[backend_instance.flavor['id']]
+            instance_flavor = backend_flavors_map.get(backend_instance.flavor['id'])
             instances.append(self._backend_instance_to_instance(backend_instance, instance_flavor))
         return instances
 
