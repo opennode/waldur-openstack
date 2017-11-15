@@ -3,7 +3,7 @@ from rest_framework import test, status
 
 from nodeconductor.structure.models import ProjectRole
 
-from ..models import Instance
+from ..models import Instance, OpenStackTenantServiceProjectLink
 from . import factories, fixtures
 
 
@@ -40,6 +40,27 @@ class FlavorChangeInstanceTestCase(test.APITransactionTestCase):
                          'Instance disk size should not have changed')
         self.assertEqual(reread_instance.state, Instance.States.UPDATE_SCHEDULED,
                          'Instance should have been scheduled to flavor change')
+
+    def test_when_flavor_is_changed_spl_quota_is_updated(self):
+        self.client.force_authenticate(user=self.fixture.admin)
+
+        new_flavor = factories.FlavorFactory(
+            settings=self.fixture.openstack_tenant_service_settings,
+            cores=self.instance.cores + 1,
+            ram=self.instance.ram + 1024,
+        )
+
+        data = {'flavor': factories.FlavorFactory.get_url(new_flavor)}
+        url = factories.InstanceFactory.get_url(self.instance, action='change_flavor')
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED, response.data)
+
+        Quotas = OpenStackTenantServiceProjectLink.Quotas
+        quotas = self.fixture.spl.quotas
+
+        self.assertEqual(quotas.get(name=Quotas.vcpu).usage, self.instance.cores + 1)
+        self.assertEqual(quotas.get(name=Quotas.ram).usage, self.instance.ram + 1024)
 
     def test_user_can_change_flavor_to_flavor_with_less_cpu_if_result_cpu_quota_usage_is_less_then_cpu_limit(self):
         self.client.force_authenticate(user=self.fixture.admin)
