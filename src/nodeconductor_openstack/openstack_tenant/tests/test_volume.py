@@ -10,6 +10,19 @@ from . import factories, fixtures
 from .. import models
 
 
+class VolumeDeleteTest(test.APITransactionTestCase):
+
+    def setUp(self):
+        self.fixture = fixtures.OpenStackTenantFixture()
+        self.volume = self.fixture.volume
+        self.spl = self.fixture.spl
+
+    def test_spl_quota_updated_by_signal_handler_when_volume_is_removed(self):
+        self.volume.delete()
+        Quotas = models.OpenStackTenantServiceProjectLink.Quotas
+        self.assertEqual(self.spl.quotas.get(name=Quotas.storage).usage, 0)
+
+
 @ddt
 class VolumeExtendTestCase(test.APITransactionTestCase):
     def setUp(self):

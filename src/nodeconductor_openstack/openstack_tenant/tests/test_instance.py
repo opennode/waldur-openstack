@@ -59,7 +59,7 @@ class InstanceCreateTest(test.APITransactionTestCase):
         self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.storage).usage, instance.disk)
         self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.vcpu).usage, instance.cores)
 
-    def test_quota_fields(self):
+    def test_spl_quota_updated_by_signal_handler_when_instance_is_removed(self):
         response = self.client.post(self.url, self.get_valid_data())
         instance = models.Instance.objects.get(uuid=response.data['uuid'])
         instance.delete()

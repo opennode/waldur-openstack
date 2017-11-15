@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
 
-import functools
+import operator
 from urlparse import urlparse
 
 from django.core.validators import RegexValidator
@@ -33,12 +33,20 @@ class OpenStackTenantService(structure_models.Service):
         return 'openstacktenant'
 
 
-def get_current_usage(source_field, source_models, scope):
-    total_usage = 0
-    for model in source_models:
-        resources = model.objects.filter(service_project_link=scope)
-        total_usage += resources.values(source_field).aggregate(total_usage=Sum(source_field))['total_usage']
-    return total_usage
+def get_spl_quota_field(target_models, target_field):
+    def get_current_usage(scope):
+        total_usage = 0
+        for model in target_models:
+            resources = model.objects.filter(service_project_link=scope)
+            total_usage += resources.values(target_field).aggregate(total_usage=Sum(target_field))['total_usage']
+        return total_usage
+
+    return quotas_fields.CounterQuotaField(
+        target_models=target_models,
+        path_to_scope='service_project_link',
+        get_current_usage=get_current_usage,
+        get_delta=operator.attrgetter(target_field),
+    )
 
 
 class OpenStackTenantServiceProjectLink(structure_models.CloudServiceProjectLink):
@@ -49,24 +57,9 @@ class OpenStackTenantServiceProjectLink(structure_models.CloudServiceProjectLink
         verbose_name_plural = _('OpenStackTenant provider project links')
 
     class Quotas(quotas_models.QuotaModelMixin.Quotas):
-        vcpu = quotas_fields.CounterQuotaField(
-            target_models=lambda: [Instance],
-            path_to_scope='service_project_link',
-            get_current_usage=functools.partial(get_current_usage, 'cores'),
-            get_delta=lambda instance: instance.cores,
-        )
-        ram = quotas_fields.CounterQuotaField(
-            target_models=lambda: [Instance],
-            path_to_scope='service_project_link',
-            get_current_usage=functools.partial(get_current_usage, 'ram'),
-            get_delta=lambda instance: instance.ram,
-        )
-        storage = quotas_fields.CounterQuotaField(
-            target_models=lambda: [Volume, Snapshot],
-            path_to_scope='service_project_link',
-            get_current_usage=functools.partial(get_current_usage, 'size'),
-            get_delta=lambda instance: instance.size,
-        )
+        vcpu = get_spl_quota_field(lambda: [Instance], 'cores')
+        ram = get_spl_quota_field(lambda: [Instance], 'ram')
+        storage = get_spl_quota_field(lambda: [Volume, Snapshot], 'size')
 
     @classmethod
     def get_url_name(cls):

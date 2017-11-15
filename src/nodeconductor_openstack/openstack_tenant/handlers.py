@@ -426,4 +426,3 @@ def create_service_from_tenant(sender, instance, created=False, **kwargs):
         service=service,
         project=tenant.service_project_link.project,
     )
-
