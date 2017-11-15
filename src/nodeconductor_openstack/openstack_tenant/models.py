@@ -1,19 +1,21 @@
 from __future__ import unicode_literals
 
+import functools
 from urlparse import urlparse
 
 from django.core.validators import RegexValidator
 from django.db import models
+from django.db.models import Sum
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
-from nodeconductor.core.fields import JSONField
 from model_utils import FieldTracker
 from model_utils.models import TimeStampedModel
 
 from nodeconductor.core import models as core_models
+from nodeconductor.core.fields import JSONField
 from nodeconductor.logging.loggers import LoggableMixin
+from nodeconductor.quotas import models as quotas_models, fields as quotas_fields
 from nodeconductor.structure import models as structure_models, utils as structure_utils
-
 from nodeconductor_openstack.openstack_base import models as openstack_base_models
 
 
@@ -31,12 +33,40 @@ class OpenStackTenantService(structure_models.Service):
         return 'openstacktenant'
 
 
+def get_current_usage(source_field, source_models, scope):
+    total_usage = 0
+    for model in source_models:
+        resources = model.objects.filter(service_project_link=scope)
+        total_usage += resources.values(source_field).aggregate(total_usage=Sum(source_field))['total_usage']
+    return total_usage
+
+
 class OpenStackTenantServiceProjectLink(structure_models.CloudServiceProjectLink):
     service = models.ForeignKey(OpenStackTenantService)
 
     class Meta(structure_models.CloudServiceProjectLink.Meta):
         verbose_name = _('OpenStackTenant provider project link')
         verbose_name_plural = _('OpenStackTenant provider project links')
+
+    class Quotas(quotas_models.QuotaModelMixin.Quotas):
+        vcpu = quotas_fields.CounterQuotaField(
+            target_models=lambda: [Instance],
+            path_to_scope='service_project_link',
+            get_current_usage=functools.partial(get_current_usage, 'cores'),
+            get_delta=lambda instance: instance.cores,
+        )
+        ram = quotas_fields.CounterQuotaField(
+            target_models=lambda: [Instance],
+            path_to_scope='service_project_link',
+            get_current_usage=functools.partial(get_current_usage, 'ram'),
+            get_delta=lambda instance: instance.ram,
+        )
+        storage = quotas_fields.CounterQuotaField(
+            target_models=lambda: [Volume, Snapshot],
+            path_to_scope='service_project_link',
+            get_current_usage=functools.partial(get_current_usage, 'size'),
+            get_delta=lambda instance: instance.size,
+        )
 
     @classmethod
     def get_url_name(cls):
@@ -136,7 +166,8 @@ class Volume(structure_models.Volume):
     image_name = models.CharField(max_length=150, blank=True)
     image_metadata = JSONField(blank=True)
     type = models.CharField(max_length=100, blank=True)
-    source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', blank=True, null=True, on_delete=models.SET_NULL)
+    source_snapshot = models.ForeignKey('Snapshot', related_name='volumes', blank=True, null=True,
+                                        on_delete=models.SET_NULL)
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
     action_details = JSONField(default={})
@@ -148,16 +179,10 @@ class Volume(structure_models.Volume):
         settings.add_quota_usage(settings.Quotas.volumes, 1, validate=validate)
         settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
 
-        spl = self.service_project_link
-        spl.add_quota_usage(spl.Quotas.storage, self.size, validate=validate)
-
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.volumes, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
-
-        spl = self.service_project_link
-        spl.add_quota_usage(spl.Quotas.storage, -self.size)
 
     @classmethod
     def get_url_name(cls):
@@ -199,16 +224,10 @@ class Snapshot(structure_models.Snapshot):
         settings.add_quota_usage(settings.Quotas.snapshots, 1, validate=validate)
         settings.add_quota_usage(settings.Quotas.storage, self.size, validate=validate)
 
-        spl = self.service_project_link
-        spl.add_quota_usage(spl.Quotas.storage, self.size, validate=validate)
-
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.snapshots, -1)
         settings.add_quota_usage(settings.Quotas.storage, -self.size)
-
-        spl = self.service_project_link
-        spl.add_quota_usage(spl.Quotas.storage, -self.size)
 
     @classmethod
     def get_backend_fields(cls):
@@ -297,17 +316,11 @@ class Instance(structure_models.VirtualMachine):
         settings.add_quota_usage(settings.Quotas.ram, self.ram, validate=validate)
         settings.add_quota_usage(settings.Quotas.vcpu, self.cores, validate=validate)
 
-        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.ram, self.ram, validate=validate)
-        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.vcpu, self.cores, validate=validate)
-
     def decrease_backend_quotas_usage(self):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.instances, -1)
         settings.add_quota_usage(settings.Quotas.ram, -self.ram)
         settings.add_quota_usage(settings.Quotas.vcpu, -self.cores)
-
-        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.ram, -self.ram)
-        self.service_project_link.add_quota_usage(self.service_project_link.Quotas.vcpu, -self.cores)
 
     @property
     def floating_ips(self):
