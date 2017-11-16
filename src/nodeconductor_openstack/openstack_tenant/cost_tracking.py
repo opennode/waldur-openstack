@@ -1,6 +1,6 @@
 from nodeconductor.cost_tracking import CostTrackingStrategy, ConsumableItem, CostTrackingRegister
 
-from . import models, PriceItemTypes
+from . import models, utils, PriceItemTypes
 
 
 class InstanceStrategy(CostTrackingStrategy):
@@ -12,7 +12,7 @@ class InstanceStrategy(CostTrackingStrategy):
     @classmethod
     def get_consumable_items(cls):
         for flavor_name in set(models.Flavor.objects.all().values_list('name', flat=True)):
-            yield ConsumableItem(item_type=cls.Types.FLAVOR, key=flavor_name, name='Flavor: %s' % flavor_name)
+            yield utils.get_consumable_item(flavor_name)
 
     @classmethod
     def get_configuration(cls, instance):

@@ -9,7 +9,7 @@ from nodeconductor.core.models import StateMixin
 from nodeconductor.structure import models as structure_models
 
 from ..openstack import models as openstack_models, apps as openstack_apps
-from . import log, models, apps
+from . import apps, log, models, utils
 
 
 logger = logging.getLogger(__name__)
@@ -426,3 +426,8 @@ def create_service_from_tenant(sender, instance, created=False, **kwargs):
         service=service,
         project=tenant.service_project_link.project,
     )
+
+
+def sync_price_list_item_for_flavor(sender, instance, created=False, **kwargs):
+    if created:
+        utils.sync_price_list_item(instance)
