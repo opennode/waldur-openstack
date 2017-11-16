@@ -1,14 +1,16 @@
 from __future__ import unicode_literals
 
 from django.test import TestCase
+from django.contrib.contenttypes.models import ContentType
 
 from nodeconductor.core.models import StateMixin
+from nodeconductor.cost_tracking import models as cost_tracking_models
 from nodeconductor.structure import models as structure_models
 from nodeconductor.structure.tests import factories as structure_factories
 from nodeconductor_openstack.openstack.tests import factories as openstack_factories
 
 from .. import factories
-from ... import models, apps
+from ... import models, apps, PriceItemTypes
 
 
 class BaseServicePropertyTest(TestCase):
@@ -395,3 +397,16 @@ class CreateServiceFromTenantTest(TestCase):
             service=service,
             project=tenant.service_project_link.project,
         ).exists())
+
+
+class FlavorPriceListItemTest(TestCase):
+    def setUp(self):
+        self.flavor = factories.FlavorFactory()
+        self.content_type = ContentType.objects.get_for_model(models.Flavor)
+
+    def test_price_list_item_is_created_on_flavor_creation(self):
+        cost_tracking_models.DefaultPriceListItem.objects.get(
+            resource_content_type=self.content_type,
+            item_type=PriceItemTypes.FLAVOR,
+            key=self.flavor.name,
+        )

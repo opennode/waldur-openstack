@@ -22,6 +22,7 @@ class OpenStackTenantConfig(AppConfig):
         from nodeconductor.structure.models import ServiceSettings
         from nodeconductor.quotas.fields import QuotaField
         from nodeconductor_openstack.openstack.models import Tenant
+        from nodeconductor_openstack.openstack_tenant.models import Flavor
         for quota in Tenant.get_quotas_fields():
             ServiceSettings.add_quota_field(
                 name=quota.name,
@@ -128,4 +129,10 @@ class OpenStackTenantConfig(AppConfig):
             handlers.create_service_from_tenant,
             sender=Tenant,
             dispatch_uid='openstack.handlers.create_service_from_tenant',
+        )
+
+        signals.post_save.connect(
+            handlers.sync_price_list_item_for_flavor,
+            sender=Flavor,
+            dispatch_uid='openstack.handlers.sync_price_list_item_for_flavor',
         )
