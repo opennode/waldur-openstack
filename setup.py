@@ -25,8 +25,8 @@ install_requires = [
 
 
 setup(
-    name='nodeconductor-openstack',
-    version='0.37.5',
+    name='waldur-openstack',
+    version='0.38.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://waldur.com',
@@ -43,8 +43,8 @@ setup(
     },
     entry_points={
         'nodeconductor_extensions': (
-            'openstack = nodeconductor_openstack.openstack.extension:OpenStackExtension',
-            'openstack_tenant = nodeconductor_openstack.openstack_tenant.extension:OpenStackTenantExtension',
+            'openstack = waldur_openstack.openstack.extension:OpenStackExtension',
+            'openstack_tenant = waldur_openstack.openstack_tenant.extension:OpenStackTenantExtension',
         ),
     },
     include_package_data=True,

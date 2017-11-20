@@ -1,7 +1,7 @@
-Welcome to NodeConductor OpenStack plugin's documentation!
-==========================================================
+Welcome to Waldur OpenStack plugin's documentation!
+===================================================
 
-NodeConductor plugin for managing OpenStack resources.
+Waldur plugin for managing OpenStack resources.
 
 Guide
 -----
@@ -26,7 +26,7 @@ Endpoints
 License
 -------
 
-NodeConductor OpenStack plugin is open-source under MIT license.
+Waldur OpenStack plugin is open-source under MIT license.
 
 
 Indices and tables
