@@ -3,17 +3,17 @@ Installation from source
 
 * `Install NodeConductor <http://nodeconductor.readthedocs.org/en/latest/guide/intro.html#installation-from-source>`_
 
-* Clone NodeConductor OpenStack repository
+* Clone Waldur OpenStack repository
 
   .. code-block:: bash
 
-    git clone https://github.com/opennode/nodeconductor-openstack.git
+    git clone https://github.com/opennode/waldur-openstack.git
 
-* Install NodeConductor OpenStack into NodeConductor virtual environment
+* Install Waldur OpenStack into NodeConductor virtual environment
 
   .. code-block:: bash
 
-    cd /path/to/nodeconductor-openstack/
+    cd /path/to/waldur-openstack/
     python setup.py install
 
 Configuration
@@ -122,4 +122,4 @@ To make sure dependencies are available, first install RDO repository.
 .. code-block:: bash
 
     yum -y install http://opennodecloud.com/centos/7/rdo-release.rpm
-    yum -y install nodeconductor-openstack
+    yum -y install waldur-openstack
