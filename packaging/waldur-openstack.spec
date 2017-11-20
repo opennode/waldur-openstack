@@ -1,7 +1,7 @@
 Name: waldur-openstack
 Summary: OpenStack plugin for Waldur
 Group: Development/Libraries
-Version: 0.37.5
+Version: 0.38.0
 Release: 1.el7
 License: MIT
 Url: http://waldur.com
@@ -44,6 +44,9 @@ rm -rf %{buildroot}
 %{python_sitelib}/*
 
 %changelog
+* Mon Nov 20 2017 Jenkins <jenkins@opennodecloud.com> - 0.38.0-1.el7
+- New upstream release
+
 * Thu Nov 2 2017 Jenkins <jenkins@opennodecloud.com> - 0.37.5-1.el7
 - New upstream release
 
