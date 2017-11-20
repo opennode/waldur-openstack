@@ -20,13 +20,13 @@ Configuration
 +++++++++++++
 
 OpenStack plugin settings should be defined in NodeConductor's settings.py file
-under **NODECONDUCTOR_OPENSTACK** section.
+under **WALDUR_OPENSTACK** section.
 
 For example,
 
 .. code-block:: python
 
-      NODECONDUCTOR_OPENSTACK = {
+      WALDUR_OPENSTACK = {
           'DEFAULT_SECURITY_GROUPS': (
               {
                   'name': 'ssh',

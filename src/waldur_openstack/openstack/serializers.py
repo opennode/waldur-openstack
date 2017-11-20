@@ -384,8 +384,8 @@ class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
 
 
 subnet_cidr_validator = validators.RegexValidator(
-    re.compile(settings.NODECONDUCTOR_OPENSTACK['SUBNET']['CIDR_REGEX']),
-    settings.NODECONDUCTOR_OPENSTACK['SUBNET']['CIDR_REGEX_EXPLANATION'],
+    re.compile(settings.WALDUR_OPENSTACK['SUBNET']['CIDR_REGEX']),
+    settings.WALDUR_OPENSTACK['SUBNET']['CIDR_REGEX_EXPLANATION'],
 )
 
 
@@ -418,7 +418,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
     def get_fields(self):
         fields = super(TenantSerializer, self).get_fields()
-        if not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
+        if not settings.WALDUR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
             for field in ('user_username', 'user_password', 'access_url'):
                 if field in fields:
                     del fields[field]
@@ -437,7 +437,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
         return spl
 
     def validate_security_groups_configuration(self):
-        nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
+        nc_settings = getattr(settings, 'WALDUR_OPENSTACK', {})
         config_groups = nc_settings.get('DEFAULT_SECURITY_GROUPS', [])
         for group in config_groups:
             sg_name = group.get('name')
@@ -485,7 +485,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             })
 
         blacklisted_usernames = service_settings.options.get(
-            'blacklisted_usernames', settings.NODECONDUCTOR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
+            'blacklisted_usernames', settings.WALDUR_OPENSTACK['DEFAULT_BLACKLISTED_USERNAMES'])
         if username in blacklisted_usernames:
             raise serializers.ValidationError({
                 'user_username': _('Name "%s" cannot be used as tenant user username.') % username
@@ -507,7 +507,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             self._validate_tenant_name(service_settings, attrs['name'])
 
         # username generation/validation
-        if self.instance is not None or not settings.NODECONDUCTOR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
+        if self.instance is not None or not settings.WALDUR_OPENSTACK['TENANT_CREDENTIALS_VISIBLE']:
             return attrs
         else:
             if not attrs.get('user_username'):
@@ -547,7 +547,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
                 dns_nameservers=spl.service.settings.options.get('dns_nameservers', [])
             )
 
-            nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
+            nc_settings = getattr(settings, 'WALDUR_OPENSTACK', {})
             config_groups = copy.deepcopy(nc_settings.get('DEFAULT_SECURITY_GROUPS', []))
 
             for group in config_groups:
@@ -670,7 +670,7 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
 
 def _generate_subnet_allocation_pool(cidr):
     first_octet, second_octet, third_octet, _ = cidr.split('.', 3)
-    subnet_settings = settings.NODECONDUCTOR_OPENSTACK['SUBNET']
+    subnet_settings = settings.WALDUR_OPENSTACK['SUBNET']
     format_data = {'first_octet': first_octet, 'second_octet': second_octet, 'third_octet': third_octet}
     return [{
         'start': subnet_settings['ALLOCATION_POOL_START'].format(**format_data),

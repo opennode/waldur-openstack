@@ -5,7 +5,7 @@ class OpenStackTenantExtension(NodeConductorExtension):
 
     class Settings:
         # wiki: https://opennode.atlassian.net/wiki/display/WD/OpenStack+plugin+configuration
-        NODECONDUCTOR_OPENSTACK_TENANT = {
+        WALDUR_OPENSTACK_TENANT = {
             'MAX_CONCURRENT_PROVISION': {
                 'OpenStackTenant.Instance': 4,
                 'OpenStackTenant.Volume': 4,

@@ -14,7 +14,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         names = options['names']
-        default_security_groups = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {}).get('DEFAULT_SECURITY_GROUPS')
+        default_security_groups = getattr(settings, 'WALDUR_OPENSTACK', {}).get('DEFAULT_SECURITY_GROUPS')
         security_groups = []
         for name in names:
             try:

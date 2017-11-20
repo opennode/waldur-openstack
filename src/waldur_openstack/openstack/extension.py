@@ -5,7 +5,7 @@ class OpenStackExtension(NodeConductorExtension):
 
     class Settings:
         # wiki: https://opennode.atlassian.net/wiki/display/WD/OpenStack+plugin+configuration
-        NODECONDUCTOR_OPENSTACK = {
+        WALDUR_OPENSTACK = {
             'DEFAULT_SECURITY_GROUPS': (
                 {
                     'name': 'allow-all',

@@ -246,7 +246,7 @@ class TenantCreateTest(BaseTenantActionsTest):
         },
     ))
     def test_default_security_groups_are_created(self):
-        expected_security_groups = settings.NODECONDUCTOR_OPENSTACK['DEFAULT_SECURITY_GROUPS']
+        expected_security_groups = settings.WALDUR_OPENSTACK['DEFAULT_SECURITY_GROUPS']
         self.client.force_authenticate(self.fixture.staff)
 
         response = self.client.post(self.url, data=self.valid_data)
@@ -395,11 +395,11 @@ class TenantDeleteTest(BaseTenantActionsTest):
     def test_manager_can_delete_tenant_from_shared_settings_with_permission_from_settings(self, mocked_task):
         self.fixture.openstack_service_settings.shared = True
         self.fixture.openstack_service_settings.save()
-        openstack_settings = settings.NODECONDUCTOR_OPENSTACK.copy()
+        openstack_settings = settings.WALDUR_OPENSTACK.copy()
         openstack_settings['MANAGER_CAN_MANAGE_TENANTS'] = True
         self.client.force_authenticate(user=self.fixture.manager)
 
-        with self.settings(NODECONDUCTOR_OPENSTACK=openstack_settings):
+        with self.settings(WALDUR_OPENSTACK=openstack_settings):
             response = self.client.delete(self.get_url())
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)

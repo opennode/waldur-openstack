@@ -317,7 +317,7 @@ class SetErredStuckResources(core_tasks.BackgroundTask):
 class LimitedPerTypeThrottleMixin(object):
 
     def get_limit(self, resource):
-        nc_settings = getattr(settings, 'NODECONDUCTOR_OPENSTACK', {})
+        nc_settings = getattr(settings, 'WALDUR_OPENSTACK', {})
         limit_per_type = nc_settings.get('MAX_CONCURRENT_PROVISION', {})
         model_name = SupportedServices.get_name_for_model(resource)
         return limit_per_type.get(model_name, super(LimitedPerTypeThrottleMixin, self).get_limit(resource))
