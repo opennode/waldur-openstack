@@ -33,18 +33,23 @@ class OpenStackTenantService(structure_models.Service):
         return 'openstacktenant'
 
 
-def get_spl_quota_field(target_models, target_field):
-    def get_current_usage(scope):
+def get_current_usage_factory(target_field):
+    def get_current_usage(target_models, scope):
         total_usage = 0
         for model in target_models:
             resources = model.objects.filter(service_project_link=scope)
-            total_usage += resources.values(target_field).aggregate(total_usage=Sum(target_field))['total_usage']
+            subtotal = resources.values(target_field).aggregate(total_usage=Sum(target_field))['total_usage']
+            if subtotal:
+                total_usage += subtotal
         return total_usage
+    return get_current_usage
 
+
+def get_spl_quota_field(target_models, target_field):
     return quotas_fields.CounterQuotaField(
         target_models=target_models,
         path_to_scope='service_project_link',
-        get_current_usage=get_current_usage,
+        get_current_usage=get_current_usage_factory(target_field),
         get_delta=operator.attrgetter(target_field),
     )
 
