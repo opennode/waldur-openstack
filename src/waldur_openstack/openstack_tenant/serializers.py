@@ -753,11 +753,6 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
             raise serializers.ValidationError(
                 {'flavor': _('RAM of flavor is not enough for selected image %s') % image.min_ram})
 
-        if image.min_disk > flavor.disk:
-            raise serializers.ValidationError({
-                'flavor': _('Flavor\'s disk is too small for the selected image.')
-            })
-
         if image.min_disk > attrs['system_volume_size']:
             raise serializers.ValidationError(
                 {'system_volume_size': _('System volume size has to be greater than %s') % image.min_disk})
