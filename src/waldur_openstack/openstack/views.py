@@ -286,7 +286,6 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         some quotas might not be applied.
 
         .. _MiB: http://en.wikipedia.org/wiki/Mebibyte
-        .. _settings: http://waldur_core.readthedocs.org/en/stable/guide/intro.html#id1
 
         Example of a valid request (token is user specific):
 
