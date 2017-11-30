@@ -281,7 +281,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         - snapshots - maximal number of created snapshots.
 
         It is possible to update quotas by one or by submitting all the fields in one request.
-        NodeConductor will attempt to update the provided quotas. Please note, that if provided quotas are
+        Waldur will attempt to update the provided quotas. Please note, that if provided quotas are
         conflicting with the backend (e.g. requested number of instances is below of the already existing ones),
         some quotas might not be applied.
 
