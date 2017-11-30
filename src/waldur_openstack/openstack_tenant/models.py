@@ -11,11 +11,11 @@ from django.utils.translation import ugettext_lazy as _
 from model_utils import FieldTracker
 from model_utils.models import TimeStampedModel
 
-from nodeconductor.core import models as core_models
-from nodeconductor.core.fields import JSONField
-from nodeconductor.logging.loggers import LoggableMixin
-from nodeconductor.quotas import models as quotas_models, fields as quotas_fields
-from nodeconductor.structure import models as structure_models, utils as structure_utils
+from waldur_core.core import models as core_models
+from waldur_core.core.fields import JSONField
+from waldur_core.logging.loggers import LoggableMixin
+from waldur_core.quotas import models as quotas_models, fields as quotas_fields
+from waldur_core.structure import models as structure_models, utils as structure_utils
 from waldur_openstack.openstack_base import models as openstack_base_models
 
 

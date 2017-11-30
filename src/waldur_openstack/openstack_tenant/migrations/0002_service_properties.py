@@ -2,10 +2,10 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import nodeconductor.logging.loggers
-import nodeconductor.core.fields
+import waldur_core.logging.loggers
+import waldur_core.core.fields
 import django.core.validators
-import nodeconductor.core.validators
+import waldur_core.core.validators
 
 
 class Migration(migrations.Migration):
@@ -20,8 +20,8 @@ class Migration(migrations.Migration):
             name='Flavor',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('name', models.CharField(max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name])),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('backend_id', models.CharField(max_length=255, db_index=True)),
                 ('cores', models.PositiveSmallIntegerField(help_text=b'Number of cores in a VM')),
                 ('ram', models.PositiveIntegerField(help_text=b'Memory size in MiB')),
@@ -31,14 +31,14 @@ class Migration(migrations.Migration):
             options={
                 'abstract': False,
             },
-            bases=(nodeconductor.logging.loggers.LoggableMixin, models.Model),
+            bases=(waldur_core.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.CreateModel(
             name='FloatingIP',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('name', models.CharField(max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name])),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('backend_id', models.CharField(max_length=255, db_index=True)),
                 ('address', models.GenericIPAddressField(protocol=b'IPv4')),
                 ('status', models.CharField(max_length=30)),
@@ -56,8 +56,8 @@ class Migration(migrations.Migration):
             name='Image',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('name', models.CharField(max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name])),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('backend_id', models.CharField(max_length=255, db_index=True)),
                 ('min_disk', models.PositiveIntegerField(default=0, help_text=b'Minimum disk size in MiB')),
                 ('min_ram', models.PositiveIntegerField(default=0, help_text=b'Minimum memory size in MiB')),
@@ -72,8 +72,8 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('description', models.CharField(max_length=500, verbose_name='description', blank=True)),
-                ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('name', models.CharField(max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name])),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('backend_id', models.CharField(max_length=255, db_index=True)),
                 ('settings', models.ForeignKey(related_name='+', to='structure.ServiceSettings')),
             ],

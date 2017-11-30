@@ -2,7 +2,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations
-from nodeconductor.quotas import models as quotas_models
+from waldur_core.quotas import models as quotas_models
 from django.contrib.contenttypes.models import ContentType
 
 from .. import models

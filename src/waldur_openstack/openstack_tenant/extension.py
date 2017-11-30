@@ -1,7 +1,7 @@
-from nodeconductor.core import NodeConductorExtension
+from waldur_core.core import WaldurExtension
 
 
-class OpenStackTenantExtension(NodeConductorExtension):
+class OpenStackTenantExtension(WaldurExtension):
 
     class Settings:
         # wiki: https://opennode.atlassian.net/wiki/display/WD/OpenStack+plugin+configuration

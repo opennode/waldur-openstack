@@ -3,9 +3,9 @@ from django.utils import six
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, exceptions, response, status, serializers as rf_serializers
 
-from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
-from nodeconductor.structure import (views as structure_views, filters as structure_filters,
-                                     permissions as structure_permissions)
+from waldur_core.core import validators as core_validators, exceptions as core_exceptions
+from waldur_core.structure import (views as structure_views, filters as structure_filters,
+                                   permissions as structure_permissions)
 
 from . import models, filters, serializers, executors
 
@@ -286,7 +286,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         some quotas might not be applied.
 
         .. _MiB: http://en.wikipedia.org/wiki/Mebibyte
-        .. _settings: http://nodeconductor.readthedocs.org/en/stable/guide/intro.html#id1
+        .. _settings: http://waldur_core.readthedocs.org/en/stable/guide/intro.html#id1
 
         Example of a valid request (token is user specific):
 

@@ -25,7 +25,7 @@ from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
 
-from nodeconductor.structure import ServiceBackend, ServiceBackendError
+from waldur_core.structure import ServiceBackend, ServiceBackendError
 
 from waldur_openstack.openstack.models import Tenant
 

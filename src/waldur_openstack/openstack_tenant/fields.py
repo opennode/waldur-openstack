@@ -3,7 +3,7 @@ from datetime import datetime
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import serializers
 
-from nodeconductor.core import utils as core_utils
+from waldur_core.core import utils as core_utils
 
 
 class StringTimestampField(serializers.CharField):

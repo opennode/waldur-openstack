@@ -2,8 +2,8 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import nodeconductor.core.fields
-import nodeconductor.core.validators
+import waldur_core.core.fields
+import waldur_core.core.validators
 
 
 class Migration(migrations.Migration):
@@ -32,8 +32,8 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('description', models.CharField(max_length=500, verbose_name='description', blank=True)),
-                ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('name', models.CharField(max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name])),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('backend_id', models.CharField(max_length=255, db_index=True)),
                 ('is_external', models.BooleanField(default=False)),
                 ('type', models.CharField(max_length=50, blank=True)),
@@ -49,15 +49,15 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('description', models.CharField(max_length=500, verbose_name='description', blank=True)),
-                ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('name', models.CharField(max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name])),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('backend_id', models.CharField(max_length=255, db_index=True)),
                 ('cidr', models.CharField(max_length=32, blank=True)),
                 ('gateway_ip', models.GenericIPAddressField(null=True, protocol='IPv4')),
-                ('allocation_pools', nodeconductor.core.fields.JSONField(default={})),
+                ('allocation_pools', waldur_core.core.fields.JSONField(default={})),
                 ('ip_version', models.SmallIntegerField(default=4)),
                 ('enable_dhcp', models.BooleanField(default=True)),
-                ('dns_nameservers', nodeconductor.core.fields.JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')),
+                ('dns_nameservers', waldur_core.core.fields.JSONField(default=[], help_text='List of DNS name servers associated with the subnet.')),
                 ('network', models.ForeignKey(related_name='subnets', to='openstack_tenant.Network')),
                 ('settings', models.ForeignKey(related_name='+', to='structure.ServiceSettings')),
             ],

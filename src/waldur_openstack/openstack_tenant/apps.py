@@ -14,13 +14,13 @@ class OpenStackTenantConfig(AppConfig):
     service_name = 'OpenStackTenant'
 
     def ready(self):
-        from nodeconductor.structure import SupportedServices
+        from waldur_core.structure import SupportedServices
         from .backend import OpenStackTenantBackend
         SupportedServices.register_backend(OpenStackTenantBackend)
 
         # Initialize service settings quotas based on tenant.
-        from nodeconductor.structure.models import ServiceSettings
-        from nodeconductor.quotas.fields import QuotaField
+        from waldur_core.structure.models import ServiceSettings
+        from waldur_core.quotas.fields import QuotaField
         from waldur_openstack.openstack.models import Tenant
         from waldur_openstack.openstack_tenant.models import Flavor
         for quota in Tenant.get_quotas_fields():

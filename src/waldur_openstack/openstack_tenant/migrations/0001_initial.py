@@ -2,10 +2,10 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import nodeconductor.logging.loggers
-import nodeconductor.core.fields
-import nodeconductor.core.models
-import nodeconductor.core.validators
+import waldur_core.logging.loggers
+import waldur_core.core.fields
+import waldur_core.core.models
+import waldur_core.core.validators
 
 
 class Migration(migrations.Migration):
@@ -19,8 +19,8 @@ class Migration(migrations.Migration):
             name='OpenStackTenantService',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('name', models.CharField(max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name])),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('available_for_all', models.BooleanField(default=False, help_text='Service will be automatically added to all customers projects if it is available for all')),
                 ('customer', models.ForeignKey(verbose_name='organization', to='structure.Customer')),
             ],
@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'OpenStackTenant service',
                 'verbose_name_plural': 'OpenStackTenan services',
             },
-            bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
+            bases=(waldur_core.core.models.DescendantMixin, waldur_core.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.CreateModel(
             name='OpenStackTenantServiceProjectLink',
@@ -42,7 +42,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'OpenStackTenant provider project link',
                 'verbose_name_plural': 'OpenStackTenant provider project links',
             },
-            bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
+            bases=(waldur_core.core.models.DescendantMixin, waldur_core.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.AddField(
             model_name='openstacktenantservice',

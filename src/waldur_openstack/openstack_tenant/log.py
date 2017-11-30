@@ -1,5 +1,5 @@
-from nodeconductor.logging.loggers import EventLogger, event_logger
-from nodeconductor.structure import models as structure_models
+from waldur_core.logging.loggers import EventLogger, event_logger
+from waldur_core.structure import models as structure_models
 
 from . import models
 

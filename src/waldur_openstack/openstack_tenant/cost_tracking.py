@@ -1,4 +1,4 @@
-from nodeconductor.cost_tracking import CostTrackingStrategy, ConsumableItem, CostTrackingRegister
+from waldur_core.cost_tracking import CostTrackingStrategy, ConsumableItem, CostTrackingRegister
 
 from . import models, utils, PriceItemTypes
 

@@ -13,8 +13,8 @@ class OpenStackConfig(AppConfig):
     service_name = 'OpenStack'
 
     def ready(self):
-        from nodeconductor.core import models as core_models
-        from nodeconductor.structure import SupportedServices, signals as structure_signals, models as structure_models
+        from waldur_core.core import models as core_models
+        from waldur_core.structure import SupportedServices, signals as structure_signals, models as structure_models
         from . import handlers
 
         Tenant = self.get_model('Tenant')
@@ -23,8 +23,8 @@ class OpenStackConfig(AppConfig):
         from .backend import OpenStackBackend
         SupportedServices.register_backend(OpenStackBackend)
 
-        from nodeconductor.structure.models import ServiceSettings
-        from nodeconductor.quotas.fields import QuotaField
+        from waldur_core.structure.models import ServiceSettings
+        from waldur_core.quotas.fields import QuotaField
 
         for resource in ('vcpu', 'ram', 'storage'):
             ServiceSettings.add_quota_field(
@@ -48,7 +48,7 @@ class OpenStackConfig(AppConfig):
             dispatch_uid='openstack.handlers.remove_ssh_key_from_all_tenants_on_it_deletion',
         )
 
-        from nodeconductor.quotas.models import Quota
+        from waldur_core.quotas.models import Quota
         signals.post_save.connect(
             handlers.log_tenant_quota_update,
             sender=Quota,

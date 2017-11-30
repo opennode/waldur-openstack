@@ -2,7 +2,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import nodeconductor.core.fields
+import waldur_core.core.fields
 
 
 class Migration(migrations.Migration):
@@ -15,6 +15,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='tenant',
             name='extra_configuration',
-            field=nodeconductor.core.fields.JSONField(default={}, help_text='Configuration details that are not represented on backend.'),
+            field=waldur_core.core.fields.JSONField(default={}, help_text='Configuration details that are not represented on backend.'),
         ),
     ]

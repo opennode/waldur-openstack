@@ -11,9 +11,9 @@ from django.utils.translation import ugettext, ugettext_lazy as _
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 
-from nodeconductor.core import (serializers as core_serializers, fields as core_fields, utils as core_utils,
-                                signals as core_signals)
-from nodeconductor.structure import serializers as structure_serializers
+from waldur_core.core import (serializers as core_serializers, fields as core_fields, utils as core_utils,
+                              signals as core_signals)
+from waldur_core.structure import serializers as structure_serializers
 from waldur_openstack.openstack import serializers as openstack_serializers
 from waldur_openstack.openstack_base.backend import OpenStackBackendError
 

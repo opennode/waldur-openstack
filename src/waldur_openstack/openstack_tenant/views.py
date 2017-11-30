@@ -2,8 +2,8 @@ from django.utils import six
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, response, status, exceptions, serializers as rf_serializers
 
-from nodeconductor.core import exceptions as core_exceptions, validators as core_validators
-from nodeconductor.structure import views as structure_views, filters as structure_filters
+from waldur_core.core import exceptions as core_exceptions, validators as core_validators
+from waldur_core.structure import views as structure_views, filters as structure_filters
 from waldur_openstack.openstack.views import ResourceImportMixin
 
 from . import models, serializers, filters, executors

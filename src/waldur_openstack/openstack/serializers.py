@@ -14,10 +14,10 @@ from django.utils.translation import ugettext_lazy as _
 from netaddr import IPNetwork
 from rest_framework import serializers
 
-from nodeconductor.core import utils as core_utils, serializers as core_serializers
-from nodeconductor.core.fields import JsonField
-from nodeconductor.quotas import serializers as quotas_serializers
-from nodeconductor.structure import serializers as structure_serializers, permissions as structure_permissions
+from waldur_core.core import utils as core_utils, serializers as core_serializers
+from waldur_core.core.fields import JsonField
+from waldur_core.quotas import serializers as quotas_serializers
+from waldur_core.structure import serializers as structure_serializers, permissions as structure_permissions
 
 from . import models
 from .backend import OpenStackBackendError

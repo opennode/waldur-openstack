@@ -2,8 +2,8 @@ from ddt import ddt, data
 from mock import patch
 from rest_framework import status, test
 
-from nodeconductor.structure.models import ServiceSettings, ProjectRole, CustomerRole
-from nodeconductor.structure.tests import factories as structure_factories
+from waldur_core.structure.models import ServiceSettings, ProjectRole, CustomerRole
+from waldur_core.structure.tests import factories as structure_factories
 
 from .. import models
 from . import factories, fixtures
@@ -137,14 +137,14 @@ class GetServiceTest(BaseServiceTest):
 
 class CreateServiceTest(BaseServiceTest):
 
-    @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
+    @patch('waldur_core.structure.models.ServiceSettings.get_backend')
     def test_user_can_add_service_to_the_customer_he_owns(self, mocked_backend):
         mocked_backend().check_admin_tenant.return_value = True
         self.client.force_authenticate(user=self.users['customer_owner'])
 
         payload = self._get_owned_payload()
 
-        with patch('nodeconductor.structure.executors.ServiceSettingsCreateExecutor.execute') as mocked:
+        with patch('waldur_core.structure.executors.ServiceSettingsCreateExecutor.execute') as mocked:
             response = self.client.post(factories.OpenStackServiceFactory.get_list_url(), payload)
             self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
@@ -154,7 +154,7 @@ class CreateServiceTest(BaseServiceTest):
             mocked.assert_any_call(settings)
             mocked_backend().ping.assert_called_once()
 
-    @patch('nodeconductor.structure.models.ServiceSettings.get_backend')
+    @patch('waldur_core.structure.models.ServiceSettings.get_backend')
     def test_admin_service_credentials_are_validated(self, mocked_backend):
         mocked_backend().check_admin_tenant.return_value = False
         self.client.force_authenticate(user=self.users['customer_owner'])
