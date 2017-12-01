@@ -2,10 +2,10 @@ from __future__ import unicode_literals
 
 from celery import chain
 
-from nodeconductor.core import executors as core_executors
-from nodeconductor.core import tasks as core_tasks
-from nodeconductor.core import utils as core_utils
-from nodeconductor.structure import executors as structure_executors
+from waldur_core.core import executors as core_executors
+from waldur_core.core import tasks as core_tasks
+from waldur_core.core import utils as core_utils
+from waldur_core.structure import executors as structure_executors
 from waldur_openstack.openstack import executors as openstack_executors
 from waldur_openstack.openstack import tasks as openstack_tasks
 

@@ -3,10 +3,10 @@ from __future__ import unicode_literals
 from django.test import TestCase
 from django.contrib.contenttypes.models import ContentType
 
-from nodeconductor.core.models import StateMixin
-from nodeconductor.cost_tracking import models as cost_tracking_models
-from nodeconductor.structure import models as structure_models
-from nodeconductor.structure.tests import factories as structure_factories
+from waldur_core.core.models import StateMixin
+from waldur_core.cost_tracking import models as cost_tracking_models
+from waldur_core.structure import models as structure_models
+from waldur_core.structure.tests import factories as structure_factories
 from waldur_openstack.openstack.tests import factories as openstack_factories
 
 from .. import factories

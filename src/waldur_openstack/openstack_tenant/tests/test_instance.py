@@ -10,7 +10,7 @@ from rest_framework import status, test
 import mock
 
 from waldur_openstack.openstack.tests.unittests import test_backend
-from nodeconductor.structure.tests import factories as structure_factories
+from waldur_core.structure.tests import factories as structure_factories
 
 from . import factories, fixtures
 from .. import models, views

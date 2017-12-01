@@ -13,7 +13,7 @@ from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
 
-from nodeconductor.structure import log_backend_action, SupportedServices
+from waldur_core.structure import log_backend_action, SupportedServices
 
 from waldur_openstack.openstack_base.backend import (
     OpenStackBackendError, BaseOpenStackBackend, update_pulled_fields,

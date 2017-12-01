@@ -6,7 +6,7 @@ OpenStack_ is a popular open-source toolkit for building private clouds.
 VM creation
 +++++++++++
 
-When a VM instance is created through NodeConductor, it is created using Cinder service with 2 volumes:
+When a VM instance is created through Waldur, it is created using Cinder service with 2 volumes:
 
 - **root volume** containing OS root image, bootable;
 - **data volume** an empty volume for data.

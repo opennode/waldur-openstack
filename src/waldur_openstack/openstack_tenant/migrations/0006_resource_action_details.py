@@ -2,7 +2,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import nodeconductor.core.fields
+import waldur_core.core.fields
 
 
 class Migration(migrations.Migration):
@@ -15,16 +15,16 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='instance',
             name='action_details',
-            field=nodeconductor.core.fields.JSONField(default={}),
+            field=waldur_core.core.fields.JSONField(default={}),
         ),
         migrations.AlterField(
             model_name='snapshot',
             name='action_details',
-            field=nodeconductor.core.fields.JSONField(default={}),
+            field=waldur_core.core.fields.JSONField(default={}),
         ),
         migrations.AlterField(
             model_name='volume',
             name='action_details',
-            field=nodeconductor.core.fields.JSONField(default={}),
+            field=waldur_core.core.fields.JSONField(default={}),
         ),
     ]

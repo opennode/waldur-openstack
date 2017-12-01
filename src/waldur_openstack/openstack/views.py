@@ -3,9 +3,9 @@ from django.utils import six
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, exceptions, response, status, serializers as rf_serializers
 
-from nodeconductor.core import validators as core_validators, exceptions as core_exceptions
-from nodeconductor.structure import (views as structure_views, filters as structure_filters,
-                                     permissions as structure_permissions)
+from waldur_core.core import validators as core_validators, exceptions as core_exceptions
+from waldur_core.structure import (views as structure_views, filters as structure_filters,
+                                   permissions as structure_permissions)
 
 from . import models, filters, serializers, executors
 
@@ -281,12 +281,11 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         - snapshots - maximal number of created snapshots.
 
         It is possible to update quotas by one or by submitting all the fields in one request.
-        NodeConductor will attempt to update the provided quotas. Please note, that if provided quotas are
+        Waldur will attempt to update the provided quotas. Please note, that if provided quotas are
         conflicting with the backend (e.g. requested number of instances is below of the already existing ones),
         some quotas might not be applied.
 
         .. _MiB: http://en.wikipedia.org/wiki/Mebibyte
-        .. _settings: http://nodeconductor.readthedocs.org/en/stable/guide/intro.html#id1
 
         Example of a valid request (token is user specific):
 

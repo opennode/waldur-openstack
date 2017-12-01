@@ -5,8 +5,8 @@ from mock import patch
 from rest_framework import status
 from rest_framework import test
 
-from nodeconductor.core.tests import helpers
-from nodeconductor.structure.tests import factories as structure_factories
+from waldur_core.core.tests import helpers
+from waldur_core.structure.tests import factories as structure_factories
 
 from .. import models
 from . import factories, fixtures

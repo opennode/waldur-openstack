@@ -5,8 +5,8 @@ from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.utils.translation import ugettext_lazy as _
 
-from nodeconductor.core.admin import ExecutorAdminAction, format_json_field
-from nodeconductor.structure import admin as structure_admin
+from waldur_core.core.admin import ExecutorAdminAction, format_json_field
+from waldur_core.structure import admin as structure_admin
 
 from . import executors, models
 

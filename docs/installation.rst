@@ -9,7 +9,7 @@ Installation from source
 
     git clone https://github.com/opennode/waldur-openstack.git
 
-* Install Waldur OpenStack into NodeConductor virtual environment
+* Install Waldur OpenStack into Waldur virtual environment
 
   .. code-block:: bash
 
@@ -19,7 +19,7 @@ Installation from source
 Configuration
 +++++++++++++
 
-OpenStack plugin settings should be defined in NodeConductor's settings.py file
+OpenStack plugin settings should be defined in Waldur's settings.py file
 under **WALDUR_OPENSTACK** section.
 
 For example,

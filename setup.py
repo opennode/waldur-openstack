@@ -14,7 +14,7 @@ install_requires = [
     'pbr!=2.1.0',
     'Babel!=2.4.0,>=2.3.4',
     'iptools>=0.6.1',
-    'nodeconductor>0.148.3',
+    'waldur-core>=0.151.0',
     'python-ceilometerclient>=2.3.0',
     'python-cinderclient>=1.6.0',
     'python-glanceclient>=2.0.0',
@@ -26,7 +26,7 @@ install_requires = [
 
 setup(
     name='waldur-openstack',
-    version='0.38.1',
+    version='0.38.2',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://waldur.com',
@@ -42,7 +42,7 @@ setup(
         'tests': tests_requires,
     },
     entry_points={
-        'nodeconductor_extensions': (
+        'waldur_extensions': (
             'openstack = waldur_openstack.openstack.extension:OpenStackExtension',
             'openstack_tenant = waldur_openstack.openstack_tenant.extension:OpenStackTenantExtension',
         ),

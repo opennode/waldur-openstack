@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from mock import patch
 from rest_framework import test, status
 
-from nodeconductor.structure.tests import factories as structure_factories
+from waldur_core.structure.tests import factories as structure_factories
 from waldur_openstack.openstack.models import Tenant
 from waldur_openstack.openstack.tests.helpers import override_openstack_settings
 
@@ -748,7 +748,7 @@ class TenantImportTest(BaseTenantActionsTest):
 
         self.assertEquals(response.status_code, status.HTTP_201_CREATED, response.data)
         tenant = models.Tenant.objects.get(backend_id=self.backend_tenant.backend_id)
-        from nodeconductor.structure.models import ServiceSettings
+        from waldur_core.structure.models import ServiceSettings
         service_settings = ServiceSettings.objects.get(scope=tenant)
         self.assertEquals(tenant.user_username, service_settings.username)
         self.assertEquals(tenant.user_password, service_settings.password)

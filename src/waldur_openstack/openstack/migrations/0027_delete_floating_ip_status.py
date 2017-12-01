@@ -6,7 +6,7 @@ import django.utils.timezone
 import model_utils.fields
 import taggit.managers
 import django_fsm
-import nodeconductor.core.validators
+import waldur_core.core.validators
 
 
 class Migration(migrations.Migration):
