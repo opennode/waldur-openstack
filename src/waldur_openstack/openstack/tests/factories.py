@@ -4,8 +4,8 @@ import uuid
 from django.urls import reverse
 import factory
 
-from nodeconductor.core import utils as core_utils
-from nodeconductor.structure.tests import factories as structure_factories
+from waldur_core.core import utils as core_utils
+from waldur_core.structure.tests import factories as structure_factories
 
 from .. import models
 

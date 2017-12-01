@@ -6,7 +6,7 @@ import django.utils.timezone
 import model_utils.fields
 import taggit.managers
 import django_fsm
-import nodeconductor.core.validators
+import waldur_core.core.validators
 
 
 def migrate_floatingip_status(apps, schema_editor):
@@ -56,7 +56,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='floatingip',
             name='name',
-            field=models.CharField(default='', max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name]),
+            field=models.CharField(default='', max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name]),
             preserve_default=False,
         ),
         migrations.AddField(

@@ -1,7 +1,7 @@
 from novaclient import exceptions as nova_exceptions
 
-from nodeconductor.structure.models import Project
-from nodeconductor.structure.executors import ProjectCleanupExecutor
+from waldur_core.structure.models import Project
+from waldur_core.structure.executors import ProjectCleanupExecutor
 
 from waldur_openstack.openstack.tests.unittests import test_backend
 

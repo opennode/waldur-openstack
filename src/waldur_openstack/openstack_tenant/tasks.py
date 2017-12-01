@@ -8,10 +8,10 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from nodeconductor.core import tasks as core_tasks, utils as core_utils
-from nodeconductor.quotas import exceptions as quotas_exceptions
-from nodeconductor.structure import (models as structure_models, tasks as structure_tasks,
-                                     SupportedServices)
+from waldur_core.core import tasks as core_tasks, utils as core_utils
+from waldur_core.quotas import exceptions as quotas_exceptions
+from waldur_core.structure import (models as structure_models, tasks as structure_tasks,
+                                   SupportedServices)
 
 from . import models, serializers, log
 

@@ -2,15 +2,15 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
-import nodeconductor.logging.loggers
+import waldur_core.logging.loggers
 import django.utils.timezone
 import model_utils.fields
-import nodeconductor.core.fields
-import nodeconductor.core.models
+import waldur_core.core.fields
+import waldur_core.core.models
 import django.db.models.deletion
 import taggit.managers
 import django_fsm
-import nodeconductor.core.validators
+import waldur_core.core.validators
 
 
 class Migration(migrations.Migration):
@@ -28,10 +28,10 @@ class Migration(migrations.Migration):
                 ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, verbose_name='created', editable=False)),
                 ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, verbose_name='modified', editable=False)),
                 ('description', models.CharField(max_length=500, verbose_name='description', blank=True)),
-                ('name', models.CharField(max_length=150, verbose_name='name', validators=[nodeconductor.core.validators.validate_name])),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('name', models.CharField(max_length=150, verbose_name='name', validators=[waldur_core.core.validators.validate_name])),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('error_message', models.TextField(blank=True)),
-                ('schedule', nodeconductor.core.fields.CronScheduleField(max_length=15, validators=[nodeconductor.core.validators.validate_cron_schedule, nodeconductor.core.validators.MinCronValueValidator(1)])),
+                ('schedule', waldur_core.core.fields.CronScheduleField(max_length=15, validators=[waldur_core.core.validators.validate_cron_schedule, waldur_core.core.validators.MinCronValueValidator(1)])),
                 ('next_trigger_at', models.DateTimeField(null=True)),
                 ('timezone', models.CharField(default=django.utils.timezone.get_current_timezone_name, max_length=50)),
                 ('is_active', models.BooleanField(default=False)),
@@ -48,7 +48,7 @@ class Migration(migrations.Migration):
             options={
                 'abstract': False,
             },
-            bases=(nodeconductor.core.models.DescendantMixin, nodeconductor.logging.loggers.LoggableMixin, models.Model),
+            bases=(waldur_core.core.models.DescendantMixin, waldur_core.logging.loggers.LoggableMixin, models.Model),
         ),
         migrations.RenameField(
             model_name='backupschedule',

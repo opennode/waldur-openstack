@@ -3,9 +3,9 @@ from __future__ import unicode_literals
 import logging
 
 
-from nodeconductor.core import models as core_models, tasks as core_tasks, utils as core_utils
-from nodeconductor.structure import (filters as structure_filters, permissions as structure_permissions,
-                                     models as structure_models)
+from waldur_core.core import models as core_models, tasks as core_tasks, utils as core_utils
+from waldur_core.structure import (filters as structure_filters, permissions as structure_permissions,
+                                   models as structure_models)
 from waldur_openstack.openstack import apps
 
 from .log import event_logger

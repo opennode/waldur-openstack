@@ -5,8 +5,8 @@ import logging
 from django.core import exceptions as django_exceptions
 from django.db import transaction, IntegrityError
 
-from nodeconductor.core.models import StateMixin
-from nodeconductor.structure import models as structure_models
+from waldur_core.core.models import StateMixin
+from waldur_core.structure import models as structure_models
 
 from ..openstack import models as openstack_models, apps as openstack_apps
 from . import apps, log, models, utils

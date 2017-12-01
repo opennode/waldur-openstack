@@ -5,7 +5,7 @@ from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 from iptools.ipv4 import validate_cidr
 
-from nodeconductor.core import models as core_models
+from waldur_core.core import models as core_models
 
 
 @python_2_unicode_compatible

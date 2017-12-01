@@ -3,8 +3,8 @@ from django.conf import settings
 from rest_framework import test, status
 import mock
 
-from nodeconductor.structure.models import ProjectRole
-from nodeconductor.structure.tests import factories as structure_factories
+from waldur_core.structure.models import ProjectRole
+from waldur_core.structure.tests import factories as structure_factories
 
 from . import factories, fixtures
 from .. import models

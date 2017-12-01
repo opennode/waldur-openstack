@@ -5,9 +5,9 @@ from django.urls import reverse
 from django.utils.translation import ugettext_lazy as _
 from jsoneditor.forms import JSONEditor
 
-from nodeconductor.core.admin import ExecutorAdminAction, PasswordWidget
-from nodeconductor.quotas.admin import QuotaInline
-from nodeconductor.structure import admin as structure_admin
+from waldur_core.core.admin import ExecutorAdminAction, PasswordWidget
+from waldur_core.quotas.admin import QuotaInline
+from waldur_core.structure import admin as structure_admin
 
 from . import executors, models
 

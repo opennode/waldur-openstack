@@ -5,14 +5,14 @@ from django.db import models
 from django.template.defaultfilters import slugify
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
-from nodeconductor.core.fields import JSONField
+from waldur_core.core.fields import JSONField
 from model_utils import FieldTracker
 
-from nodeconductor.core import models as core_models, utils as core_utils
-from nodeconductor.logging.loggers import LoggableMixin
-from nodeconductor.quotas.fields import QuotaField, UsageAggregatorQuotaField, CounterQuotaField
-from nodeconductor.quotas.models import QuotaModelMixin
-from nodeconductor.structure import models as structure_models
+from waldur_core.core import models as core_models, utils as core_utils
+from waldur_core.logging.loggers import LoggableMixin
+from waldur_core.quotas.fields import QuotaField, UsageAggregatorQuotaField, CounterQuotaField
+from waldur_core.quotas.models import QuotaModelMixin
+from waldur_core.structure import models as structure_models
 
 from waldur_openstack.openstack_base import models as openstack_base_models
 

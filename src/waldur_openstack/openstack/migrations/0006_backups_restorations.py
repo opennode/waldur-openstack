@@ -5,7 +5,7 @@ from django.db import migrations, models
 import django.db.models.deletion
 import django.utils.timezone
 import model_utils.fields
-import nodeconductor.core.fields
+import waldur_core.core.fields
 
 
 class Migration(migrations.Migration):
@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, verbose_name='created', editable=False)),
                 ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, verbose_name='modified', editable=False)),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('runtime_state', models.CharField(max_length=150, verbose_name='runtime state', blank=True)),
             ],
             options={
@@ -32,9 +32,9 @@ class Migration(migrations.Migration):
             name='VolumeBackupRecord',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('uuid', waldur_core.core.fields.UUIDField()),
                 ('service', models.CharField(max_length=200)),
-                ('details', nodeconductor.core.fields.JSONField(blank=True)),
+                ('details', waldur_core.core.fields.JSONField(blank=True)),
             ],
             options={
                 'abstract': False,
@@ -46,7 +46,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('created', model_utils.fields.AutoCreatedField(default=django.utils.timezone.now, verbose_name='created', editable=False)),
                 ('modified', model_utils.fields.AutoLastModifiedField(default=django.utils.timezone.now, verbose_name='modified', editable=False)),
-                ('uuid', nodeconductor.core.fields.UUIDField()),
+                ('uuid', waldur_core.core.fields.UUIDField()),
             ],
             options={
                 'abstract': False,
@@ -55,7 +55,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='drbackup',
             name='metadata',
-            field=nodeconductor.core.fields.JSONField(help_text='Information about instance that will be used on restoration', blank=True),
+            field=waldur_core.core.fields.JSONField(help_text='Information about instance that will be used on restoration', blank=True),
         ),
         migrations.AddField(
             model_name='volumebackup',
@@ -71,7 +71,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='volumebackup',
             name='metadata',
-            field=nodeconductor.core.fields.JSONField(help_text='Information about volume that will be used on restoration', blank=True),
+            field=waldur_core.core.fields.JSONField(help_text='Information about volume that will be used on restoration', blank=True),
         ),
         migrations.AddField(
             model_name='volumebackuprestoration',

@@ -1,7 +1,7 @@
 import django_filters
 
-from nodeconductor.core import filters as core_filters
-from nodeconductor.structure import filters as structure_filters
+from waldur_core.core import filters as core_filters
+from waldur_core.structure import filters as structure_filters
 
 from . import models
 
