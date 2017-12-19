@@ -16,8 +16,8 @@ from novaclient import exceptions as nova_exceptions
 from waldur_core.structure import log_backend_action, SupportedServices
 
 from waldur_openstack.openstack_base.backend import (
-    OpenStackBackendError, BaseOpenStackBackend, update_pulled_fields,
-    handle_resource_not_found, handle_resource_update_success)
+    OpenStackBackendError, BaseOpenStackBackend, handle_resource_not_found, handle_resource_update_success)
+from waldur_core.structure.utils import update_pulled_fields
 from . import models
 
 logger = logging.getLogger(__name__)
