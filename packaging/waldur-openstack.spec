@@ -7,14 +7,14 @@ License: MIT
 Url: http://waldur.com
 Source0: %{name}-%{version}.tar.gz
 
-Requires: waldur-core >= 0.151.0
-Requires: python-ceilometerclient >= 2.3.0
-Requires: python-cinderclient >= 1.6.0
-Requires: python-glanceclient >= 1:2.0.0
+Requires: waldur-core >= 0.151.1
+Requires: python-ceilometerclient >= 2.9.0
+Requires: python-cinderclient >= 3.1.0
+Requires: python-glanceclient >= 1:2.8.0
 Requires: python-iptools >= 0.6.1
-Requires: python-keystoneclient >= 1:2.3.1
-Requires: python-neutronclient >= 4.1.1
-Requires: python-novaclient >= 1:3.3.0
+Requires: python-keystoneclient >= 1:3.13.0
+Requires: python-neutronclient >= 6.5.0
+Requires: python-novaclient >= 1:9.1.0
 
 Obsoletes: nodeconductor-openstack
 
