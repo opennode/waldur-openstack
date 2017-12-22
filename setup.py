@@ -14,19 +14,19 @@ install_requires = [
     'pbr!=2.1.0',
     'Babel!=2.4.0,>=2.3.4',
     'iptools>=0.6.1',
-    'waldur-core>=0.151.0',
-    'python-ceilometerclient>=2.3.0',
-    'python-cinderclient>=1.6.0',
-    'python-glanceclient>=2.0.0',
-    'python-keystoneclient>=2.3.1',
-    'python-neutronclient>=4.1.1',
-    'python-novaclient>=3.3.0',
+    'waldur-core>=0.151.1',
+    'python-ceilometerclient>=2.9.0',
+    'python-cinderclient>=3.1.0',
+    'python-glanceclient>=2.8.0',
+    'python-keystoneclient>=3.13.0',
+    'python-neutronclient>=6.5.0',
+    'python-novaclient>=9.1.0',
 ]
 
 
 setup(
     name='waldur-openstack',
-    version='0.38.2',
+    version='0.39.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://waldur.com',
