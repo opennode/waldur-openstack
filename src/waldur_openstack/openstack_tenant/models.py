@@ -88,17 +88,10 @@ class Flavor(LoggableMixin, structure_models.ServiceProperty):
         return super(Flavor, cls).get_backend_fields() + ('cores', 'ram', 'disk')
 
 
-class Image(structure_models.ServiceProperty):
-    min_disk = models.PositiveIntegerField(default=0, help_text=_('Minimum disk size in MiB'))
-    min_ram = models.PositiveIntegerField(default=0, help_text=_('Minimum memory size in MiB'))
-
+class Image(openstack_base_models.BaseImage):
     @classmethod
     def get_url_name(cls):
         return 'openstacktenant-image'
-
-    @classmethod
-    def get_backend_fields(cls):
-        return super(Image, cls).get_backend_fields() + ('min_disk', 'min_ram')
 
 
 class SecurityGroup(core_models.DescribableMixin, structure_models.ServiceProperty):

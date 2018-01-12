@@ -7,7 +7,6 @@ from django.utils import six, timezone, dateparse
 
 from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
-from glanceclient import exc as glance_exceptions
 from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
@@ -141,25 +140,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             models.Flavor.objects.filter(backend_id__in=cur_flavors.keys(), settings=self.settings).delete()
 
     def pull_images(self):
-        glance = self.glance_client
-        try:
-            images = [image for image in glance.images.list() if not image['status'] == 'deleted']
-        except glance_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-        with transaction.atomic():
-            cur_images = self._get_current_properties(models.Image)
-            for backend_image in images:
-                cur_images.pop(backend_image['id'], None)
-                models.Image.objects.update_or_create(
-                    settings=self.settings,
-                    backend_id=backend_image['id'],
-                    defaults={
-                        'name': backend_image['name'],
-                        'min_ram': backend_image['min_ram'],
-                        'min_disk': self.gb2mb(backend_image['min_disk']),
-                    })
-            models.Image.objects.filter(backend_id__in=cur_images.keys(), settings=self.settings).delete()
+        self._pull_images(models.Image)
 
     def pull_floating_ips(self):
         # method assumes that instance internal IPs is up to date.
@@ -342,9 +323,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                                backend_id, self.settings)
 
         self._delete_stale_properties(models.SubNet, subnets)
-
-    def _get_current_properties(self, model):
-        return {p.backend_id: p for p in model.objects.filter(settings=self.settings)}
 
     @log_backend_action()
     def create_volume(self, volume):
