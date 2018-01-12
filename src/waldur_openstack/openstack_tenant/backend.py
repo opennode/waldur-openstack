@@ -143,23 +143,22 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
     def pull_images(self):
         glance = self.glance_client
         try:
-            images = [image for image in glance.images.list() if not image.deleted]
+            images = [image for image in glance.images.list() if not image['status'] == 'deleted']
         except glance_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)
 
         with transaction.atomic():
             cur_images = self._get_current_properties(models.Image)
             for backend_image in images:
-                cur_images.pop(backend_image.id, None)
+                cur_images.pop(backend_image['id'], None)
                 models.Image.objects.update_or_create(
                     settings=self.settings,
-                    backend_id=backend_image.id,
+                    backend_id=backend_image['id'],
                     defaults={
-                        'name': backend_image.name,
-                        'min_ram': backend_image.min_ram,
-                        'min_disk': self.gb2mb(backend_image.min_disk),
+                        'name': backend_image['name'],
+                        'min_ram': backend_image['min_ram'],
+                        'min_disk': self.gb2mb(backend_image['min_disk']),
                     })
-
             models.Image.objects.filter(backend_id__in=cur_images.keys(), settings=self.settings).delete()
 
     def pull_floating_ips(self):

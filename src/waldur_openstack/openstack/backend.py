@@ -166,15 +166,15 @@ class OpenStackBackend(BaseOpenStackBackend):
         with transaction.atomic():
             cur_images = self._get_current_properties(models.Image)
             for backend_image in images:
-                if backend_image.is_public and not backend_image.deleted:
-                    cur_images.pop(backend_image.id, None)
+                if backend_image['visibility'] == 'public' and not backend_image['status'] == 'deleted':
+                    cur_images.pop(backend_image['id'], None)
                     models.Image.objects.update_or_create(
                         settings=self.settings,
-                        backend_id=backend_image.id,
+                        backend_id=backend_image['id'],
                         defaults={
-                            'name': backend_image.name,
-                            'min_ram': backend_image.min_ram,
-                            'min_disk': self.gb2mb(backend_image.min_disk),
+                            'name': backend_image['name'],
+                            'min_ram': backend_image['min_ram'],
+                            'min_disk': self.gb2mb(backend_image['min_disk']),
                         })
 
             models.Image.objects.filter(backend_id__in=cur_images.keys()).delete()
