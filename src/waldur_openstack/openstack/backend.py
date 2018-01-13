@@ -8,7 +8,6 @@ from django.db import transaction
 from django.utils import six, timezone
 
 from cinderclient import exceptions as cinder_exceptions
-from glanceclient import exc as glance_exceptions
 from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
@@ -112,9 +111,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         logger.info('Deleted ssh public key %s from backend', key_name)
 
-    def _get_current_properties(self, model):
-        return {p.backend_id: p for p in model.objects.filter(settings=self.settings)}
-
     def _are_rules_equal(self, backend_rule, nc_rule):
         if backend_rule['port_range_min'] != nc_rule.from_port:
             return False
@@ -157,27 +153,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             models.Flavor.objects.filter(backend_id__in=cur_flavors.keys()).delete()
 
     def pull_images(self):
-        glance = self.glance_client
-        try:
-            images = glance.images.list()
-        except glance_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-        with transaction.atomic():
-            cur_images = self._get_current_properties(models.Image)
-            for backend_image in images:
-                if backend_image.is_public and not backend_image.deleted:
-                    cur_images.pop(backend_image.id, None)
-                    models.Image.objects.update_or_create(
-                        settings=self.settings,
-                        backend_id=backend_image.id,
-                        defaults={
-                            'name': backend_image.name,
-                            'min_ram': backend_image.min_ram,
-                            'min_disk': self.gb2mb(backend_image.min_disk),
-                        })
-
-            models.Image.objects.filter(backend_id__in=cur_images.keys()).delete()
+        self._pull_images(models.Image, lambda image: image['visibility'] == 'public')
 
     @log_backend_action('push quotas for tenant')
     def push_tenant_quotas(self, tenant, quotas):

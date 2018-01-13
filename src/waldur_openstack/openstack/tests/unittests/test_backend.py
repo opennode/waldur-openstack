@@ -32,6 +32,9 @@ class BaseBackendTestCase(test.APITransactionTestCase):
         self.cinder_patcher = mock.patch('cinderclient.v2.client.Client')
         self.mocked_cinder = self.cinder_patcher.start()
 
+        self.glance_patcher = mock.patch('glanceclient.v2.client.Client')
+        self.mocked_glance = self.glance_patcher.start()
+
         self.fixture = fixtures.OpenStackFixture()
         self.tenant = self.fixture.tenant
         self.backend = OpenStackBackend(settings=self.fixture.openstack_service_settings, tenant_id=self.tenant.id)
@@ -43,10 +46,7 @@ class BaseBackendTestCase(test.APITransactionTestCase):
 
 class PullTenantSecurityGroupsTest(BaseBackendTestCase):
 
-    def setUp(self):
-        super(PullTenantSecurityGroupsTest, self).setUp()
-
-    def test_pull_tenant_security_groups_does_not_duplicate_security_groups_in_progresss(self):
+    def test_pull_tenant_security_groups_does_not_duplicate_security_groups_in_progress(self):
         original_security_group = factories.SecurityGroupFactory(tenant=self.tenant)
         factories.SecurityGroupRuleFactory(security_group=original_security_group)
         security_group_in_progress = factories.SecurityGroupFactory(state=models.SecurityGroup.States.UPDATING,
@@ -222,3 +222,65 @@ class ImportTenantSubnets(BaseBackendTestCase):
         self.backend.import_tenant_subnets(self.tenant)
 
         self.assertEqual(models.SubNet.objects.count(), 0)
+
+
+class PullImagesTest(BaseBackendTestCase):
+
+    def setUp(self):
+        super(PullImagesTest, self).setUp()
+        self.mocked_glance().images.list.return_value = [
+            {
+                'status': 'active',
+                'id': '1',
+                'name': 'CentOS 7',
+                'min_ram': 1024,
+                'min_disk': 10,
+                'visibility': 'public',
+            }
+        ]
+
+    def test_new_image_is_added(self):
+        self.backend.pull_images()
+        image = models.Image.objects.filter(
+            backend_id='1',
+            name='CentOS 7',
+            min_ram=1024,
+            min_disk=10240,
+            settings=self.fixture.openstack_service_settings
+        )
+        self.assertEqual(models.Image.objects.count(), 1)
+        self.assertTrue(image.exists())
+
+    def test_old_image_is_deleted(self):
+        models.Image.objects.create(
+            backend_id='2',
+            name='CentOS 6',
+            min_ram=2048,
+            min_disk=10240,
+            settings=self.fixture.openstack_service_settings
+        )
+        self.backend.pull_images()
+        self.assertEqual(models.Image.objects.count(), 1)
+        self.assertFalse(models.Image.objects.filter(backend_id='2').exists())
+
+    def test_existing_image_is_updated(self):
+        models.Image.objects.create(
+            backend_id='1',
+            name='CentOS 7',
+            min_ram=2048,
+            min_disk=10240,
+            settings=self.fixture.openstack_service_settings
+        )
+        self.backend.pull_images()
+        self.assertEqual(models.Image.objects.count(), 1)
+        self.assertEqual(models.Image.objects.get(backend_id='1').min_ram, 1024)
+
+    def test_private_images_are_filtered_out(self):
+        self.mocked_glance().images.list.return_value[0]['visibility'] = 'private'
+        self.backend.pull_images()
+        self.assertEqual(models.Image.objects.count(), 0)
+
+    def test_deleted_images_are_filtered_out(self):
+        self.mocked_glance().images.list.return_value[0]['status'] = 'deleted'
+        self.backend.pull_images()
+        self.assertEqual(models.Image.objects.count(), 0)

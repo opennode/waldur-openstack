@@ -118,3 +118,7 @@ class OpenStackExtension(WaldurExtension):
     def get_cleanup_executor():
         from .executors import OpenStackCleanupExecutor
         return OpenStackCleanupExecutor
+
+    @staticmethod
+    def get_public_settings():
+        return ['TENANT_CREDENTIALS_VISIBLE']
