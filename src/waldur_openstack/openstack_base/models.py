@@ -102,7 +102,7 @@ class BaseImage(structure_models.ServiceProperty):
     min_disk = models.PositiveIntegerField(default=0, help_text=_('Minimum disk size in MiB'))
     min_ram = models.PositiveIntegerField(default=0, help_text=_('Minimum memory size in MiB'))
 
-    class Meta(object):
+    class Meta(structure_models.ServiceProperty.Meta):
         abstract = True
 
     @classmethod
