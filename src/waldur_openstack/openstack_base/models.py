@@ -6,6 +6,7 @@ from django.utils.translation import ugettext_lazy as _
 from iptools.ipv4 import validate_cidr
 
 from waldur_core.core import models as core_models
+from waldur_core.structure import models as structure_models
 
 
 @python_2_unicode_compatible
@@ -95,3 +96,15 @@ class Port(core_models.BackendModelMixin, models.Model):
     @classmethod
     def get_backend_fields(cls):
         return super(Port, cls).get_backend_fields() + ('ip4_address', 'ip6_address', 'mac_address')
+
+
+class BaseImage(structure_models.ServiceProperty):
+    min_disk = models.PositiveIntegerField(default=0, help_text=_('Minimum disk size in MiB'))
+    min_ram = models.PositiveIntegerField(default=0, help_text=_('Minimum memory size in MiB'))
+
+    class Meta(structure_models.ServiceProperty.Meta):
+        abstract = True
+
+    @classmethod
+    def get_backend_fields(cls):
+        return super(BaseImage, cls).get_backend_fields() + ('min_disk', 'min_ram')

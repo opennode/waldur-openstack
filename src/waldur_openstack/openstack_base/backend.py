@@ -6,6 +6,7 @@ import logging
 
 from django.core.cache import cache
 from django.utils import timezone
+from django.db import transaction
 from requests import ConnectionError
 
 from keystoneauth1.identity import v3
@@ -13,7 +14,7 @@ from keystoneauth1 import session as keystone_session
 
 from ceilometerclient import client as ceilometer_client
 from cinderclient.v2 import client as cinder_client
-from glanceclient.v1 import client as glance_client
+from glanceclient.v2 import client as glance_client
 from keystoneclient.v3 import client as keystone_client
 from neutronclient.v2_0 import client as neutron_client
 from novaclient import client as nova_client
@@ -420,3 +421,31 @@ class BaseOpenStackBackend(ServiceBackend):
                     'cidr': backend_rule['remote_ip_prefix'],
                 })
         security_group.rules.filter(backend_id__in=cur_rules.keys()).delete()
+
+    def _get_current_properties(self, model):
+        return {p.backend_id: p for p in model.objects.filter(settings=self.settings)}
+
+    def _pull_images(self, model_class, filter_function=None):
+        glance = self.glance_client
+        try:
+            images = glance.images.list()
+        except glance_exceptions.ClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        images = [image for image in images if not image['status'] == 'deleted']
+        if filter_function:
+            images = filter(filter_function, images)
+
+        with transaction.atomic():
+            cur_images = self._get_current_properties(model_class)
+            for backend_image in images:
+                cur_images.pop(backend_image['id'], None)
+                model_class.objects.update_or_create(
+                    settings=self.settings,
+                    backend_id=backend_image['id'],
+                    defaults={
+                        'name': backend_image['name'],
+                        'min_ram': backend_image['min_ram'],
+                        'min_disk': self.gb2mb(backend_image['min_disk']),
+                    })
+            model_class.objects.filter(backend_id__in=cur_images.keys(), settings=self.settings).delete()
