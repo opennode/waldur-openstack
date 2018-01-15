@@ -7,6 +7,7 @@ from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 from waldur_core.core.fields import JSONField
 from model_utils import FieldTracker
+from model_utils.models import TimeStampedModel
 
 from waldur_core.core import models as core_models, utils as core_utils
 from waldur_core.logging.loggers import LoggableMixin
@@ -291,3 +292,16 @@ class SubNet(structure_models.SubResource):
     def get_backend_fields(cls):
         return super(SubNet, cls).get_backend_fields() + ('name', 'description', 'allocation_pools', 'cidr',
                                                           'ip_version', 'enable_dhcp', 'gateway_ip', 'dns_nameservers')
+
+
+class CustomerOpenStack(TimeStampedModel):
+    settings = models.ForeignKey(structure_models.ServiceSettings,
+                                 on_delete=models.CASCADE,
+                                 limit_choices_to={'shared': True, 'type': 'OpenStack'}, )
+    customer = models.ForeignKey(structure_models.Customer, on_delete=models.CASCADE)
+    external_network_id = models.CharField(_('OpenStack external network ID'), max_length=255)
+
+    class Meta(object):
+        verbose_name = _('Organization OpenStack settings')
+        verbose_name_plural = _('Organization OpenStack settings')
+        unique_together = ('settings', 'customer')
