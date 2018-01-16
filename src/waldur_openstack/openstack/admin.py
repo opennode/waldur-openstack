@@ -143,6 +143,11 @@ class SubNetAdmin(structure_admin.ResourceAdmin):
               'ip_version', 'enable_dhcp', 'dns_nameservers', 'state')
 
 
+class CustomerOpenStackInline(admin.StackedInline):
+    model = models.CustomerOpenStack
+    extra = 1
+
+
 admin.site.register(models.Network, NetworkAdmin)
 admin.site.register(models.SubNet, SubNetAdmin)
 admin.site.register(models.SecurityGroup, structure_admin.ResourceAdmin)
@@ -153,3 +158,4 @@ admin.site.register(models.Image, ImageAdmin)
 admin.site.register(models.OpenStackService, structure_admin.ServiceAdmin)
 admin.site.register(models.OpenStackServiceProjectLink, ServiceProjectLinkAdmin)
 admin.site.register(models.FloatingIP, structure_admin.ResourceAdmin)
+structure_admin.CustomerAdmin.inlines += [CustomerOpenStackInline]

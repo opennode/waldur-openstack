@@ -234,3 +234,16 @@ class SubNetFactory(factory.DjangoModelFactory):
     @classmethod
     def get_list_url(cls):
         return 'http://testserver' + reverse('openstack-subnet-list')
+
+
+class SharedOpenStackServiceSettingsFactory(OpenStackServiceSettingsFactory):
+    shared = True
+
+
+class CustomerOpenStackFactory(factory.DjangoModelFactory):
+    class Meta(object):
+        model = models.CustomerOpenStack
+
+    settings = factory.SubFactory(SharedOpenStackServiceSettingsFactory)
+    customer = factory.SubFactory(structure_factories.CustomerFactory)
+    external_network_id = factory.LazyAttribute(lambda _: uuid.uuid4())
