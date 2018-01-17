@@ -315,6 +315,21 @@ class TenantCreateTest(BaseTenantActionsTest):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    @patch('waldur_openstack.openstack.executors.core_tasks.BackendMethodTask')
+    def test_override_external_network_id_if_exists_customer_openstack(self, mock_core_tasks):
+        EXTERNAL_NETWORK_ID = 'test_external_network_id'
+        self.client.force_authenticate(self.fixture.staff)
+        self.fixture.openstack_spl.service.settings.shared = True
+        factories.CustomerOpenStackFactory(
+            settings=self.fixture.openstack_spl.service.settings,
+            customer=self.fixture.openstack_spl.project.customer,
+            external_network_id=EXTERNAL_NETWORK_ID
+        )
+        self.client.post(self.url, data=self.valid_data)
+        mock_kwargs = [s[2] for s in mock_core_tasks.mock_calls
+                       if 'connect_tenant_to_external_network' in s[1]]
+        self.assertEqual(EXTERNAL_NETWORK_ID, mock_kwargs[0]['external_network_id'])
+
 
 @ddt
 class TenantUpdateTest(BaseTenantActionsTest):

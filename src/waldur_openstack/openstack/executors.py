@@ -81,7 +81,17 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
 
         # initialize external network if it defined in service settings
         service_settings = tenant.service_project_link.service.settings
+        customer = tenant.service_project_link.project.customer
         external_network_id = service_settings.get_option('external_network_id')
+
+        try:
+            customer_openstack = models.CustomerOpenStack.objects.get(
+                settings=service_settings,
+                customer=customer)
+            external_network_id = customer_openstack.external_network_id
+        except models.CustomerOpenStack.DoesNotExist:
+            pass
+
         if external_network_id:
             creation_tasks.append(core_tasks.BackendMethodTask().si(
                 serialized_tenant, 'connect_tenant_to_external_network', external_network_id=external_network_id))
