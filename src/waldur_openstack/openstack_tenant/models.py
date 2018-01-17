@@ -137,6 +137,9 @@ class FloatingIP(structure_models.ServiceProperty):
     def increase_backend_quotas_usage(self, validate=True):
         self.settings.add_quota_usage(self.settings.Quotas.floating_ip_count, 1, validate=validate)
 
+    def decrease_backend_quotas_usage(self):
+        self.settings.add_quota_usage(self.settings.Quotas.floating_ip_count, -1)
+
     @classmethod
     def get_backend_fields(cls):
         return super(FloatingIP, cls).get_backend_fields() + ('address', 'runtime_state', 'backend_network_id')

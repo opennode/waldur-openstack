@@ -384,7 +384,8 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
         delete_volumes = kwargs.pop('delete_volumes', True)
-        delete_instance = cls.get_delete_instance_tasks(instance, serialized_instance)
+        release_floating_ips = kwargs.pop('release_floating_ips', False)
+        delete_instance = cls.get_delete_instance_tasks(instance, serialized_instance, release_floating_ips)
 
         # Case 1. Instance does not exist at backend
         if not instance.backend_id:
@@ -405,7 +406,7 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
             return chain(detach_volumes + delete_instance)
 
     @classmethod
-    def get_delete_instance_tasks(cls, instance, serialized_instance):
+    def get_delete_instance_tasks(cls, instance, serialized_instance, release_floating_ips):
         _tasks = [
             core_tasks.BackendMethodTask().si(
                 serialized_instance,
@@ -417,12 +418,19 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
                 backend_check_method='is_instance_deleted',
             ),
         ]
-        # pull related floating IPs state after instance deletion
-        for index, floating_ip in enumerate(instance.floating_ips):
-            _tasks.append(core_tasks.BackendMethodTask().si(
-                core_utils.serialize_instance(floating_ip),
-                'pull_floating_ip_runtime_state',
-            ).set(countdown=5 if not index else 0))
+        if release_floating_ips:
+            for index, floating_ip in enumerate(instance.floating_ips):
+                _tasks.append(core_tasks.BackendMethodTask().si(
+                    core_utils.serialize_instance(floating_ip),
+                    'delete_floating_ip',
+                ).set(countdown=5 if not index else 0))
+        else:
+            # pull related floating IPs state after instance deletion
+            for index, floating_ip in enumerate(instance.floating_ips):
+                _tasks.append(core_tasks.BackendMethodTask().si(
+                    core_utils.serialize_instance(floating_ip),
+                    'pull_floating_ip_runtime_state',
+                ).set(countdown=5 if not index else 0))
 
         shared_tenant = instance.service_project_link.service.settings.scope
         if shared_tenant:

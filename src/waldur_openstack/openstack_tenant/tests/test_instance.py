@@ -326,6 +326,19 @@ class InstanceDeleteTest(test_backend.BaseBackendTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT, response.data)
 
+    def test_neutron_methods_are_called_if_instance_is_deleted_with_floating_ips(self):
+        fixture = fixtures.OpenStackTenantFixture()
+        internal_ip = factories.InternalIPFactory.create(instance=self.instance, subnet=fixture.subnet)
+        settings = self.instance.service_project_link.service.settings
+        floating_ip = factories.FloatingIPFactory.create(internal_ip=internal_ip, settings=settings)
+        self.delete_instance({'release_floating_ips': True})
+        self.mocked_neutron().delete_floatingip.assert_called_once_with(floating_ip.backend_id)
+
+    def test_neutron_methods_are_not_called_if_instance_does_not_have_any_floating_ips_yet(self):
+        self.delete_instance({'release_floating_ips': True})
+        self.assertEqual(self.mocked_neutron().delete_floatingip.call_count, 0)
+
+
 
 class InstanceCreateBackupSchedule(test.APITransactionTestCase):
     action_name = 'create_backup_schedule'
