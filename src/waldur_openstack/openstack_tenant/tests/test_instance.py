@@ -344,7 +344,7 @@ class InstanceDeleteTest(test_backend.BaseBackendTestCase):
         internal_ip = factories.InternalIPFactory.create(instance=self.instance, subnet=fixture.subnet)
         settings = self.instance.service_project_link.service.settings
         factories.FloatingIPFactory.create(internal_ip=internal_ip, settings=settings)
-        self.delete_instance()
+        self.delete_instance({'release_floating_ips': False})
         self.assertEqual(self.mocked_neutron().delete_floatingip.call_count, 0)
 
 

@@ -384,7 +384,7 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
     @classmethod
     def get_task_signature(cls, instance, serialized_instance, force=False, **kwargs):
         delete_volumes = kwargs.pop('delete_volumes', True)
-        release_floating_ips = kwargs.pop('release_floating_ips', False)
+        release_floating_ips = kwargs.pop('release_floating_ips', True)
         delete_instance = cls.get_delete_instance_tasks(instance, serialized_instance, release_floating_ips)
 
         # Case 1. Instance does not exist at backend
