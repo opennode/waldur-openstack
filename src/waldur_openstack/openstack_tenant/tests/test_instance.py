@@ -338,6 +338,14 @@ class InstanceDeleteTest(test_backend.BaseBackendTestCase):
         self.delete_instance({'release_floating_ips': True})
         self.assertEqual(self.mocked_neutron().delete_floatingip.call_count, 0)
 
+    def test_neutron_methods_are_not_called_if_user_did_not_ask_for_floating_ip_removal_explicitly(self):
+        self.mocked_neutron().show_floatingip.return_value = {'floatingip': {'status': 'DOWN'}}
+        fixture = fixtures.OpenStackTenantFixture()
+        internal_ip = factories.InternalIPFactory.create(instance=self.instance, subnet=fixture.subnet)
+        settings = self.instance.service_project_link.service.settings
+        factories.FloatingIPFactory.create(internal_ip=internal_ip, settings=settings)
+        self.delete_instance()
+        self.assertEqual(self.mocked_neutron().delete_floatingip.call_count, 0)
 
 
 class InstanceCreateBackupSchedule(test.APITransactionTestCase):
