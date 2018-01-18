@@ -11,7 +11,7 @@ def get_consumable_item(flavor_name):
 
 
 def sync_price_list_item(flavor):
-    resource_content_type = ContentType.objects.get_for_model(models.Flavor)
+    resource_content_type = ContentType.objects.get_for_model(models.Instance)
     consumable_item = get_consumable_item(flavor.name)
     DefaultPriceListItem._create_or_update_default_price_list_item(
         resource_content_type=resource_content_type,
