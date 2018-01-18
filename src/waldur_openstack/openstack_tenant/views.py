@@ -364,6 +364,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         serializer = self.get_serializer(data=request.query_params, instance=self.get_object())
         serializer.is_valid(raise_exception=True)
         delete_volumes = serializer.validated_data['delete_volumes']
+        release_floating_ips = serializer.validated_data['release_floating_ips']
 
         resource = self.get_object()
         force = resource.state == models.Instance.States.ERRED
@@ -371,6 +372,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
             resource,
             force=force,
             delete_volumes=delete_volumes,
+            release_floating_ips=release_floating_ips,
             async=self.async_executor,
         )
 

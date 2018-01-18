@@ -1241,16 +1241,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         self._delete_backend_floating_ip(floating_ip.backend_id, floating_ip.tenant.backend_id)
         floating_ip.decrease_backend_quotas_usage()
 
-    def _delete_backend_floating_ip(self, backend_id, tenant_backend_id):
-        neutron = self.neutron_client
-        try:
-            logger.info("Deleting floating IP %s from tenant %s", backend_id, tenant_backend_id)
-            neutron.delete_floatingip(backend_id)
-        except neutron_exceptions.NotFound:
-            logger.debug("Floating IP %s is already gone from tenant %s", backend_id, tenant_backend_id)
-        except neutron_exceptions.NeutronClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
     @log_backend_action('create floating ip')
     def create_floating_ip(self, floating_ip):
         neutron = self.neutron_client

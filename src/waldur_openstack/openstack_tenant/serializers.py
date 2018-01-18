@@ -932,6 +932,7 @@ class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilter
 
 class InstanceDeleteSerializer(serializers.Serializer):
     delete_volumes = serializers.BooleanField(default=True)
+    release_floating_ips = serializers.BooleanField(label=_('Release floating IPs'), default=True)
 
     def validate(self, attrs):
         if attrs['delete_volumes'] and models.Snapshot.objects.filter(source_volume__instance=self.instance).exists():

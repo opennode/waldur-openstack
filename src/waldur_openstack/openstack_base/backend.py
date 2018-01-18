@@ -449,3 +449,13 @@ class BaseOpenStackBackend(ServiceBackend):
                         'min_disk': self.gb2mb(backend_image['min_disk']),
                     })
             model_class.objects.filter(backend_id__in=cur_images.keys(), settings=self.settings).delete()
+
+    def _delete_backend_floating_ip(self, backend_id, tenant_backend_id):
+        neutron = self.neutron_client
+        try:
+            logger.info("Deleting floating IP %s from tenant %s", backend_id, tenant_backend_id)
+            neutron.delete_floatingip(backend_id)
+        except neutron_exceptions.NotFound:
+            logger.debug("Floating IP %s is already gone from tenant %s", backend_id, tenant_backend_id)
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
