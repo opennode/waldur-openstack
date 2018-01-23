@@ -198,7 +198,7 @@ class BackupRestorationTest(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('floating_ips', response.data)
 
-    def test_floating_ip_is_not_associated_with_an_instance_if_floating_ip_is_not_in_DOWN_state(self):
+    def test_floating_ip_is_associated_with_an_instance_if_floating_ip_is_in_DOWN_state(self):
         floating_ip = factories.FloatingIPFactory(settings=self.service_settings, runtime_state='ACTIVE')
         subnet = factories.SubNetFactory(settings=self.service_settings)
         payload = self._get_valid_payload(
@@ -209,7 +209,7 @@ class BackupRestorationTest(test.APITransactionTestCase):
 
         response = self.client.post(self.url, payload)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn('floating_ips', response.data)
 
     def test_floating_ip_is_not_associated_with_an_instance_if_subnet_is_not_connected_to_the_instance(self):

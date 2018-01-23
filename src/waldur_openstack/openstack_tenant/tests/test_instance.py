@@ -138,7 +138,7 @@ class InstanceCreateTest(test.APITransactionTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_user_cannot_assign_active_floating_ip(self):
+    def test_user_can_assign_active_floating_ip(self):
         subnet_url = factories.SubNetFactory.get_url(self.subnet)
         floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='ACTIVE')
         data = self.get_valid_data(
@@ -147,7 +147,7 @@ class InstanceCreateTest(test.APITransactionTestCase):
 
         response = self.client.post(self.url, data)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_user_can_allocate_floating_ip(self):
         subnet_url = factories.SubNetFactory.get_url(self.subnet)
