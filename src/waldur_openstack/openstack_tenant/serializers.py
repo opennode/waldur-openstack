@@ -6,6 +6,7 @@ import pytz
 import re
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import ugettext, ugettext_lazy as _
 from rest_framework import serializers
@@ -632,9 +633,6 @@ def _validate_instance_floating_ips(floating_ips_with_subnets, settings, instanc
         if floating_ip.is_booked:
             message = ugettext('Floating IP %s is already booked for another instance creation')
             raise serializers.ValidationError({'floating_ips': message % floating_ip})
-        if not floating_ip.internal_ip and floating_ip.runtime_state != 'DOWN':
-            raise serializers.ValidationError(
-                {'floating_ips': ugettext('Floating IP %s runtime state should be DOWN.') % floating_ip})
         if floating_ip.settings != settings:
             message = ugettext('Floating IP %s does not belong to the same service settings as service project link.')
             raise serializers.ValidationError({'floating_ips': message % floating_ip})
@@ -652,7 +650,6 @@ def _connect_floating_ip_to_instance(floating_ip, subnet, instance):
     settings = instance.service_project_link.service.settings
     if not floating_ip:
         kwargs = {
-            'runtime_state': 'DOWN',
             'settings': settings,
             'is_booked': False,
             'backend_network_id': settings.options['external_network_id'],
@@ -693,7 +690,11 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
     internal_ips_set = NestedInternalIPSerializer(many=True, required=False)
-    floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
+    floating_ips = NestedFloatingIPSerializer(
+        queryset=models.FloatingIP.objects.all().filter(internal_ip__isnull=True),
+        many=True,
+        required=False
+    )
 
     system_volume_size = serializers.IntegerField(min_value=1024, write_only=True)
     data_volume_size = serializers.IntegerField(min_value=1024, required=False, write_only=True)
@@ -720,7 +721,6 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         fields = super(InstanceSerializer, self).get_fields()
         floating_ip_field = fields.get('floating_ips')
         if floating_ip_field:
-            floating_ip_field.query_params = {'runtime_state': 'DOWN'}
             floating_ip_field.value_field = 'url'
             floating_ip_field.display_name_field = 'address'
 
@@ -834,46 +834,6 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
         instance.volumes.add(*volumes)
         return instance
-
-
-class AssignFloatingIpSerializer(serializers.Serializer):
-    floating_ip = serializers.HyperlinkedRelatedField(
-        label='Floating IP',
-        required=False,
-        allow_null=True,
-        view_name='openstacktenant-fip-detail',
-        lookup_field='uuid',
-        queryset=models.FloatingIP.objects.all()
-    )
-
-    def get_fields(self):
-        fields = super(AssignFloatingIpSerializer, self).get_fields()
-        if self.instance:
-            query_params = {
-                'runtime_state': 'DOWN',
-                'settings_uuid': self.instance.service_project_link.service.settings.uuid.hex,
-            }
-
-            field = fields['floating_ip']
-            field.query_params = query_params
-            field.value_field = 'url'
-            field.display_name_field = 'address'
-        return fields
-
-    def validate_floating_ip(self, floating_ip):
-        if floating_ip is not None:
-            if floating_ip.runtime_state != 'DOWN':
-                raise serializers.ValidationError(_('Floating IP runtime_state must be DOWN.'))
-            elif floating_ip.settings != self.instance.service_project_link.service.settings:
-                raise serializers.ValidationError(_('Floating IP must belong to same settings as instance.'))
-        return floating_ip
-
-    def save(self):
-        # Increase service settings quota on floating IP quota if new one will be created.
-        if not self.validated_data.get('floating_ip'):
-            settings = self.instance.service_project_link.service.settings
-            settings.add_quota_usage(settings.Quotas.floating_ip_count, 1, validate=True)
-        return self.validated_data.get('floating_ip')
 
 
 class InstanceFlavorChangeSerializer(structure_serializers.PermissionFieldFilteringMixin, serializers.Serializer):
@@ -1015,10 +975,13 @@ class InstanceFloatingIPsUpdateSerializer(serializers.Serializer):
         fields = super(InstanceFloatingIPsUpdateSerializer, self).get_fields()
         instance = self.instance
         if instance:
+            queryset = models.FloatingIP.objects.all().filter(
+                Q(internal_ip__isnull=True) | Q(internal_ip__instance=instance)
+            )
+            fields['floating_ips'] = NestedFloatingIPSerializer(queryset=queryset, many=True, required=False)
             fields['floating_ips'].view_name = 'openstacktenant-fip-detail'
             fields['floating_ips'].query_params = {
                 'settings_uuid': instance.service_project_link.service.settings.uuid.hex,
-                'runtime_state': 'DOWN',
                 'is_booked': False,
             }
         return fields
@@ -1055,7 +1018,11 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
     security_groups = NestedSecurityGroupSerializer(
         queryset=models.SecurityGroup.objects.all(), many=True, required=False)
     internal_ips_set = NestedInternalIPSerializer(many=True, required=False)
-    floating_ips = NestedFloatingIPSerializer(queryset=models.FloatingIP.objects.all(), many=True, required=False)
+    floating_ips = NestedFloatingIPSerializer(
+        queryset=models.FloatingIP.objects.all().filter(internal_ip__isnull=True),
+        many=True,
+        required=False
+    )
 
     class Meta(object):
         model = models.BackupRestoration
@@ -1088,7 +1055,6 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
                 floating_ip_field.view_name = 'openstacktenant-fip-detail'
                 floating_ip_field.query_params = {
                     'settings_uuid': settings.uuid,
-                    'runtime_state': 'DOWN',
                     'is_booked': False,
                 }
                 floating_ip_field.display_name_field = 'address'
