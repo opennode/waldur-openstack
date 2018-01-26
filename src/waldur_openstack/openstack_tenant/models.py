@@ -277,11 +277,11 @@ class Instance(structure_models.VirtualMachine):
 
     @property
     def external_ips(self):
-        return self.floating_ips.values_list('address', flat=True)
+        return list(self.floating_ips.values_list('address', flat=True))
 
     @property
     def internal_ips(self):
-        return self.internal_ips_set.values_list('ip4_address', flat=True)
+        return list(self.internal_ips_set.values_list('ip4_address', flat=True))
 
     @property
     def size(self):
