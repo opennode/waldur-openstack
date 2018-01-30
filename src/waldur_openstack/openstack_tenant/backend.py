@@ -790,6 +790,12 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             floating_ip.save()
 
     @log_backend_action()
+    def delete_floating_ip(self, floating_ip):
+        self._delete_backend_floating_ip(floating_ip.backend_id, self.tenant_id)
+        floating_ip.decrease_backend_quotas_usage()
+        floating_ip.delete()
+
+    @log_backend_action()
     def pull_floating_ip_runtime_state(self, floating_ip):
         neutron = self.neutron_client
         try:

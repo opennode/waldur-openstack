@@ -402,7 +402,7 @@ class CreateServiceFromTenantTest(TestCase):
 class FlavorPriceListItemTest(TestCase):
     def setUp(self):
         self.flavor = factories.FlavorFactory()
-        self.content_type = ContentType.objects.get_for_model(models.Flavor)
+        self.content_type = ContentType.objects.get_for_model(models.Instance)
 
     def test_price_list_item_is_created_on_flavor_creation(self):
         cost_tracking_models.DefaultPriceListItem.objects.get(

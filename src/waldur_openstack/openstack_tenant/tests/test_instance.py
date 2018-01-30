@@ -138,7 +138,24 @@ class InstanceCreateTest(test.APITransactionTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_user_cannot_assign_active_floating_ip(self):
+    def test_user_cannot_use_floating_ip_assigned_to_other_instance(self):
+        subnet_url = factories.SubNetFactory.get_url(self.subnet)
+        internal_ip = factories.InternalIPFactory(subnet=self.subnet)
+        floating_ip = factories.FloatingIPFactory(
+            settings=self.openstack_settings,
+            runtime_state='ACTIVE',
+            internal_ip=internal_ip
+        )
+        data = self.get_valid_data(
+            floating_ips=[{'subnet': subnet_url, 'url': factories.FloatingIPFactory.get_url(floating_ip)}],
+        )
+
+        response = self.client.post(self.url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('floating_ips', response.data)
+
+    def test_user_can_assign_active_floating_ip(self):
         subnet_url = factories.SubNetFactory.get_url(self.subnet)
         floating_ip = factories.FloatingIPFactory(settings=self.openstack_settings, runtime_state='ACTIVE')
         data = self.get_valid_data(
@@ -147,7 +164,7 @@ class InstanceCreateTest(test.APITransactionTestCase):
 
         response = self.client.post(self.url, data)
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_user_can_allocate_floating_ip(self):
         subnet_url = factories.SubNetFactory.get_url(self.subnet)
@@ -325,6 +342,27 @@ class InstanceDeleteTest(test_backend.BaseBackendTestCase):
         response = self.client.delete(url)
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT, response.data)
+
+    def test_neutron_methods_are_called_if_instance_is_deleted_with_floating_ips(self):
+        fixture = fixtures.OpenStackTenantFixture()
+        internal_ip = factories.InternalIPFactory.create(instance=self.instance, subnet=fixture.subnet)
+        settings = self.instance.service_project_link.service.settings
+        floating_ip = factories.FloatingIPFactory.create(internal_ip=internal_ip, settings=settings)
+        self.delete_instance({'release_floating_ips': True})
+        self.mocked_neutron().delete_floatingip.assert_called_once_with(floating_ip.backend_id)
+
+    def test_neutron_methods_are_not_called_if_instance_does_not_have_any_floating_ips_yet(self):
+        self.delete_instance({'release_floating_ips': True})
+        self.assertEqual(self.mocked_neutron().delete_floatingip.call_count, 0)
+
+    def test_neutron_methods_are_not_called_if_user_did_not_ask_for_floating_ip_removal_explicitly(self):
+        self.mocked_neutron().show_floatingip.return_value = {'floatingip': {'status': 'DOWN'}}
+        fixture = fixtures.OpenStackTenantFixture()
+        internal_ip = factories.InternalIPFactory.create(instance=self.instance, subnet=fixture.subnet)
+        settings = self.instance.service_project_link.service.settings
+        factories.FloatingIPFactory.create(internal_ip=internal_ip, settings=settings)
+        self.delete_instance({'release_floating_ips': False})
+        self.assertEqual(self.mocked_neutron().delete_floatingip.call_count, 0)
 
 
 class InstanceCreateBackupSchedule(test.APITransactionTestCase):
@@ -516,6 +554,24 @@ class InstanceUpdateFloatingIPsTest(test.APITransactionTestCase):
             'attached': [],
             'detached': [self.fixture.floating_ip.address],
         })
+
+    def test_user_can_not_assign_floating_ip_used_by_other_instance(self):
+        internal_ip = factories.InternalIPFactory(subnet=self.fixture.subnet)
+        floating_ip = factories.FloatingIPFactory(
+            settings=self.fixture.openstack_tenant_service_settings,
+            runtime_state='DOWN',
+            internal_ip=internal_ip,
+        )
+        floating_ip_url = factories.FloatingIPFactory.get_url(floating_ip)
+        data = {
+            'floating_ips': [
+                {'subnet': self.subnet_url, 'url': floating_ip_url},
+            ]
+        }
+
+        response = self.client.post(self.url, data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('floating_ips', response.data)
 
     def test_user_cannot_add_floating_ip_via_subnet_that_is_not_connected_to_instance(self):
         subnet_url = factories.SubNetFactory.get_url()
