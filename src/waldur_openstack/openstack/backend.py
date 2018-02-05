@@ -556,11 +556,11 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         try:
             admin_user = keystone.users.find(name=self.settings.username)
-            admin_role = keystone.roles.find(name='admin')
+            member_role = keystone.roles.find(name='_member_')
             try:
                 keystone.roles.grant(
                     user=admin_user.id,
-                    role=admin_role.id,
+                    role=member_role.id,
                     project=tenant.backend_id)
             except keystone_exceptions.Conflict:
                 pass
