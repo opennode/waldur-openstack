@@ -526,20 +526,17 @@ class OpenStackBackend(BaseOpenStackBackend):
             update_pulled_fields(tenant, imported_tenant, ('name', 'description'))
 
     @log_backend_action()
-    def add_member_user_to_tenant(self, tenant):
+    def add_admin_user_to_tenant(self, tenant):
         """ Add user from openstack settings to new tenant """
         keystone = self.keystone_admin_client
 
         try:
             admin_user = keystone.users.find(name=self.settings.username)
-            try:
-                member_role = keystone.roles.find(name='_member_')
-            except keystone_exceptions.NotFound:
-                member_role = keystone.roles.find(name='Member')
+            admin_role = keystone.roles.find(name='admin')
             try:
                 keystone.roles.grant(
                     user=admin_user.id,
-                    role=member_role.id,
+                    role=admin_role.id,
                     project=tenant.backend_id)
             except keystone_exceptions.Conflict:
                 pass
@@ -557,9 +554,9 @@ class OpenStackBackend(BaseOpenStackBackend):
                 domain=self._get_domain(),
             )
             try:
-                role = keystone.roles.find(name='_member_')
-            except keystone_exceptions.NotFound:
                 role = keystone.roles.find(name='Member')
+            except keystone_exceptions.NotFound:
+                role = keystone.roles.find(name='_member_')
             keystone.roles.grant(
                 user=user.id,
                 role=role.id,
