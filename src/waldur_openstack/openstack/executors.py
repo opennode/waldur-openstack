@@ -61,7 +61,7 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
         serialized_subnet = core_utils.serialize_instance(subnet)
         creation_tasks = [
             core_tasks.BackendMethodTask().si(serialized_tenant, 'create_tenant', state_transition='begin_creating'),
-            core_tasks.BackendMethodTask().si(serialized_tenant, 'add_member_user_to_tenant'),
+            core_tasks.BackendMethodTask().si(serialized_tenant, 'add_admin_user_to_tenant'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'create_tenant_user'),
             core_tasks.BackendMethodTask().si(serialized_network, 'create_network', state_transition='begin_creating'),
             core_tasks.BackendMethodTask().si(serialized_subnet, 'create_subnet', state_transition='begin_creating'),
@@ -114,7 +114,7 @@ class TenantImportExecutor(core_executors.ActionExecutor):
     def get_task_signature(cls, tenant, serialized_tenant, **kwargs):
         tasks = [
             core_tasks.BackendMethodTask().si(serialized_tenant,
-                                              'add_member_user_to_tenant',
+                                              'add_admin_user_to_tenant',
                                               state_transition='begin_updating'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'create_or_update_tenant_user'),
             core_tasks.BackendMethodTask().si(serialized_tenant, 'pull_tenant_quotas'),
