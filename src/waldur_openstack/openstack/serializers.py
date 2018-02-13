@@ -50,7 +50,7 @@ class ServiceSerializer(core_serializers.ExtraFieldOptionsMixin,
 
     class Meta(structure_serializers.BaseServiceSerializer.Meta):
         model = models.OpenStackService
-        required_fields = 'backend_url', 'username', 'password', 'tenant_name'
+        required_fields = 'backend_url', 'username', 'password'
         extra_field_options = {
             'backend_url': {
                 'label': 'API URL',
