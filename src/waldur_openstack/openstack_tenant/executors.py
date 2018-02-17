@@ -324,7 +324,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         # Pull instance security groups
         _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'pull_instance_security_groups'))
 
-        # Create non-exist floating IPs
+        # Create non-existing floating IPs
         for floating_ip in instance.floating_ips.filter(backend_id=''):
             serialized_floating_ip = core_utils.serialize_instance(floating_ip)
             _tasks.append(core_tasks.BackendMethodTask().si(serialized_floating_ip, 'create_floating_ip'))
