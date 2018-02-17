@@ -123,7 +123,6 @@ class FloatingIPSerializer(structure_serializers.BasePropertySerializer):
             'settings': {'lookup_field': 'uuid'},
         }
 
-
 class SecurityGroupSerializer(structure_serializers.BasePropertySerializer):
     rules = serializers.SerializerMethodField()
 
@@ -654,7 +653,8 @@ def _connect_floating_ip_to_instance(floating_ip, subnet, instance):
             'is_booked': False,
             'backend_network_id': settings.options['external_network_id'],
         }
-        floating_ip = models.FloatingIP.objects.filter(**kwargs).first()
+        # TODO: figure out why internal_ip__isnull throws errors when added to kwargs
+        floating_ip = models.FloatingIP.objects.filter(internal_ip__isnull=True).filter(**kwargs).first()
         if not floating_ip:
             floating_ip = models.FloatingIP(**kwargs)
             floating_ip.increase_backend_quotas_usage()
@@ -983,6 +983,7 @@ class InstanceFloatingIPsUpdateSerializer(serializers.Serializer):
             fields['floating_ips'].query_params = {
                 'settings_uuid': instance.service_project_link.service.settings.uuid.hex,
                 'is_booked': False,
+                'free': True,
             }
         return fields
 
@@ -1056,6 +1057,7 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
                 floating_ip_field.query_params = {
                     'settings_uuid': settings.uuid,
                     'is_booked': False,
+                    'free': True,
                 }
                 floating_ip_field.display_name_field = 'address'
 
