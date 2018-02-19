@@ -1316,8 +1316,10 @@ def get_instance(openstack_floating_ip):
     if hasattr(openstack_floating_ip, '_instance'):
         return openstack_floating_ip._instance
     try:
-        floating_ip = models.FloatingIP.objects.get(backend_id=openstack_floating_ip.backend_id,
-                                                    address=openstack_floating_ip.address)
+        floating_ip = models.FloatingIP.objects\
+            .exclude(internal_ip__isnull=True)\
+            .get(backend_id=openstack_floating_ip.backend_id,
+                 address=openstack_floating_ip.address)
     except models.FloatingIP.DoesNotExist:
         openstack_floating_ip._instance = None
     else:
