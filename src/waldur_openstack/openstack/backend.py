@@ -2,7 +2,6 @@ from itertools import groupby
 
 import logging
 import re
-import uuid
 
 from django.db import transaction
 from django.utils import six, timezone
@@ -83,21 +82,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         """ Get current domain """
         keystone = self.keystone_admin_client
         return keystone.domains.find(name=self.settings.domain or 'Default')
-
-    def get_or_create_ssh_key_for_tenant(self, key_name, fingerprint, public_key):
-        nova = self.nova_client
-
-        try:
-            return nova.keypairs.find(fingerprint=fingerprint)
-        except nova_exceptions.NotFound:
-            # Fine, it's a new key, let's add it
-            try:
-                logger.info('Propagating ssh public key %s to backend', key_name)
-                return nova.keypairs.create(name=key_name, public_key=public_key)
-            except nova_exceptions.ClientException as e:
-                six.reraise(OpenStackBackendError, e)
-        except nova_exceptions.ClientException as e:
-            six.reraise(OpenStackBackendError, e)
 
     def remove_ssh_key_from_tenant(self, tenant, key_name, fingerprint):
         nova = self.nova_client
@@ -959,70 +943,6 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-    @log_backend_action('create external network for tenant')
-    def create_external_network(self, tenant, neutron, network_ip, network_prefix,
-                                vlan_id=None, vxlan_id=None, ips_count=None):
-        if tenant.external_network_id:
-            self.connect_tenant_to_external_network(tenant, tenant.external_network_id)
-
-        neutron = self.neutron_admin_client
-
-        # External network creation
-        network_name = 'nc-{0}-ext-net'.format(uuid.uuid4().hex)
-        network = {
-            'name': network_name,
-            'tenant_id': tenant.backend_id,
-            'router:external': True,
-            # XXX: provider:physical_network should be configurable.
-            'provider:physical_network': 'physnet1'
-        }
-
-        if vlan_id:
-            network['provider:network_type'] = 'vlan'
-            network['provider:segmentation_id'] = vlan_id
-        elif vxlan_id:
-            network['provider:network_type'] = 'vxlan'
-            network['provider:segmentation_id'] = vxlan_id
-        else:
-            raise OpenStackBackendError('VLAN or VXLAN ID should be provided.')
-
-        create_response = neutron.create_network({'networks': [network]})
-        network_id = create_response['networks'][0]['id']
-        logger.info('External network with name %s has been created.', network_name)
-        tenant.external_network_id = network_id
-        tenant.save(update_fields=['external_network_id'])
-
-        # Subnet creation
-        subnet_name = '{0}-sn01'.format(network_name)
-        cidr = '{0}/{1}'.format(network_ip, network_prefix)
-
-        subnet_data = {
-            'network_id': tenant.external_network_id,
-            'tenant_id': tenant.backend_id,
-            'cidr': cidr,
-            'name': subnet_name,
-            'ip_version': 4,
-            'enable_dhcp': False,
-        }
-        create_response = neutron.create_subnet({'subnets': [subnet_data]})
-        logger.info('Subnet with name %s has been created.', subnet_name)
-
-        # Router creation
-        self.connect_router(network_name, create_response['subnets'][0]['id'])
-
-        # Floating IPs creation
-        floating_ip = {
-            'floating_network_id': tenant.external_network_id,
-        }
-
-        if vlan_id is not None and ips_count is not None:
-            for i in range(ips_count):
-                ip = neutron.create_floatingip({'floatingip': floating_ip})['floatingip']
-                logger.info('Floating ip %s for external network %s has been created.',
-                            ip['floating_ip_address'], network_name)
-
-        return tenant.external_network_id
-
     @log_backend_action()
     def detect_external_network(self, tenant):
         neutron = self.neutron_client
@@ -1042,36 +962,6 @@ class OpenStackBackend(BaseOpenStackBackend):
             tenant.save()
             logger.info('Found and set external network with id %s for tenant %s (PK: %s)',
                         ext_gw['network_id'], tenant, tenant.pk)
-
-    @log_backend_action('delete tenant external network')
-    def delete_external_network(self, tenant):
-        neutron = self.neutron_admin_client
-
-        try:
-            floating_ips = neutron.list_floatingips(
-                floating_network_id=tenant.external_network_id)['floatingips']
-
-            for ip in floating_ips:
-                neutron.delete_floatingip(ip['id'])
-                logger.info('Floating IP with id %s has been deleted.', ip['id'])
-
-            ports = neutron.list_ports(network_id=tenant.external_network_id)['ports']
-            for port in ports:
-                neutron.remove_interface_router(port['device_id'], {'port_id': port['id']})
-                logger.info('Port with id %s has been deleted.', port['id'])
-
-            subnets = neutron.list_subnets(network_id=tenant.external_network_id)['subnets']
-            for subnet in subnets:
-                neutron.delete_subnet(subnet['id'])
-                logger.info('Subnet with id %s has been deleted.', subnet['id'])
-
-            neutron.delete_network(tenant.external_network_id)
-            logger.info('External network with id %s has been deleted.', tenant.external_network_id)
-        except neutron_exceptions.NeutronClientException as e:
-            six.reraise(OpenStackBackendError, e)
-        else:
-            tenant.external_network_id = ''
-            tenant.save()
 
     @log_backend_action()
     def create_network(self, network):
@@ -1264,7 +1154,7 @@ class OpenStackBackend(BaseOpenStackBackend):
     @log_backend_action()
     def connect_tenant_to_external_network(self, tenant, external_network_id):
         neutron = self.neutron_admin_client
-        logger.debug('About to create external network for tenant "%s" (PK: %s)', tenant.name, tenant.pk)
+        logger.debug('About to connect tenant to external network "%s" (PK: %s)', tenant.name, tenant.pk)
 
         try:
             # check if the network actually exists
