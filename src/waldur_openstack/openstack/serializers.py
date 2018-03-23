@@ -351,7 +351,7 @@ class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
 
     class Meta(object):
         model = models.Tenant
-        read_only_fields = ('name', 'availability_zone', 'internal_network_id', 'external_network_id',
+        read_only_fields = ('name', 'uuid', 'availability_zone', 'internal_network_id', 'external_network_id',
                             'user_username', 'user_password', 'quotas')
         fields = read_only_fields + ('service_project_link', 'backend_id')
 

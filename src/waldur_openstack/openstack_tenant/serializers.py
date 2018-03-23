@@ -1315,6 +1315,9 @@ def get_instance(openstack_floating_ip):
     # cache openstack instance on openstack floating_ip instance
     if hasattr(openstack_floating_ip, '_instance'):
         return openstack_floating_ip._instance
+    if not openstack_floating_ip.backend_id or not openstack_floating_ip.address:
+        openstack_floating_ip._instance = None
+        return
     try:
         floating_ip = models.FloatingIP.objects\
             .exclude(internal_ip__isnull=True)\

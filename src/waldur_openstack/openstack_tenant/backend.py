@@ -817,6 +817,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 logger.info('Propagating ssh public key %s to backend', key_name)
                 return nova.keypairs.create(name=key_name, public_key=public_key)
             except nova_exceptions.ClientException as e:
+                logger.error('Unable to import SSH public key to OpenStack, '
+                             'key_name: %s, fingerprint: %s, public_key: %s, error: %s',
+                             key_name, fingerprint, public_key, e)
                 six.reraise(OpenStackBackendError, e)
         except nova_exceptions.ClientException as e:
             six.reraise(OpenStackBackendError, e)

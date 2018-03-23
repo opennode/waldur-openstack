@@ -1,8 +1,7 @@
 from __future__ import unicode_literals
 
-import logging
-
 from datetime import timedelta
+import logging
 
 from django.conf import settings
 from django.db import transaction
@@ -17,34 +16,6 @@ from . import models, serializers, log
 
 
 logger = logging.getLogger(__name__)
-
-
-class RuntimeStateException(Exception):
-    pass
-
-
-class PollRuntimeStateTask(core_tasks.Task):
-    max_retries = 300
-    default_retry_delay = 5
-
-    @classmethod
-    def get_description(cls, instance, backend_pull_method, *args, **kwargs):
-        return 'Poll instance "%s" with method "%s"' % (instance, backend_pull_method)
-
-    def get_backend(self, instance):
-        return instance.get_backend()
-
-    def execute(self, instance, backend_pull_method, success_state, erred_state):
-        backend = self.get_backend(instance)
-        getattr(backend, backend_pull_method)(instance)
-        instance.refresh_from_db()
-        if instance.runtime_state not in (success_state, erred_state):
-            self.retry()
-        elif instance.runtime_state == erred_state:
-            raise RuntimeStateException(
-                '%s %s (PK: %s) runtime state become erred: %s' % (
-                    instance.__class__.__name__, instance, instance.pk, erred_state))
-        return instance
 
 
 class SetInstanceOKTask(core_tasks.StateTransitionTask):

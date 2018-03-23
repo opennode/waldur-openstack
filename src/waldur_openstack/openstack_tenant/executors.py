@@ -22,7 +22,7 @@ class VolumeCreateExecutor(core_executors.CreateExecutor):
                 'create_volume',
                 state_transition='begin_creating'
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
@@ -51,7 +51,7 @@ class VolumeDeleteExecutor(core_executors.DeleteExecutor):
             return chain(
                 core_tasks.BackendMethodTask().si(
                     serialized_volume, 'delete_volume', state_transition='begin_deleting'),
-                openstack_tasks.PollBackendCheckTask().si(serialized_volume, 'is_volume_deleted'),
+                core_tasks.PollBackendCheckTask().si(serialized_volume, 'is_volume_deleted'),
             )
         else:
             return core_tasks.StateTransitionTask().si(serialized_volume, state_transition='begin_deleting')
@@ -95,7 +95,7 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                     backend_method='extend_volume',
                     state_transition='begin_updating',
                 ),
-                tasks.PollRuntimeStateTask().si(
+                core_tasks.PollRuntimeStateTask().si(
                     serialized_volume,
                     backend_pull_method='pull_volume_runtime_state',
                     success_state='available',
@@ -113,7 +113,7 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                 backend_method='detach_volume',
                 state_transition='begin_updating'
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
@@ -123,7 +123,7 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                 serialized_volume,
                 backend_method='extend_volume',
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
@@ -135,7 +135,7 @@ class VolumeExtendExecutor(core_executors.ActionExecutor):
                 device=volume.device,
                 backend_method='attach_volume',
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='in-use',
@@ -177,7 +177,7 @@ class VolumeAttachExecutor(core_executors.ActionExecutor):
                 backend_method='attach_volume',
                 state_transition='begin_updating'
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='in-use',
@@ -200,7 +200,7 @@ class VolumeDetachExecutor(core_executors.ActionExecutor):
         return chain(
             core_tasks.BackendMethodTask().si(
                 serialized_volume, backend_method='detach_volume', state_transition='begin_updating'),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
@@ -219,7 +219,7 @@ class SnapshotCreateExecutor(core_executors.CreateExecutor):
                 'create_snapshot',
                 state_transition='begin_creating'
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_snapshot,
                 backend_pull_method='pull_snapshot_runtime_state',
                 success_state='available',
@@ -249,7 +249,7 @@ class SnapshotDeleteExecutor(core_executors.DeleteExecutor):
             return chain(
                 core_tasks.BackendMethodTask().si(
                     serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting'),
-                openstack_tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'),
+                core_tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'),
             )
         else:
             return core_tasks.StateTransitionTask().si(serialized_snapshot, state_transition='begin_deleting')
@@ -280,7 +280,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
                 serialized_volume, 'create_volume', state_transition='begin_creating'))
         for index, serialized_volume in enumerate(serialized_volumes):
             # Wait for volume creation
-            _tasks.append(tasks.PollRuntimeStateTask().si(
+            _tasks.append(core_tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
@@ -301,7 +301,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
             serialized_instance, 'create_instance', **kwargs).set(countdown=10))
 
         # Wait for instance creation
-        _tasks.append(tasks.PollRuntimeStateTask().si(
+        _tasks.append(core_tasks.PollRuntimeStateTask().si(
             serialized_instance,
             backend_pull_method='pull_instance_runtime_state',
             success_state=models.Instance.RuntimeStates.ACTIVE,
@@ -332,7 +332,7 @@ class InstanceCreateExecutor(core_executors.CreateExecutor):
         _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_floating_ips'))
         # Wait for operation completion
         for index, floating_ip in enumerate(instance.floating_ips):
-            _tasks.append(tasks.PollRuntimeStateTask().si(
+            _tasks.append(core_tasks.PollRuntimeStateTask().si(
                 core_utils.serialize_instance(floating_ip),
                 backend_pull_method='pull_floating_ip_runtime_state',
                 success_state='ACTIVE',
@@ -413,7 +413,7 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
                 backend_method='delete_instance',
                 state_transition='begin_deleting',
             ),
-            openstack_tasks.PollBackendCheckTask().si(
+            core_tasks.PollBackendCheckTask().si(
                 serialized_instance,
                 backend_check_method='is_instance_deleted',
             ),
@@ -451,7 +451,7 @@ class InstanceDeleteExecutor(core_executors.DeleteExecutor):
             for volume in data_volumes
         ]
         check_volumes = [
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 core_utils.serialize_instance(volume),
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
@@ -485,7 +485,7 @@ class InstanceFlavorChangeExecutor(core_executors.ActionExecutor):
                 state_transition='begin_updating',
                 flavor_id=flavor.backend_id
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_instance,
                 backend_pull_method='pull_instance_runtime_state',
                 success_state='VERIFY_RESIZE',
@@ -495,7 +495,7 @@ class InstanceFlavorChangeExecutor(core_executors.ActionExecutor):
                 serialized_instance,
                 backend_method='confirm_instance_resize'
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_instance,
                 backend_pull_method='pull_instance_runtime_state',
                 success_state='SHUTOFF',
@@ -554,7 +554,7 @@ class InstanceFloatingIPsUpdateExecutor(core_executors.ActionExecutor):
         _tasks.append(core_tasks.BackendMethodTask().si(serialized_instance, 'push_instance_floating_ips'))
         # Wait for operation completion
         for index, floating_ip in enumerate(instance.floating_ips):
-            _tasks.append(tasks.PollRuntimeStateTask().si(
+            _tasks.append(core_tasks.PollRuntimeStateTask().si(
                 core_utils.serialize_instance(floating_ip),
                 backend_pull_method='pull_floating_ip_runtime_state',
                 success_state='ACTIVE',
@@ -582,7 +582,7 @@ class InstanceStopExecutor(core_executors.ActionExecutor):
             core_tasks.BackendMethodTask().si(
                 serialized_instance, 'stop_instance', state_transition='begin_updating',
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_instance,
                 backend_pull_method='pull_instance_runtime_state',
                 success_state='SHUTOFF',
@@ -600,7 +600,7 @@ class InstanceStartExecutor(core_executors.ActionExecutor):
             core_tasks.BackendMethodTask().si(
                 serialized_instance, 'start_instance', state_transition='begin_updating',
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_instance,
                 backend_pull_method='pull_instance_runtime_state',
                 success_state='ACTIVE',
@@ -618,7 +618,7 @@ class InstanceRestartExecutor(core_executors.ActionExecutor):
             core_tasks.BackendMethodTask().si(
                 serialized_instance, 'restart_instance', state_transition='begin_updating',
             ),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_instance,
                 backend_pull_method='pull_instance_runtime_state',
                 success_state='ACTIVE',
@@ -648,7 +648,7 @@ class BackupCreateExecutor(core_executors.CreateExecutor):
             _tasks.append(tasks.ThrottleProvisionTask().si(
                 serialized_snapshot, 'create_snapshot', force=True, state_transition='begin_creating'))
         for index, serialized_snapshot in enumerate(serialized_snapshots):
-            _tasks.append(tasks.PollRuntimeStateTask().si(
+            _tasks.append(core_tasks.PollRuntimeStateTask().si(
                 serialized_snapshot,
                 backend_pull_method='pull_snapshot_runtime_state',
                 success_state='available',
@@ -681,7 +681,7 @@ class BackupDeleteExecutor(core_executors.DeleteExecutor):
             _tasks.append(core_tasks.BackendMethodTask().si(
                 serialized_snapshot, 'delete_snapshot', state_transition='begin_deleting'))
         for serialized_snapshot in serialized_snapshots:
-            _tasks.append(openstack_tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'))
+            _tasks.append(core_tasks.PollBackendCheckTask().si(serialized_snapshot, 'is_snapshot_deleted'))
             _tasks.append(core_tasks.DeletionTask().si(serialized_snapshot))
 
         return chain(*_tasks)
@@ -716,7 +716,7 @@ class BackupRestorationExecutor(core_executors.CreateExecutor):
                 serialized_volume, 'create_volume', state_transition='begin_creating'))
         for index, serialized_volume in enumerate(serialized_volumes):
             # Wait for volume creation
-            _tasks.append(tasks.PollRuntimeStateTask().si(
+            _tasks.append(core_tasks.PollRuntimeStateTask().si(
                 serialized_volume,
                 backend_pull_method='pull_volume_runtime_state',
                 success_state='available',
@@ -753,7 +753,7 @@ class SnapshotRestorationExecutor(core_executors.CreateExecutor):
         _tasks = [
             tasks.ThrottleProvisionTask().si(
                 serialized_volume, 'create_volume', state_transition='begin_creating'),
-            tasks.PollRuntimeStateTask().si(
+            core_tasks.PollRuntimeStateTask().si(
                 serialized_volume, 'pull_volume_runtime_state', success_state='available', erred_state='error',
             ).set(countdown=30),
             core_tasks.BackendMethodTask().si(serialized_volume, 'remove_bootable_flag'),
