@@ -30,6 +30,7 @@ def copy_certifications_from_openstack_settings_to_openstack_tenant_settings(app
 class Migration(migrations.Migration):
 
     dependencies = [
+        ('openstack', '0001_initial'),
         ('openstack_tenant', '0024_add_backup_size'),
     ]
 
