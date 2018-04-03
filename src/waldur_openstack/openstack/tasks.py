@@ -1,6 +1,6 @@
 from waldur_core.core import tasks as core_tasks
 
-from .. import models
+from . import models
 
 
 class TenantCreateErrorTask(core_tasks.ErrorStateTransitionTask):

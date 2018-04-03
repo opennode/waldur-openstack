@@ -469,7 +469,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
     def _validate_tenant_name(self, service_settings, tenant_name):
         neighbour_tenants = self._get_neighbour_tenants(service_settings)
         existing_tenant_names = [service_settings.options.get('tenant_name', 'admin')] +\
-                                list(neighbour_tenants.values_list('name', flat=True))
+            list(neighbour_tenants.values_list('name', flat=True))
         if tenant_name in existing_tenant_names:
             raise serializers.ValidationError({
                 'name': _('Name "%s" is already registered. Please choose another one.' % tenant_name),
@@ -478,7 +478,7 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
     def _validate_username(self, service_settings, username):
         neighbour_tenants = self._get_neighbour_tenants(service_settings)
         existing_usernames = [service_settings.username] + \
-                             list(neighbour_tenants.values_list('user_username', flat=True))
+            list(neighbour_tenants.values_list('user_username', flat=True))
         if username in existing_usernames:
             raise serializers.ValidationError({
                 'user_username': _('Name "%s" is already registered. Please choose another one.') % username
