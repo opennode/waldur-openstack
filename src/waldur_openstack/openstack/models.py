@@ -1,5 +1,4 @@
 from __future__ import unicode_literals
-import urlparse
 
 from django.db import models
 from django.template.defaultfilters import slugify
@@ -9,6 +8,7 @@ from waldur_core.core.fields import JSONField
 from model_utils import FieldTracker
 from model_utils.models import TimeStampedModel
 
+from six.moves import urllib
 from waldur_core.core import models as core_models, utils as core_utils
 from waldur_core.logging.loggers import LoggableMixin
 from waldur_core.quotas.fields import QuotaField, UsageAggregatorQuotaField, CounterQuotaField
@@ -221,7 +221,7 @@ class Tenant(structure_models.PrivateCloud):
             return access_url
 
         if settings.backend_url:
-            parsed = urlparse.urlparse(settings.backend_url)
+            parsed = urllib.parse.urlparse(settings.backend_url)
             return '%s://%s/dashboard' % (parsed.scheme, parsed.hostname)
 
     def format_quota(self, name, limit):

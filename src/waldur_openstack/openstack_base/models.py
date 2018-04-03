@@ -34,10 +34,10 @@ class BaseSecurityGroupRule(models.Model):
     def validate_icmp(self):
         if self.from_port is not None and not -1 <= self.from_port <= 255:
             raise ValidationError(_('Wrong value for "from_port": '
-                                  'expected value in range [-1, 255], found %d') % self.from_port)
+                                    'expected value in range [-1, 255], found %d') % self.from_port)
         if self.to_port is not None and not -1 <= self.to_port <= 255:
             raise ValidationError(_('Wrong value for "to_port": '
-                                  'expected value in range [-1, 255], found %d') % self.to_port)
+                                    'expected value in range [-1, 255], found %d') % self.to_port)
 
     def validate_port(self):
         if self.from_port is not None and self.to_port is not None:
@@ -45,10 +45,10 @@ class BaseSecurityGroupRule(models.Model):
                 raise ValidationError(_('"from_port" should be less or equal to "to_port"'))
         if self.from_port is not None and self.from_port < 1:
             raise ValidationError(_('Wrong value for "from_port": '
-                                  'expected value in range [1, 65535], found %d') % self.from_port)
+                                    'expected value in range [1, 65535], found %d') % self.from_port)
         if self.to_port is not None and self.to_port < 1:
             raise ValidationError(_('Wrong value for "to_port": '
-                                  'expected value in range [1, 65535], found %d') % self.to_port)
+                                    'expected value in range [1, 65535], found %d') % self.to_port)
 
     def validate_cidr(self):
         if not self.cidr:
@@ -71,7 +71,7 @@ class BaseSecurityGroupRule(models.Model):
             self.validate_port()
         else:
             raise ValidationError(_('Wrong value for "protocol": '
-                                  'expected one of (tcp, udp, icmp), found %s') % self.protocol)
+                                    'expected one of (tcp, udp, icmp), found %s') % self.protocol)
         self.validate_cidr()
 
     def __str__(self):

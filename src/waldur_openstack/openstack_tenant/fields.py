@@ -12,6 +12,7 @@ class StringTimestampField(serializers.CharField):
     Note that there must be at least one format provided in formats parameter (e.g. formats=('%Y-%m-%dT%H:%M:%S',)).
     First format from formats list will be used during deserialization process.
     """
+
     def __init__(self, formats=(), **kwargs):
         assert formats, 'At least one datetime string format must be provided.'
         self.formats = formats

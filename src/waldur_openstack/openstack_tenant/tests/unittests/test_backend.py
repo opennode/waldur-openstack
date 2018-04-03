@@ -61,11 +61,11 @@ class PullFloatingIPTest(BaseBackendTest):
 
     def _get_valid_new_backend_ip(self, internal_ip):
         return dict(floatingips=[{
-                'floating_ip_address': '0.0.0.0',
-                'floating_network_id': 'new_backend_network_id',
-                'status': 'DOWN',
-                'id': 'new_backend_id',
-                'port_id': internal_ip.backend_id
+            'floating_ip_address': '0.0.0.0',
+            'floating_network_id': 'new_backend_network_id',
+            'status': 'DOWN',
+            'id': 'new_backend_id',
+            'port_id': internal_ip.backend_id
         }])
 
     def test_pull_floating_ips_does_not_create_ip_if_internal_ip_is_missing(self):

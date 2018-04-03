@@ -1,4 +1,3 @@
-import urllib
 import uuid
 
 from cinderclient import exceptions as cinder_exceptions
@@ -8,6 +7,7 @@ from django.test import override_settings
 from novaclient import exceptions as nova_exceptions
 from rest_framework import status, test
 import mock
+from six.moves import urllib
 
 from waldur_openstack.openstack.tests.unittests import test_backend
 from waldur_core.structure.tests import factories as structure_factories
@@ -247,7 +247,7 @@ class InstanceDeleteTest(test_backend.BaseBackendTestCase):
 
         url = factories.InstanceFactory.get_url(self.instance)
         if query_params:
-            url += '?' + urllib.urlencode(query_params)
+            url += '?' + urllib.parse.urlencode(query_params)
 
         with override_settings(CELERY_ALWAYS_EAGER=True, CELERY_EAGER_PROPAGATES_EXCEPTIONS=True):
             response = self.client.delete(url)
