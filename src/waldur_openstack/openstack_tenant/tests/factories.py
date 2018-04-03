@@ -256,7 +256,7 @@ class BackupFactory(factory.DjangoModelFactory):
     backup_schedule = factory.SubFactory(BackupScheduleFactory)
     instance = factory.LazyAttribute(lambda b: b.backup_schedule.instance)
     state = models.Backup.States.OK
-    kept_until = fuzzy.FuzzyDateTime(timezone.datetime(2017, 0o6, 0o6, tzinfo=pytz.UTC))
+    kept_until = fuzzy.FuzzyDateTime(timezone.datetime(2017, 6, 6, tzinfo=pytz.UTC))
 
     @classmethod
     def get_url(cls, backup=None, action=None):
