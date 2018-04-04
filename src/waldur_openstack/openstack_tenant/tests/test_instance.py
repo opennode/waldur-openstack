@@ -24,6 +24,8 @@ class InstanceCreateTest(test.APITransactionTestCase):
         self.openstack_settings.options = {'external_network_id': uuid.uuid4().hex}
         self.openstack_settings.save()
         self.openstack_spl = self.openstack_tenant_fixture.spl
+        self.project = self.openstack_tenant_fixture.project
+        self.customer = self.openstack_tenant_fixture.customer
         self.image = factories.ImageFactory(settings=self.openstack_settings, min_disk=10240, min_ram=1024)
         self.flavor = factories.FlavorFactory(settings=self.openstack_settings)
         self.subnet = self.openstack_tenant_fixture.subnet
@@ -59,6 +61,22 @@ class InstanceCreateTest(test.APITransactionTestCase):
         self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.storage).usage, instance.disk)
         self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.vcpu).usage, instance.cores)
 
+    def test_project_quotas_updated_when_instance_is_created(self):
+        response = self.client.post(self.url, self.get_valid_data())
+        instance = models.Instance.objects.get(uuid=response.data['uuid'])
+
+        self.assertEqual(self.project.quotas.get(name='os_cpu_count').usage, instance.cores)
+        self.assertEqual(self.project.quotas.get(name='os_ram_size').usage, instance.ram)
+        self.assertEqual(self.project.quotas.get(name='os_storage_size').usage, instance.disk)
+
+    def test_customer_quotas_updated_when_instance_is_created(self):
+        response = self.client.post(self.url, self.get_valid_data())
+        instance = models.Instance.objects.get(uuid=response.data['uuid'])
+
+        self.assertEqual(self.customer.quotas.get(name='os_cpu_count').usage, instance.cores)
+        self.assertEqual(self.customer.quotas.get(name='os_ram_size').usage, instance.ram)
+        self.assertEqual(self.customer.quotas.get(name='os_storage_size').usage, instance.disk)
+
     def test_spl_quota_updated_by_signal_handler_when_instance_is_removed(self):
         response = self.client.post(self.url, self.get_valid_data())
         instance = models.Instance.objects.get(uuid=response.data['uuid'])
@@ -67,6 +85,24 @@ class InstanceCreateTest(test.APITransactionTestCase):
         self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.vcpu).usage, 0)
         self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.ram).usage, 0)
         self.assertEqual(self.openstack_spl.quotas.get(name=self.openstack_spl.Quotas.storage).usage, 0)
+
+    def test_project_quotas_updated_when_instance_is_deleted(self):
+        response = self.client.post(self.url, self.get_valid_data())
+        instance = models.Instance.objects.get(uuid=response.data['uuid'])
+        instance.delete()
+
+        self.assertEqual(self.project.quotas.get(name='os_cpu_count').usage, 0)
+        self.assertEqual(self.project.quotas.get(name='os_ram_size').usage, 0)
+        self.assertEqual(self.project.quotas.get(name='os_storage_size').usage, 0)
+
+    def test_customer_quotas_updated_when_instance_is_deleted(self):
+        response = self.client.post(self.url, self.get_valid_data())
+        instance = models.Instance.objects.get(uuid=response.data['uuid'])
+        instance.delete()
+
+        self.assertEqual(self.customer.quotas.get(name='os_cpu_count').usage, 0)
+        self.assertEqual(self.customer.quotas.get(name='os_ram_size').usage, 0)
+        self.assertEqual(self.customer.quotas.get(name='os_storage_size').usage, 0)
 
     @data('storage', 'ram', 'vcpu')
     def test_instance_cannot_be_created_if_service_project_link_quota_has_been_exceeded(self, quota):
