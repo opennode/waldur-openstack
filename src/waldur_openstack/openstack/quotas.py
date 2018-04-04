@@ -18,10 +18,11 @@ TENANT_PATHS = {
 
 
 def inject_tenant_quotas():
-    for (model, path) in TENANT_PATHS.items():
+    for model in TENANT_PATHS:
         for (quota_name, child_quota_name) in TENANT_QUOTAS:
 
             def get_children(scope):
+                path = TENANT_PATHS[type(scope)]
                 return models.Tenant.objects.filter(**{path: scope})
 
             model.add_quota_field(
