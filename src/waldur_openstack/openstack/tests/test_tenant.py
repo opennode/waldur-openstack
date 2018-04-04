@@ -1,4 +1,5 @@
 import itertools
+
 from ddt import data, ddt
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -668,7 +669,7 @@ class SecurityGroupCreateTest(BaseTenantActionsTest):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(models.SecurityGroup.objects.filter(name=self.valid_data['name']).exists())
 
-    def test_security_group_quota_increses_on_security_group_creation(self):
+    def test_security_group_quota_increases_on_security_group_creation(self):
         self.client.force_authenticate(self.fixture.admin)
         response = self.client.post(self.url, self.valid_data)
 
