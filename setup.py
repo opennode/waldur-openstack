@@ -14,7 +14,7 @@ install_requires = [
     'pbr!=2.1.0',
     'Babel!=2.4.0,>=2.3.4',
     'iptools>=0.6.1',
-    'waldur-core>=0.157.1',
+    'waldur-core>=0.157.2',
     'python-ceilometerclient>=2.9.0',
     'python-cinderclient>=3.1.0',
     'python-glanceclient>=2.8.0',
