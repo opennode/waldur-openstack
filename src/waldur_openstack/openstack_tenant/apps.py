@@ -14,15 +14,17 @@ class OpenStackTenantConfig(AppConfig):
     service_name = 'OpenStackTenant'
 
     def ready(self):
+        from waldur_core.quotas.fields import QuotaField, TotalQuotaField
+        from waldur_core.structure.models import ServiceSettings, Project, Customer
         from waldur_core.structure import SupportedServices
+        from waldur_openstack.openstack.models import Tenant
+
         from .backend import OpenStackTenantBackend
+        from . import handlers, models
+
         SupportedServices.register_backend(OpenStackTenantBackend)
 
         # Initialize service settings quotas based on tenant.
-        from waldur_core.structure.models import ServiceSettings
-        from waldur_core.quotas.fields import QuotaField
-        from waldur_openstack.openstack.models import Tenant
-        from waldur_openstack.openstack_tenant.models import Flavor
         for quota in Tenant.get_quotas_fields():
             ServiceSettings.add_quota_field(
                 name=quota.name,
@@ -34,7 +36,60 @@ class OpenStackTenantConfig(AppConfig):
                 )
             )
 
-        from . import handlers, models
+        Project.add_quota_field(
+            name='os_cpu_count',
+            quota_field=TotalQuotaField(
+                target_models=[models.Instance],
+                path_to_scope='service_project_link.project',
+                target_field='cores',
+            )
+        )
+
+        Project.add_quota_field(
+            name='os_ram_size',
+            quota_field=TotalQuotaField(
+                target_models=[models.Instance],
+                path_to_scope='service_project_link.project',
+                target_field='ram',
+            )
+        )
+
+        Project.add_quota_field(
+            name='os_storage_size',
+            quota_field=TotalQuotaField(
+                target_models=[models.Volume, models.Snapshot],
+                path_to_scope='service_project_link.project',
+                target_field='size',
+            )
+        )
+
+        Customer.add_quota_field(
+            name='os_cpu_count',
+            quota_field=TotalQuotaField(
+                target_models=[models.Instance],
+                path_to_scope='service_project_link.project.customer',
+                target_field='cores',
+            )
+        )
+
+        Customer.add_quota_field(
+            name='os_ram_size',
+            quota_field=TotalQuotaField(
+                target_models=[models.Instance],
+                path_to_scope='service_project_link.project.customer',
+                target_field='ram',
+            )
+        )
+
+        Customer.add_quota_field(
+            name='os_storage_size',
+            quota_field=TotalQuotaField(
+                target_models=[models.Volume, models.Snapshot],
+                path_to_scope='service_project_link.project.customer',
+                target_field='size',
+            )
+        )
+
         for Resource in (models.Instance, models.Volume, models.Snapshot):
             name = Resource.__name__.lower()
             signals.post_save.connect(
@@ -136,6 +191,6 @@ class OpenStackTenantConfig(AppConfig):
 
         signals.post_save.connect(
             handlers.sync_price_list_item_for_flavor,
-            sender=Flavor,
+            sender=models.Flavor,
             dispatch_uid='openstack_tenant.handlers.sync_price_list_item_for_flavor',
         )
