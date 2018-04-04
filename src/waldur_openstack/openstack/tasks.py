@@ -39,6 +39,6 @@ class TenantPullQuotas(core_tasks.BackgroundTask):
         return self.name == other_task.get('name')
 
     def run(self):
-        from .. import executors
+        from . import executors
         for tenant in models.Tenant.objects.filter(state=models.Tenant.States.OK):
             executors.TenantPullQuotasExecutor.execute(tenant)
