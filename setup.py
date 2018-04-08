@@ -26,7 +26,7 @@ install_requires = [
 
 setup(
     name='waldur-openstack',
-    version='0.41.1',
+    version='0.41.2',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://waldur.com',
