@@ -379,7 +379,7 @@ class OpenStackBackend(BaseOpenStackBackend):
 
                 networks.append(network)
 
-            networks_uuid = [network.uuid for network in networks]
+            networks_uuid = [network_item.uuid for network_item in networks]
             for network in models.Network.objects.filter(
                     state__in=[models.Network.States.OK, models.Network.States.ERRED],
                     service_project_link__service__settings=self.settings).exclude(uuid__in=networks_uuid):

@@ -346,7 +346,7 @@ def sync_certificates_between_openstack_service_with_openstacktenant_service(sen
     """
     service_settings = instance
     if (action not in ['post_add', 'post_remove', 'post_clear'] or
-                service_settings.type != openstack_apps.OpenStackConfig.service_name):
+            service_settings.type != openstack_apps.OpenStackConfig.service_name):
         return
 
     tenants = openstack_models.Tenant.objects.filter(service_project_link__service__settings=service_settings)

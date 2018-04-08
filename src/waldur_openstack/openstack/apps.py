@@ -14,7 +14,10 @@ class OpenStackConfig(AppConfig):
 
     def ready(self):
         from waldur_core.core import models as core_models
-        from waldur_core.structure import SupportedServices, signals as structure_signals, models as structure_models
+        from waldur_core.quotas.fields import QuotaField
+        from waldur_core.structure import models as structure_models
+        from waldur_core.structure import signals as structure_signals
+        from waldur_core.structure import SupportedServices
         from . import handlers
 
         Tenant = self.get_model('Tenant')
@@ -23,11 +26,11 @@ class OpenStackConfig(AppConfig):
         from .backend import OpenStackBackend
         SupportedServices.register_backend(OpenStackBackend)
 
-        from waldur_core.structure.models import ServiceSettings
-        from waldur_core.quotas.fields import QuotaField
+        from . import quotas
+        quotas.inject_tenant_quotas()
 
         for resource in ('vcpu', 'ram', 'storage'):
-            ServiceSettings.add_quota_field(
+            structure_models.ServiceSettings.add_quota_field(
                 name='openstack_%s' % resource,
                 quota_field=QuotaField(
                     creation_condition=lambda service_settings:

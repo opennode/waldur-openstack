@@ -123,6 +123,7 @@ class FloatingIPSerializer(structure_serializers.BasePropertySerializer):
             'settings': {'lookup_field': 'uuid'},
         }
 
+
 class SecurityGroupSerializer(structure_serializers.BasePropertySerializer):
     rules = serializers.SerializerMethodField()
 

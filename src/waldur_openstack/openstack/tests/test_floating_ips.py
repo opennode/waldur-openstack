@@ -80,7 +80,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
         expected_ip_uuids = []
         self.assertItemsEqual(response_ip_uuids, expected_ip_uuids)
 
-    def test_admin_can_retreive_floating_ip_from_his_project(self):
+    def test_admin_can_retrieve_floating_ip_from_his_project(self):
         # when
         self.client.force_authenticate(self.fixture.admin)
         response = self.client.get(factories.FloatingIPFactory.get_url(self.active_ip))
@@ -88,7 +88,7 @@ class FloatingIPListRetreiveTestCase(test.APITransactionTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertItemsEqual(response.data['uuid'], self.active_ip.uuid.hex)
 
-    def test_owner_can_not_retreive_floating_ip_not_from_his_customer(self):
+    def test_owner_can_not_retrieve_floating_ip_not_from_his_customer(self):
         # when
         self.client.force_authenticate(self.fixture.owner)
         response = self.client.get(factories.FloatingIPFactory.get_url(self.other_ip))
