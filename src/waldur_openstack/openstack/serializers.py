@@ -11,7 +11,6 @@ from django.db import transaction
 from django.db.models import Q
 from django.template.defaultfilters import slugify
 from django.utils.translation import ugettext_lazy as _
-from netaddr import IPNetwork
 from rest_framework import serializers
 
 from waldur_core.core import utils as core_utils, serializers as core_serializers
@@ -138,66 +137,6 @@ class TenantQuotaSerializer(serializers.Serializer):
     storage = serializers.IntegerField(min_value=1, required=False)
     security_group_count = serializers.IntegerField(min_value=1, required=False)
     security_group_rule_count = serializers.IntegerField(min_value=1, required=False)
-
-
-class NestedServiceProjectLinkSerializer(structure_serializers.PermissionFieldFilteringMixin,
-                                         core_serializers.AugmentedSerializerMixin,
-                                         core_serializers.HyperlinkedRelatedModelSerializer):
-
-    service_name = serializers.ReadOnlyField(source='service.settings.name')
-
-    class Meta(object):
-        model = models.OpenStackServiceProjectLink
-        fields = (
-            'url',
-            'project', 'project_name', 'project_uuid',
-            'service', 'service_name', 'service_uuid',
-        )
-        related_paths = 'project', 'service'
-        extra_kwargs = {
-            'service': {'lookup_field': 'uuid', 'view_name': 'openstack-detail'},
-            'project': {'lookup_field': 'uuid'},
-        }
-
-    def run_validators(self, value):
-        # No need to validate any fields except 'url' that is validated in to_internal_value method
-        pass
-
-    def get_filtered_field_names(self):
-        return 'project', 'service'
-
-
-class ExternalNetworkSerializer(serializers.Serializer):
-    vlan_id = serializers.CharField(required=False)
-    vxlan_id = serializers.CharField(required=False)
-    network_ip = serializers.IPAddressField(protocol='ipv4')
-    network_prefix = serializers.IntegerField(min_value=0, max_value=32)
-    ips_count = serializers.IntegerField(min_value=1, required=False)
-
-    def validate(self, attrs):
-        vlan_id = attrs.get('vlan_id')
-        vxlan_id = attrs.get('vxlan_id')
-
-        if vlan_id is None and vxlan_id is None:
-            raise serializers.ValidationError(_('VLAN or VXLAN ID should be provided.'))
-        elif vlan_id and vxlan_id:
-            raise serializers.ValidationError(_('VLAN and VXLAN networks cannot be created simultaneously.'))
-
-        ips_count = attrs.get('ips_count')
-        if ips_count is None:
-            return attrs
-
-        network_ip = attrs.get('network_ip')
-        network_prefix = attrs.get('network_prefix')
-
-        cidr = IPNetwork(network_ip)
-        cidr.prefixlen = network_prefix
-
-        # subtract router and broadcast IPs
-        if cidr.size < ips_count - 2:
-            raise serializers.ValidationError(_('Not enough Floating IP Addresses available.'))
-
-        return attrs
 
 
 class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
