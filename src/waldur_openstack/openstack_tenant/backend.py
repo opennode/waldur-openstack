@@ -622,7 +622,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             backend_flavor = nova.flavors.get(backend_flavor_id)
 
             # instance key name and fingerprint are optional
-            if instance.key_name:
+            # it is assumed that if public_key is specified, then
+            # key_name and key_fingerprint have valid values
+            if public_key:
                 backend_public_key = self._get_or_create_ssh_key(
                     instance.key_name, instance.key_fingerprint, public_key)
             else:

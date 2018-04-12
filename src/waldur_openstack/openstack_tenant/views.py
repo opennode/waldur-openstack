@@ -549,39 +549,6 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     def perform_update(self, serializer):
         serializer.save()
 
-    def list(self, request, *args, **kwargs):
-        """
-        To create a backup, issue the following **POST** request:
-
-        .. code-block:: http
-
-            POST /api/openstack-backups/ HTTP/1.1
-            Content-Type: application/json
-            Accept: application/json
-            Authorization: Token c84d653b9ec92c6cbac41c706593e66f567a7fa4
-            Host: example.com
-
-            {
-                "instance": "http://example.com/api/openstack-instances/a04a26e46def4724a0841abcb81926ac/",
-                "description": "a new manual backup"
-            }
-
-        On creation of backup it's projected size is validated against a remaining storage quota.
-        """
-        return super(BackupViewSet, self).list(request, *args, **kwargs)
-
-    def retrieve(self, request, *args, **kwargs):
-        """
-        Created backups support several operations. Only users with write access to backup source
-        are allowed to perform these operations:
-
-        - */api/openstack-backup/<backup_uuid>/restore/* - restore a specified backup.
-        - */api/openstack-backup/<backup_uuid>/delete/* - delete a specified backup.
-
-        If a backup is in a state that prohibits this operation, it will be returned in error message of the response.
-        """
-        return super(BackupViewSet, self).retrieve(request, *args, **kwargs)
-
     @decorators.detail_route(methods=['post'])
     def restore(self, request, uuid=None):
         instance = self.get_object()
@@ -589,7 +556,14 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
         serializer.is_valid(raise_exception=True)
         backup_restoration = serializer.save()
 
-        executors.BackupRestorationExecutor().execute(backup_restoration)
+        # It is assumed that SSH public key is already stored in OpenStack system volume.
+        # Therefore we don't need to specify it explicitly for cloud init service.
+        executors.InstanceCreateExecutor.execute(
+            backup_restoration.instance,
+            flavor=backup_restoration.flavor,
+            is_heavy_task=True,
+        )
+
         instance_serialiser = serializers.InstanceSerializer(
             backup_restoration.instance, context={'request': self.request})
         return response.Response(instance_serialiser.data, status=status.HTTP_201_CREATED)
