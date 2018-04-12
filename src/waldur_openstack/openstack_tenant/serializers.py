@@ -1114,6 +1114,8 @@ class BackupRestorationSerializer(serializers.HyperlinkedModelSerializer):
             service_project_link=backup.service_project_link,
             flavor_disk=flavor.disk,
             flavor_name=flavor.name,
+            key_name=source_instance.key_name,
+            key_fingerprint=source_instance.key_fingerprint,
             cores=flavor.cores,
             ram=flavor.ram,
             min_ram=metadata.get('min_ram', 0),
