@@ -693,55 +693,6 @@ class BackupDeleteExecutor(core_executors.DeleteExecutor):
             return tasks.ForceDeleteBackupTask().si(serialized_backup)
 
 
-class BackupRestorationExecutor(core_executors.CreateExecutor):
-    """ Restore volumes from backup snapshots, create instance based on restored volumes """
-
-    @classmethod
-    def get_task_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
-        """ Restore each volume from snapshot """
-        instance = backup_restoration.instance
-        serialized_instance = core_utils.serialize_instance(instance)
-        serialized_volumes = [core_utils.serialize_instance(volume) for volume in instance.volumes.all()]
-
-        _tasks = [
-            tasks.ThrottleProvisionStateTask().si(
-                serialized_instance,
-                state_transition='begin_creating'
-            )
-        ]
-        # Create volumes
-        for serialized_volume in serialized_volumes:
-            _tasks.append(tasks.ThrottleProvisionTask().si(
-                serialized_volume, 'create_volume', state_transition='begin_creating'))
-        for index, serialized_volume in enumerate(serialized_volumes):
-            # Wait for volume creation
-            _tasks.append(core_tasks.PollRuntimeStateTask().si(
-                serialized_volume,
-                backend_pull_method='pull_volume_runtime_state',
-                success_state='available',
-                erred_state='error',
-            ).set(countdown=30 if index == 0 else 0))
-            # Pull volume to sure that it is bootable
-            _tasks.append(core_tasks.BackendMethodTask().si(serialized_volume, 'pull_volume'))
-            # Mark volume as OK
-            _tasks.append(core_tasks.StateTransitionTask().si(serialized_volume, state_transition='set_ok'))
-        # Create instance. Wait 10 seconds after volumes creation due to OpenStack restrictions.
-        _tasks.append(core_tasks.BackendMethodTask().si(
-            serialized_instance, 'create_instance',
-            backend_flavor_id=backup_restoration.flavor.backend_id
-        ).set(countdown=10))
-        return chain(*_tasks)
-
-    @classmethod
-    def get_success_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
-        serialized_instance = core_utils.serialize_instance(backup_restoration.instance)
-        return core_tasks.StateTransitionTask().si(serialized_instance, state_transition='set_ok')
-
-    @classmethod
-    def get_failure_signature(cls, backup_restoration, serialized_backup_restoration, **kwargs):
-        return tasks.SetBackupRestorationErredTask().s(serialized_backup_restoration)
-
-
 class SnapshotRestorationExecutor(core_executors.CreateExecutor):
     """ Restores volume from snapshot instance """
 

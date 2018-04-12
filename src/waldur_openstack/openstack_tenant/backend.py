@@ -622,7 +622,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
             backend_flavor = nova.flavors.get(backend_flavor_id)
 
             # instance key name and fingerprint are optional
-            if instance.key_name:
+            # it is assumed that if public_key is specified, then
+            # key_name and key_fingerprint have valid values
+            if public_key:
                 backend_public_key = self._get_or_create_ssh_key(
                     instance.key_name, instance.key_fingerprint, public_key)
             else:
@@ -676,38 +678,6 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         else:
             logger.info("Successfully provisioned instance %s", instance.uuid)
 
-    def _import_instance_internal_ips(self, instance_backend_id):
-        neutron = self.neutron_client
-
-        internal_ips = []
-        logger.debug('About to infer internal ip addresses of instance backend_id: %s', instance_backend_id)
-        try:
-            ports = neutron.list_ports(device_id=instance_backend_id)['ports']
-        except (neutron_exceptions.NeutronClientException, KeyError, IndexError):
-            logger.exception(
-                'Failed to infer internal ip addresses of instance backend_id %s', instance_backend_id)
-        else:
-            for port in ports:
-                fixed_ip = port['fixed_ips'][0]
-                subnet_backend_id = fixed_ip['subnet_id']
-                try:
-                    subnet = models.SubNet.objects.get(settings=self.settings, backend_id=subnet_backend_id)
-                except models.SubNet.DoesNotExist:
-                    # subnet was not pulled yet. Floating IP will be pulled with subnet later.
-                    continue
-
-                internal_ip = models.InternalIP(
-                    subnet=subnet,
-                    mac_address=port['mac_address'],
-                    ip4_address=fixed_ip['ip_address'],
-                    backend_id=port['id'],
-                )
-                internal_ips.append(internal_ip)
-            logger.info(
-                'Successfully inferred internal ip addresses of instance backend_id %s', instance_backend_id)
-
-        return internal_ips
-
     @log_backend_action()
     def pull_instance_floating_ips(self, instance):
         # method assumes that instance internal IPs is up to date.
@@ -739,6 +709,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                     imported_floating_ip.name = floating_ip.name
                 update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
 
+            # Detach floating IPs from internal IPs
             instance.floating_ips.filter(backend_id__in=floating_ip_mappings.keys()).update(internal_ip=None)
 
     @log_backend_action()
