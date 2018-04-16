@@ -81,12 +81,12 @@ class VolumeAdmin(MetadataMixin,
     exclude = ('metadata', 'image_metadata', 'action_details')
 
     class Pull(ExecutorAdminAction):
-        executor = executors.SnapshotPullExecutor
+        executor = executors.VolumePullExecutor
         short_description = _('Pull')
 
         def validate(self, instance):
-            if instance.state not in (models.Snapshot.States.OK, models.Snapshot.States.ERRED):
-                raise ValidationError(_('Snapshot has to be in OK or ERRED state.'))
+            if instance.state not in (models.Volume.States.OK, models.Volume.States.ERRED):
+                raise ValidationError(_('Volume has to be in OK or ERRED state.'))
 
     pull = Pull()
 
