@@ -1,7 +1,6 @@
 import datetime
 import hashlib
 import logging
-import pickle  # nosec
 
 from ceilometerclient import client as ceilometer_client
 from ceilometerclient import exc as ceilometer_exceptions
