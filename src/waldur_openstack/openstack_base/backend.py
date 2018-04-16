@@ -1,62 +1,37 @@
 import datetime
 import hashlib
-import pickle  # nosec
-import six
 import logging
-
-from django.core.cache import cache
-from django.utils import timezone
-from django.db import transaction
-from requests import ConnectionError
-
-from keystoneauth1.identity import v3
-from keystoneauth1 import session as keystone_session
+import pickle  # nosec
 
 from ceilometerclient import client as ceilometer_client
-from cinderclient.v2 import client as cinder_client
-from glanceclient.v2 import client as glance_client
-from keystoneclient.v3 import client as keystone_client
-from neutronclient.v2_0 import client as neutron_client
-from novaclient import client as nova_client
-
 from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
+from cinderclient.v2 import client as cinder_client
+from django.core.cache import cache
+from django.db import transaction
+from django.utils import timezone
 from glanceclient import exc as glance_exceptions
+from glanceclient.v2 import client as glance_client
+from keystoneauth1 import session as keystone_session
+from keystoneauth1.identity import v3
 from keystoneclient import exceptions as keystone_exceptions
+from keystoneclient.v3 import client as keystone_client
 from neutronclient.client import exceptions as neutron_exceptions
+from neutronclient.v2_0 import client as neutron_client
+from novaclient import client as nova_client
 from novaclient import exceptions as nova_exceptions
+from requests import ConnectionError
+import six
 
-from waldur_core.structure import ServiceBackend, ServiceBackendError
-
+from waldur_core.structure import ServiceBackend
+from waldur_core.structure.exceptions import SerializableBackendError
 from waldur_openstack.openstack.models import Tenant
-
 
 logger = logging.getLogger(__name__)
 
 
-class OpenStackBackendError(ServiceBackendError):
-    def __init__(self, *args, **kwargs):
-        if not args:
-            super(OpenStackBackendError, self).__init__(*args, **kwargs)
-
-        # OpenStack client exceptions, such as cinder_exceptions.ClientException
-        # are not serializable by Celery, because they use custom arguments *args
-        # and define __init__ method, but don't call Exception.__init__ method
-        # http://docs.celeryproject.org/en/latest/userguide/tasks.html#creating-pickleable-exceptions
-        # That's why when Celery worker tries to deserialize OpenStack client exception,
-        # it uses empty invalid *args. It leads to unrecoverable error and worker dies.
-        # When all workers are dead, all tasks are stuck in pending state forever.
-        # In order to fix this issue we serialize exception to text type explicitly.
-        args = list(args)
-        for i, arg in enumerate(args):
-            try:
-                # pickle is used to check celery internal errors serialization,
-                # it is safe from security point of view
-                pickle.loads(pickle.dumps(arg))  # nosec
-            except (pickle.PickleError, TypeError):
-                args[i] = six.text_type(arg)
-
-        super(OpenStackBackendError, self).__init__(*args, **kwargs)
+class OpenStackBackendError(SerializableBackendError):
+    pass
 
 
 class OpenStackSessionExpired(OpenStackBackendError):
@@ -65,46 +40,6 @@ class OpenStackSessionExpired(OpenStackBackendError):
 
 class OpenStackAuthorizationFailed(OpenStackBackendError):
     pass
-
-
-def handle_resource_not_found(resource):
-    """
-    Set resource state to ERRED and append/create "not found" error message.
-    """
-    resource.set_erred()
-    resource.runtime_state = ''
-    message = 'Does not exist at backend.'
-    if message not in resource.error_message:
-        if not resource.error_message:
-            resource.error_message = message
-        else:
-            resource.error_message += ' (%s)' % message
-    resource.save()
-    logger.warning('%s %s (PK: %s) does not exist at backend.' % (
-        resource.__class__.__name__, resource, resource.pk))
-
-
-def handle_resource_update_success(resource):
-    """
-    Recover resource if its state is ERRED and clear error message.
-    """
-    update_fields = []
-    if resource.state == resource.States.ERRED:
-        resource.recover()
-        update_fields.append('state')
-
-    if resource.state in (resource.States.UPDATING, resource.States.CREATING):
-        resource.set_ok()
-        update_fields.append('state')
-
-    if resource.error_message:
-        resource.error_message = ''
-        update_fields.append('error_message')
-
-    if update_fields:
-        resource.save(update_fields=update_fields)
-    logger.warning('%s %s (PK: %s) was successfully updated.' % (
-        resource.__class__.__name__, resource, resource.pk))
 
 
 class OpenStackSession(dict):

@@ -2,23 +2,20 @@ import json
 import logging
 import re
 
-from django.db import transaction, IntegrityError
-from django.utils import six, timezone, dateparse
-
 from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
+from django.db import transaction, IntegrityError
+from django.utils import six, timezone, dateparse
 from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
 
 from waldur_core.structure import log_backend_action
-from waldur_openstack.openstack_base.backend import (
-    BaseOpenStackBackend, OpenStackBackendError,
-    handle_resource_not_found, handle_resource_update_success)
-from waldur_core.structure.utils import update_pulled_fields
+from waldur_core.structure.utils import (
+    update_pulled_fields, handle_resource_not_found, handle_resource_update_success)
+from waldur_openstack.openstack_base.backend import BaseOpenStackBackend, OpenStackBackendError
 
 from . import models
-
 
 logger = logging.getLogger(__name__)
 
