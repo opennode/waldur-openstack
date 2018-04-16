@@ -7,7 +7,7 @@ License: MIT
 Url: http://waldur.com
 Source0: %{name}-%{version}.tar.gz
 
-Requires: waldur-core >= 0.157.2
+Requires: waldur-core >= 0.157.4
 Requires: python-ceilometerclient >= 2.9.0
 Requires: python-cinderclient >= 3.1.0
 Requires: python-glanceclient >= 1:2.8.0
