@@ -1,10 +1,8 @@
-from django.utils import six
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, response, status, exceptions, serializers as rf_serializers
 
 from waldur_core.core import exceptions as core_exceptions, validators as core_validators
 from waldur_core.structure import views as structure_views, filters as structure_filters
-from waldur_openstack.openstack.views import ResourceImportMixin
 
 from . import models, serializers, filters, executors
 
@@ -144,9 +142,7 @@ class SecurityGroupViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = filters.SecurityGroupFilter
 
 
-class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                       ResourceImportMixin,
-                                       structure_views.ResourceViewSet)):
+class VolumeViewSet(structure_views.ImportableResourceViewSet):
     queryset = models.Volume.objects.all()
     serializer_class = serializers.VolumeSerializer
     filter_class = filters.VolumeFilter
@@ -246,9 +242,7 @@ class VolumeViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     import_resource_serializer_class = serializers.VolumeImportSerializer
 
 
-class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                         ResourceImportMixin,
-                                         structure_views.ResourceViewSet)):
+class SnapshotViewSet(structure_views.ImportableResourceViewSet):
     queryset = models.Snapshot.objects.all().order_by('name')
     serializer_class = serializers.SnapshotSerializer
     update_executor = executors.SnapshotUpdateExecutor
@@ -283,9 +277,7 @@ class SnapshotViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     import_resource_serializer_class = serializers.SnapshotImportSerializer
 
 
-class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                         ResourceImportMixin,
-                                         structure_views.ResourceViewSet)):
+class InstanceViewSet(structure_views.ImportableResourceViewSet):
     """
     OpenStack instance permissions
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -535,8 +527,7 @@ class InstanceViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     import_resource_executor = executors.InstancePullExecutor
 
 
-class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                       structure_views.ResourceViewSet)):
+class BackupViewSet(structure_views.BaseResourceViewSet):
     queryset = models.Backup.objects.all().order_by('name')
     serializer_class = serializers.BackupSerializer
     filter_class = filters.BackupFilter
@@ -572,7 +563,7 @@ class BackupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     restore_serializer_class = serializers.BackupRestorationSerializer
 
 
-class BaseScheduleViewSet(structure_views.ResourceViewSet):
+class BaseScheduleViewSet(structure_views.BaseResourceViewSet):
     disabled_actions = ['create']
 
     # method has to be overridden in order to avoid triggering of UpdateExecutor
@@ -638,13 +629,13 @@ class BaseScheduleViewSet(structure_views.ResourceViewSet):
     deactivate_validators = [_is_schedule_deactived]
 
 
-class BackupScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, BaseScheduleViewSet)):
+class BackupScheduleViewSet(BaseScheduleViewSet):
     queryset = models.BackupSchedule.objects.all().order_by('name')
     serializer_class = serializers.BackupScheduleSerializer
     filter_class = filters.BackupScheduleFilter
 
 
-class SnapshotScheduleViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, BaseScheduleViewSet)):
+class SnapshotScheduleViewSet(BaseScheduleViewSet):
     queryset = models.SnapshotSchedule.objects.all().order_by('name')
     serializer_class = serializers.SnapshotScheduleSerializer
     filter_class = filters.SnapshotScheduleFilter
