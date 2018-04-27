@@ -102,50 +102,6 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = filters.ImageFilter
 
 
-class ImageOverviewViewSet(structure_views.BaseServicePropertyViewSet):
-    serializer_class = serializers.InstanceOverviewSerializer
-    filter_class = None
-
-    @staticmethod
-    def get_queryset():
-        image_objects = models.Image.objects.all().order_by('name')
-        objects = list()
-        for image_object in image_objects:
-            running_instance_count = models.Instance.objects.filter(volumes__image_name=image_object.name,
-                                                                    runtime_state='ACTIVE').count()
-            created_instance_count = models.Instance.objects.filter(volumes_image_name=image_object.name,
-                                                                    runtime_state='SHUTOFF').count()
-            objects.append({
-                'uuid': image_object.uuid,
-                'name': image_object.name,
-                'running_instance_count': running_instance_count,
-                'created_instance_count': created_instance_count
-            })
-        return objects
-
-
-class FlavorOverviewViewSet(structure_views.BaseServicePropertyViewSet):
-    serializer_class = serializers.InstanceOverviewSerializer
-    filter_class = None
-
-    @staticmethod
-    def get_queryset():
-        flavor_objects = models.Flavor.objects.all().order_by('name')
-        objects = list()
-        for flavor_object in flavor_objects:
-            running_instance_count = models.Instance.objects.filter(flavor_name=flavor_object.name,
-                                                                    runtime_state='ACTIVE').count()
-            created_instance_count = models.Instance.objects.filter(flavor_name=flavor_object.name,
-                                                                    runtime_state='SHUTOFF').count()
-            objects.append({
-                'uuid': flavor_object.uuid,
-                'name': flavor_object.name,
-                'running_instance_count': running_instance_count,
-                'created_instance_count': created_instance_count
-            })
-        return objects
-
-
 class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
     """
     VM instance flavor is a pre-defined set of virtual hardware parameters that the instance will use:
