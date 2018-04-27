@@ -77,6 +77,15 @@ class ImageSerializer(structure_serializers.BasePropertySerializer):
         }
 
 
+class InstanceOverviewSerializer(structure_serializers.BasePropertySerializer):
+    running_instance_count = serializers.IntegerField(read_only=True)
+    created_instance_count = serializers.IntegerField(read_only=True)
+
+    class Meta(structure_serializers.BasePropertySerializer.Meta):
+        model = models.Flavor
+        fields = ('uuid', 'name', 'running_instance_count', 'created_instance_count')
+
+
 class FlavorSerializer(structure_serializers.BasePropertySerializer):
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.Flavor
