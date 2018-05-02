@@ -476,6 +476,160 @@ class PullInstanceTest(BaseBackendTest):
         self.assertEqual(instance.error_message, 'Waldur error.')
 
 
+class PullInstanceInternalIpsTest(BaseBackendTest):
+    def setup_neutron(self, port_id, device_id, subnet_id):
+        self.neutron_client_mock.list_ports.return_value = {
+            'ports': [
+                {
+                    'id': port_id,
+                    'mac_address': 'DC-D6-5E-9B-49-70',
+                    'device_id': device_id,
+                    'fixed_ips': [
+                        {
+                            'ip_address': '10.0.0.2',
+                            'subnet_id': subnet_id,
+                        }
+                    ]
+                }
+            ]
+        }
+
+    def test_pending_internal_ips_are_updated_with_backend_id(self):
+        # Arrange
+        instance = self.fixture.instance
+        internal_ip = self.fixture.internal_ip
+        internal_ip.backend_id = ''
+        internal_ip.save()
+        self.setup_neutron('port_id', instance.backend_id, internal_ip.subnet.backend_id)
+
+        # Act
+        self.tenant_backend.pull_instance_internal_ips(instance)
+
+        # Assert
+        internal_ip.refresh_from_db()
+        self.assertEqual(internal_ip.backend_id, 'port_id')
+
+    def test_missing_internal_ips_are_created(self):
+        # Arrange
+        instance = self.fixture.instance
+        subnet = self.fixture.subnet
+        self.setup_neutron('port_id', instance.backend_id, subnet.backend_id)
+
+        # Act
+        self.tenant_backend.pull_instance_internal_ips(instance)
+
+        # Assert
+        self.assertEqual(instance.internal_ips_set.count(), 1)
+        internal_ip = instance.internal_ips_set.first()
+        self.assertEqual(internal_ip.backend_id, 'port_id')
+        self.assertEqual(internal_ip.subnet, subnet)
+
+    def test_stale_internal_ips_are_deleted(self):
+        # Arrange
+        instance = self.fixture.instance
+
+        self.neutron_client_mock.list_ports.return_value = {
+            'ports': []
+        }
+
+        # Act
+        self.tenant_backend.pull_instance_internal_ips(instance)
+
+        # Assert
+        self.assertEqual(instance.internal_ips_set.count(), 0)
+
+    def test_existing_internal_ips_are_updated(self):
+        # Arrange
+        instance = self.fixture.instance
+        internal_ip = self.fixture.internal_ip
+        self.setup_neutron(internal_ip.backend_id, instance.backend_id, internal_ip.subnet.backend_id)
+
+        # Act
+        self.tenant_backend.pull_instance_internal_ips(instance)
+
+        # Assert
+        internal_ip.refresh_from_db()
+        self.assertEqual(internal_ip.mac_address, 'DC-D6-5E-9B-49-70')
+        self.assertEqual(internal_ip.ip4_address, '10.0.0.2')
+
+
+class PullInternalIpsTest(BaseBackendTest):
+    def setup_neutron(self, port_id, device_id, subnet_id):
+        self.neutron_client_mock.list_ports.return_value = {
+            'ports': [
+                {
+                    'id': port_id,
+                    'mac_address': 'DC-D6-5E-9B-49-70',
+                    'device_id': device_id,
+                    'fixed_ips': [
+                        {
+                            'ip_address': '10.0.0.2',
+                            'subnet_id': subnet_id,
+                        }
+                    ]
+                }
+            ]
+        }
+
+    def test_pending_internal_ips_are_updated_with_backend_id(self):
+        # Arrange
+        instance = self.fixture.instance
+        internal_ip = self.fixture.internal_ip
+        internal_ip.backend_id = ''
+        internal_ip.save()
+        self.setup_neutron('port_id', instance.backend_id, internal_ip.subnet.backend_id)
+
+        # Act
+        self.tenant_backend.pull_internal_ips()
+
+        # Assert
+        internal_ip.refresh_from_db()
+        self.assertEqual(internal_ip.backend_id, 'port_id')
+
+    def test_missing_internal_ips_are_created(self):
+        # Arrange
+        instance = self.fixture.instance
+        subnet = self.fixture.subnet
+        self.setup_neutron('port_id', instance.backend_id, subnet.backend_id)
+
+        # Act
+        self.tenant_backend.pull_internal_ips()
+
+        # Assert
+        self.assertEqual(instance.internal_ips_set.count(), 1)
+        internal_ip = instance.internal_ips_set.first()
+        self.assertEqual(internal_ip.backend_id, 'port_id')
+        self.assertEqual(internal_ip.subnet, subnet)
+
+    def test_stale_internal_ips_are_deleted(self):
+        # Arrange
+        instance = self.fixture.instance
+
+        self.neutron_client_mock.list_ports.return_value = {
+            'ports': []
+        }
+
+        # Act
+        self.tenant_backend.pull_internal_ips()
+
+        # Assert
+        self.assertEqual(instance.internal_ips_set.count(), 0)
+
+    def test_existing_internal_ips_are_updated(self):
+        # Arrange
+        instance = self.fixture.instance
+        internal_ip = self.fixture.internal_ip
+        self.setup_neutron(internal_ip.backend_id, instance.backend_id, internal_ip.subnet.backend_id)
+
+        # Act
+        self.tenant_backend.pull_internal_ips()
+
+        # Assert
+        internal_ip.refresh_from_db()
+        self.assertEqual(internal_ip.mac_address, 'DC-D6-5E-9B-49-70')
+        self.assertEqual(internal_ip.ip4_address, '10.0.0.2')
+
+
 class GetInstancesTest(BaseBackendTest):
 
     def setUp(self):
@@ -567,7 +721,7 @@ class ImportInstanceTest(BaseBackendTest):
         self.assertItemsEqual([backend_volume.id], actual_backend_ids)
 
     def test_instance_error_message_is_filled_if_fault_is_provided_by_backend(self):
-        expected_error_message = 'An error occured displaying an error'
+        expected_error_message = 'An error occurred displaying an error'
         self.backend_instance.fault = dict(message=expected_error_message)
         self.nova_client_mock.volumes.get_server_volumes.return_value = []
 
