@@ -1,9 +1,8 @@
-import pytz
-
 from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.utils.translation import ugettext_lazy as _
+import pytz
 
 from waldur_core.core.admin import ExecutorAdminAction, format_json_field
 from waldur_core.structure import admin as structure_admin
@@ -104,9 +103,20 @@ class SnapshotAdmin(structure_admin.ResourceAdmin):
     pull = Pull()
 
 
+class InternalIpInline(admin.TabularInline):
+    model = models.InternalIP
+
+    def has_add_permission(self, request):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return models.InternalIP.get_backend_fields() + ('backend_id', 'instance', 'subnet')
+
+
 class InstanceAdmin(ActionDetailsMixin, structure_admin.VirtualMachineAdmin):
     actions = structure_admin.VirtualMachineAdmin.actions + ['pull']
     exclude = ('action_details',)
+    inlines = [InternalIpInline]
 
     class Pull(ExecutorAdminAction):
         executor = executors.InstancePullExecutor
