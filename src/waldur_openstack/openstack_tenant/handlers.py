@@ -428,6 +428,22 @@ def create_service_from_tenant(sender, instance, created=False, **kwargs):
     )
 
 
+def update_service_settings(sender, instance, created=False, **kwargs):
+    tenant = instance
+
+    if created or not tenant.tracker.has_changed('external_network_id'):
+        return
+
+    try:
+        service_settings = structure_models.ServiceSettings.objects.get(scope=tenant,
+                                                                        type=apps.OpenStackTenantConfig.service_name)
+    except structure_models.ServiceSettings.DoesNotExist:
+        return
+    else:
+        service_settings.options['external_network_id'] = tenant.external_network_id
+        service_settings.save()
+
+
 def sync_price_list_item_for_flavor(sender, instance, created=False, **kwargs):
     if created:
         utils.sync_price_list_item(instance)
