@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, response, status, exceptions, serializers as rf_serializers
 
@@ -102,24 +103,25 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = filters.ImageFilter
 
     @decorators.list_route()
-    def overview(self, request):
-        running_instances = models.Instance.objects.select_related('volumes') \
-            .filter(volumes__bootable=True, runtime_state='ACTIVE') \
-            .values('volumes__image_name')
-        created_instances = models.Instance.objects.select_related('volumes') \
-            .filter(volumes__bootable=True, runtime_state='SHUTOFF') \
-            .values('volumes__image_name')
-        images = models.Image.objects.order_by('name').values('uuid', 'name')
-        queryset = list()
-        for image in images:
-            queryset.append({
-                'uuid': image['uuid'],
-                'name': image['name'],
-                'running_instances_count': running_instances.filter(volumes__image_name=image['name']).count(),
-                'created_instances_count': created_instances.filter(volumes__image_name=image['name']).count()
+    def usage_stats(self, request):
+        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE)
+        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF)
+        result = []
+        for (name, uuid) in models.Image.objects.values_list('name', 'uuid'):
+            result.append({
+                'name': name,
+                'uuid': uuid,
+                'running_instances_count': active_stats.get(name, 0),
+                'created_instances_count': shutoff_stats.get(name, 0),
             })
-        serializer = serializers.InstanceOverviewSerializer(queryset, many=True)
-        return response.Response(serializer.data)
+        return response.Response(result)
+
+    def get_stats(self, runtime_state):
+        rows = models.Volume.objects \
+            .filter(bootable=True, instance__runtime_state=runtime_state) \
+            .values('image_name') \
+            .annotate(count=Count('image_name'))
+        return {row['image_name']: row['count'] for row in rows}
 
 
 class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
