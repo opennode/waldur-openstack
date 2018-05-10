@@ -101,6 +101,26 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     lookup_field = 'uuid'
     filter_class = filters.ImageFilter
 
+    @decorators.list_route()
+    def overview(self, request):
+        running_instances = models.Instance.objects.select_related('volumes') \
+            .filter(volumes__bootable=True, runtime_state='ACTIVE') \
+            .values('volumes__image_name')
+        created_instances = models.Instance.objects.select_related('volumes') \
+            .filter(volumes__bootable=True, runtime_state='SHUTOFF') \
+            .values('volumes__image_name')
+        images = models.Image.objects.order_by('name').values('uuid', 'name')
+        queryset = list()
+        for image in images:
+            queryset.append({
+                'uuid': image['uuid'],
+                'name': image['name'],
+                'running_instances_count': running_instances.filter(volumes__image_name=image['name']).count(),
+                'created_instances_count': created_instances.filter(volumes__image_name=image['name']).count()
+            })
+        serializer = serializers.InstanceOverviewSerializer(queryset, many=True)
+        return response.Response(serializer.data)
+
 
 class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
     """
@@ -112,6 +132,24 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
     serializer_class = serializers.FlavorSerializer
     lookup_field = 'uuid'
     filter_class = filters.FlavorFilter
+
+    @decorators.list_route()
+    def overview(self, request):
+        flavors = models.Flavor.objects.order_by('name').values('uuid', 'name')
+        queryset = list()
+        for flavor in flavors:
+            running_instances_count = models.Instance.objects.filter(flavor_name=flavor['name'],
+                                                                     runtime_state='ACTIVE').count()
+            created_instances_count = models.Instance.objects.filter(flavor_name=flavor['name'],
+                                                                     runtime_state='SHUTOFF').count()
+            queryset.append({
+                'uuid': flavor['uuid'],
+                'name': flavor['name'],
+                'running_instances_count': running_instances_count,
+                'created_instances_count': created_instances_count
+            })
+        serializer = serializers.InstanceOverviewSerializer(queryset, many=True)
+        return response.Response(serializer.data)
 
 
 class NetworkViewSet(structure_views.BaseServicePropertyViewSet):
