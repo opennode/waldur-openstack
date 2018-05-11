@@ -136,22 +136,26 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = filters.FlavorFilter
 
     @decorators.list_route()
-    def overview(self, request):
-        flavors = models.Flavor.objects.order_by('name').values('uuid', 'name')
+    def usage_stats(self, request):
+        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE)
+        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF)
+        flavors = models.Flavor.objects.values_list('uuid', 'name')
         queryset = list()
-        for flavor in flavors:
-            running_instances_count = models.Instance.objects.filter(flavor_name=flavor['name'],
-                                                                     runtime_state='ACTIVE').count()
-            created_instances_count = models.Instance.objects.filter(flavor_name=flavor['name'],
-                                                                     runtime_state='SHUTOFF').count()
+        for (uuid, name) in flavors:
             queryset.append({
-                'uuid': flavor['uuid'],
-                'name': flavor['name'],
-                'running_instances_count': running_instances_count,
-                'created_instances_count': created_instances_count
+                'uuid': uuid,
+                'name': name,
+                'running_instances_count': active_stats.get(name, 0),
+                'created_instances_count': shutoff_stats.get(name, 0)
             })
-        serializer = serializers.InstanceOverviewSerializer(queryset, many=True)
-        return response.Response(serializer.data)
+        return response.Response(queryset)
+
+    def get_stats(self, runtime_state):
+        rows = models.Instance.objects\
+            .filter(runtime_state=runtime_state)\
+            .values('flavor_name')\
+            .annotate(count=Count('flavor_name'))
+        return {row['flavor_name']: row['count'] for row in rows}
 
 
 class NetworkViewSet(structure_views.BaseServicePropertyViewSet):
