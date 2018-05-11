@@ -1,4 +1,5 @@
 import django_filters
+from django_filters.widgets import BooleanWidget
 
 from waldur_core.core import filters as core_filters
 from waldur_core.structure import filters as structure_filters
@@ -43,7 +44,7 @@ class SubNetFilter(structure_filters.ServicePropertySettingsFilter):
 
 
 class FloatingIPFilter(structure_filters.ServicePropertySettingsFilter):
-    free = django_filters.BooleanFilter(name='internal_ip', lookup_expr='isnull')
+    free = django_filters.BooleanFilter(name='internal_ip', lookup_expr='isnull', widget=BooleanWidget)
 
     class Meta(structure_filters.ServicePropertySettingsFilter.Meta):
         model = models.FloatingIP

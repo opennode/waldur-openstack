@@ -1,5 +1,4 @@
 from django.conf import settings
-from django.utils import six
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, exceptions, response, status, serializers as rf_serializers
 
@@ -8,35 +7,6 @@ from waldur_core.structure import (views as structure_views, filters as structur
                                    permissions as structure_permissions)
 
 from . import models, filters, serializers, executors
-
-
-class ResourceImportMixin(object):
-    import_resource_executor = None
-
-    @decorators.list_route(methods=['get'])
-    def importable_resources(self, request):
-        serializer = self.get_serializer(data=request.GET)
-        serializer.is_valid(raise_exception=True)
-        service_project_link = serializer.validated_data['service_project_link']
-
-        backend = service_project_link.get_backend()
-        resources = getattr(backend, self.importable_resources_backend_method)()
-        serializer = self.get_serializer(resources, many=True)
-        page = self.paginate_queryset(serializer.data)
-        if page is not None:
-            return self.get_paginated_response(page)
-
-        return response.Response(data=serializer.data, status=status.HTTP_200_OK)
-
-    @decorators.list_route(methods=['post'])
-    def import_resource(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        resource = serializer.save()
-        if self.import_resource_executor:
-            self.import_resource_executor.execute(resource)
-
-        return response.Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
 
 class OpenStackServiceViewSet(structure_views.BaseServiceViewSet):
@@ -159,7 +129,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     filter_class = filters.ImageFilter
 
 
-class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
+class SecurityGroupViewSet(structure_views.BaseResourceViewSet):
     queryset = models.SecurityGroup.objects.all()
     serializer_class = serializers.SecurityGroupSerializer
     filter_class = filters.SecurityGroupFilter
@@ -210,8 +180,7 @@ class SecurityGroupViewSet(six.with_metaclass(structure_views.ResourceViewMetacl
     set_rules_serializer_class = serializers.SecurityGroupRuleUpdateSerializer
 
 
-class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                           structure_views.ResourceViewSet)):
+class FloatingIPViewSet(structure_views.BaseResourceViewSet):
     queryset = models.FloatingIP.objects.all().order_by('address')
     serializer_class = serializers.FloatingIPSerializer
     filter_class = filters.FloatingIPFilter
@@ -230,9 +199,7 @@ class FloatingIPViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass
         return super(FloatingIPViewSet, self).list(request, *args, **kwargs)
 
 
-class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
-                                       ResourceImportMixin,
-                                       structure_views.ResourceViewSet)):
+class TenantViewSet(structure_views.ImportableResourceViewSet):
     queryset = models.Tenant.objects.all()
     serializer_class = serializers.TenantSerializer
     filter_class = structure_filters.BaseResourceFilter
@@ -439,7 +406,7 @@ class TenantViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass,
     pull_quotas_validators = [core_validators.StateValidator(models.Tenant.States.OK)]
 
 
-class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
+class NetworkViewSet(structure_views.BaseResourceViewSet):
     queryset = models.Network.objects.all()
     serializer_class = serializers.NetworkSerializer
     filter_class = filters.NetworkFilter
@@ -462,7 +429,7 @@ class NetworkViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, s
     create_subnet_serializer_class = serializers.SubNetSerializer
 
 
-class SubNetViewSet(six.with_metaclass(structure_views.ResourceViewMetaclass, structure_views.ResourceViewSet)):
+class SubNetViewSet(structure_views.BaseResourceViewSet):
     queryset = models.SubNet.objects.all()
     serializer_class = serializers.SubNetSerializer
     filter_class = filters.SubNetFilter

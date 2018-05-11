@@ -14,7 +14,7 @@ install_requires = [
     'pbr!=2.1.0',
     'Babel!=2.4.0,>=2.3.4',
     'iptools>=0.6.1',
-    'waldur-core>=0.157.2',
+    'waldur-core>=0.157.5',
     'python-ceilometerclient>=2.9.0',
     'python-cinderclient>=3.1.0',
     'python-glanceclient>=2.8.0',
@@ -26,7 +26,7 @@ install_requires = [
 
 setup(
     name='waldur-openstack',
-    version='0.41.3',
+    version='0.42.0',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://waldur.com',
