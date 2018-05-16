@@ -87,6 +87,10 @@ class FlavorSerializer(structure_serializers.BasePropertySerializer):
         }
 
 
+class OpenStackTenantServiceSerializer(serializers.Serializer):
+    shared = serializers.BooleanField()
+
+
 class NetworkSerializer(structure_serializers.BasePropertySerializer):
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.Network

@@ -104,8 +104,11 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
 
     @decorators.list_route()
     def usage_stats(self, request):
-        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE)
-        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF)
+        query = None
+        if request.query_params:
+            query = self.handle_query(request)
+        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE, query)
+        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF, query)
         result = []
         for (name, uuid) in models.Image.objects.values_list('name', 'uuid'):
             result.append({
@@ -116,12 +119,19 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
             })
         return response.Response(result)
 
-    def get_stats(self, runtime_state):
-        rows = models.Volume.objects \
-            .filter(bootable=True, instance__runtime_state=runtime_state) \
-            .values('image_name') \
-            .annotate(count=Count('image_name'))
+    def get_stats(self, runtime_state, query):
+        volumes = models.Volume.objects.filter(bootable=True, instance__runtime_state=runtime_state)
+        if query:
+            volumes = volumes.filter(service_project_link__service__settings__shared=query['shared'])
+        rows = volumes.values('image_name').annotate(count=Count('image_name'))
         return {row['image_name']: row['count'] for row in rows}
+
+    def handle_query(self, request):
+        serializer_class = serializers.OpenStackTenantServiceSerializer
+        serializer = serializer_class(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        query = serializer.validated_data
+        return query
 
 
 class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
