@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import decorators, response, status, exceptions, serializers as rf_serializers
 
@@ -101,6 +102,43 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     lookup_field = 'uuid'
     filter_class = filters.ImageFilter
 
+    @decorators.list_route()
+    def usage_stats(self, request):
+        query = None
+        if request.query_params:
+            query = self.handle_query(request)
+        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE, query)
+        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF, query)
+        result = []
+        for (name, uuid) in models.Image.objects.values_list('name', 'uuid'):
+            result.append({
+                'name': name,
+                'uuid': uuid,
+                'running_instances_count': active_stats.get(name, 0),
+                'created_instances_count': shutoff_stats.get(name, 0),
+            })
+        return response.Response(result)
+
+    def get_stats(self, runtime_state, query):
+        volumes = models.Volume.objects.filter(bootable=True, instance__runtime_state=runtime_state)
+        if query:
+            filter_dict = dict()
+            if query.get('shared', None):
+                filter_dict['service_project_link__service__settings__shared'] = query['shared']
+            if query.get('service_provider', None):
+                filter_dict['service_project_link__service__settings__uuid__in'] = query['service_provider']
+                filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
+            volumes = volumes.filter(**filter_dict)
+        rows = volumes.values('image_name').annotate(count=Count('image_name'))
+        return {row['image_name']: row['count'] for row in rows}
+
+    def handle_query(self, request):
+        serializer_class = serializers.UsageStatsSerializer
+        serializer = serializer_class(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        query = serializer.validated_data
+        return query
+
 
 class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
     """
@@ -112,6 +150,46 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
     serializer_class = serializers.FlavorSerializer
     lookup_field = 'uuid'
     filter_class = filters.FlavorFilter
+
+    @decorators.list_route()
+    def usage_stats(self, request):
+        query = None
+        if request.query_params:
+            query = self.handle_query(request)
+        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE, query)
+        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF, query)
+        flavors = models.Flavor.objects.values_list('uuid', 'name')
+        queryset = list()
+        for (uuid, name) in flavors:
+            queryset.append({
+                'uuid': uuid,
+                'name': name,
+                'running_instances_count': active_stats.get(name, 0),
+                'created_instances_count': shutoff_stats.get(name, 0)
+            })
+        return response.Response(queryset)
+
+    def get_stats(self, runtime_state, query):
+        instances = models.Instance.objects.filter(runtime_state=runtime_state)
+        if query:
+            filter_dict = dict()
+            if query.get('shared', None):
+                filter_dict['service_project_link__service__settings__shared'] = query['shared']
+            if query.get('service_provider', None):
+                filter_dict['service_project_link__service__settings__uuid__in'] = query['service_provider']
+                filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
+            instances = instances.filter(**filter_dict)
+        rows = instances \
+            .values('flavor_name')\
+            .annotate(count=Count('flavor_name'))
+        return {row['flavor_name']: row['count'] for row in rows}
+
+    def handle_query(self, request):
+        serializer_class = serializers.UsageStatsSerializer
+        serializer = serializer_class(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        query = serializer.validated_data
+        return query
 
 
 class NetworkViewSet(structure_views.BaseServicePropertyViewSet):
