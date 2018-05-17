@@ -127,7 +127,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
         return {row['image_name']: row['count'] for row in rows}
 
     def handle_query(self, request):
-        serializer_class = serializers.OpenStackTenantServiceSerializer
+        serializer_class = serializers.UsageStatsSerializer
         serializer = serializer_class(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         query = serializer.validated_data
@@ -173,7 +173,7 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
         return {row['flavor_name']: row['count'] for row in rows}
 
     def handle_query(self, request):
-        serializer_class = serializers.OpenStackTenantServiceSerializer
+        serializer_class = serializers.UsageStatsSerializer
         serializer = serializer_class(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         query = serializer.validated_data
