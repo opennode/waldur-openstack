@@ -123,10 +123,10 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
         volumes = models.Volume.objects.filter(bootable=True, instance__runtime_state=runtime_state)
         if query:
             filter_dict = dict()
-            if query['shared']:
+            if query.get('shared', None):
                 filter_dict['service_project_link__service__settings__shared'] = query['shared']
-            if query['service_provider']:
-                filter_dict['service_project_link__service__settings__name__in'] = query['service_provider']
+            if query.get('service_provider', None):
+                filter_dict['service_project_link__service__settings__uuid__in'] = query['service_provider']
                 filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
             volumes = volumes.filter(**filter_dict)
         rows = volumes.values('image_name').annotate(count=Count('image_name'))
@@ -173,10 +173,10 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
         instances = models.Instance.objects.filter(runtime_state=runtime_state)
         if query:
             filter_dict = dict()
-            if query['shared']:
+            if query.get('shared', None):
                 filter_dict['service_project_link__service__settings__shared'] = query['shared']
-            if query['service_provider']:
-                filter_dict['service_project_link__service__settings__name__in'] = query['service_provider']
+            if query.get('service_provider', None):
+                filter_dict['service_project_link__service__settings__uuid__in'] = query['service_provider']
                 filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
             instances = instances.filter(**filter_dict)
         rows = instances \
