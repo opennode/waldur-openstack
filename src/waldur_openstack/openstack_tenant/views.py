@@ -147,8 +147,11 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
 
     @decorators.list_route()
     def usage_stats(self, request):
-        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE)
-        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF)
+        query = None
+        if request.query_params:
+            query = self.handle_query(request)
+        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE, query)
+        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF, query)
         flavors = models.Flavor.objects.values_list('uuid', 'name')
         queryset = list()
         for (uuid, name) in flavors:
@@ -160,12 +163,21 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
             })
         return response.Response(queryset)
 
-    def get_stats(self, runtime_state):
-        rows = models.Instance.objects\
-            .filter(runtime_state=runtime_state)\
+    def get_stats(self, runtime_state, query):
+        instances = models.Instance.objects.filter(runtime_state=runtime_state)
+        if query:
+            instances = instances.filter(service_project_link__service__settings__shared=query['shared'])
+        rows = instances \
             .values('flavor_name')\
             .annotate(count=Count('flavor_name'))
         return {row['flavor_name']: row['count'] for row in rows}
+
+    def handle_query(self, request):
+        serializer_class = serializers.OpenStackTenantServiceSerializer
+        serializer = serializer_class(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        query = serializer.validated_data
+        return query
 
 
 class NetworkViewSet(structure_views.BaseServicePropertyViewSet):
