@@ -122,7 +122,13 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     def get_stats(self, runtime_state, query):
         volumes = models.Volume.objects.filter(bootable=True, instance__runtime_state=runtime_state)
         if query:
-            volumes = volumes.filter(service_project_link__service__settings__shared=query['shared'])
+            filter_dict = dict()
+            if query['shared']:
+                filter_dict['service_project_link__service__settings__shared'] = query['shared']
+            if query['service_provider']:
+                filter_dict['service_project_link__service__settings__name__in'] = query['service_provider']
+                filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
+            volumes = volumes.filter(**filter_dict)
         rows = volumes.values('image_name').annotate(count=Count('image_name'))
         return {row['image_name']: row['count'] for row in rows}
 
@@ -166,7 +172,13 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
     def get_stats(self, runtime_state, query):
         instances = models.Instance.objects.filter(runtime_state=runtime_state)
         if query:
-            instances = instances.filter(service_project_link__service__settings__shared=query['shared'])
+            filter_dict = dict()
+            if query['shared']:
+                filter_dict['service_project_link__service__settings__shared'] = query['shared']
+            if query['service_provider']:
+                filter_dict['service_project_link__service__settings__name__in'] = query['service_provider']
+                filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
+            instances = instances.filter(**filter_dict)
         rows = instances \
             .values('flavor_name')\
             .annotate(count=Count('flavor_name'))

@@ -89,6 +89,7 @@ class FlavorSerializer(structure_serializers.BasePropertySerializer):
 
 class UsageStatsSerializer(serializers.Serializer):
     shared = serializers.BooleanField()
+    service_provider = serializers.ListField(child=serializers.CharField())
 
 
 class NetworkSerializer(structure_serializers.BasePropertySerializer):
