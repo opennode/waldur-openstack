@@ -135,6 +135,10 @@ class FloatingIP(structure_models.ServiceProperty):
 
 
 class Volume(structure_models.Volume):
+    # backend_id is nullable on purpose, otherwise
+    # it wouldn't be possible to put a unique constraint on it
+    backend_id = models.CharField(max_length=255, blank=True, null=True)
+
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='volumes', on_delete=models.PROTECT)
     instance = models.ForeignKey('Instance', related_name='volumes', blank=True, null=True)
@@ -157,6 +161,9 @@ class Volume(structure_models.Volume):
 
     tracker = FieldTracker()
 
+    class Meta(object):
+        unique_together = ('service_project_link', 'backend_id')
+
     def increase_backend_quotas_usage(self, validate=True):
         settings = self.service_project_link.service.settings
         settings.add_quota_usage(settings.Quotas.volumes, 1, validate=validate)
@@ -178,6 +185,10 @@ class Volume(structure_models.Volume):
 
 
 class Snapshot(structure_models.Snapshot):
+    # backend_id is nullable on purpose, otherwise
+    # it wouldn't be possible to put a unique constraint on it
+    backend_id = models.CharField(max_length=255, blank=True, null=True)
+
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='snapshots', on_delete=models.PROTECT)
     source_volume = models.ForeignKey(Volume, related_name='snapshots', null=True, on_delete=models.PROTECT)
@@ -197,6 +208,9 @@ class Snapshot(structure_models.Snapshot):
         null=True,
         blank=True,
         help_text=_('Guaranteed time of snapshot retention. If null - keep forever.'))
+
+    class Meta(object):
+        unique_together = ('service_project_link', 'backend_id')
 
     @classmethod
     def get_url_name(cls):
@@ -251,6 +265,9 @@ class Instance(structure_models.VirtualMachine):
         SUSPENDED = 'SUSPENDED'
         VERIFY_RESIZE = 'VERIFY_RESIZE'
 
+    # backend_id is nullable on purpose, otherwise
+    # it wouldn't be possible to put a unique constraint on it
+    backend_id = models.CharField(max_length=255, blank=True, null=True)
     service_project_link = models.ForeignKey(
         OpenStackTenantServiceProjectLink, related_name='instances', on_delete=models.PROTECT)
 
@@ -263,6 +280,9 @@ class Instance(structure_models.VirtualMachine):
     subnets = models.ManyToManyField('SubNet', through='InternalIP')
 
     tracker = FieldTracker()
+
+    class Meta(object):
+        unique_together = ('service_project_link', 'backend_id')
 
     @property
     def external_ips(self):
