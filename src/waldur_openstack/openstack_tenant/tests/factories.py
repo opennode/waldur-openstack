@@ -163,6 +163,7 @@ class InstanceFactory(factory.DjangoModelFactory):
             return
 
         self.volumes.create(
+            backend_id='{0}-system'.format(self.name),
             service_project_link=self.service_project_link,
             bootable=True,
             size=10 * 1024,
@@ -170,10 +171,10 @@ class InstanceFactory(factory.DjangoModelFactory):
             image_name='{0}-image-name'.format(self.name) if not kwargs else kwargs['image_name']
         )
         self.volumes.create(
+            backend_id='{0}-data'.format(self.name),
             service_project_link=self.service_project_link,
             size=20 * 1024,
-            name='{0}-system'.format(self.name),
-            backend_id='volume-1',
+            name='{0}-data'.format(self.name),
             state=models.Volume.States.OK
         )
 
