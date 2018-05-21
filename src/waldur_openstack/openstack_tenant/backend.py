@@ -111,43 +111,41 @@ class InternalIPSynchronizer(object):
         subnets = models.SubNet.objects.filter(settings=self.settings).exclude(backend_id='')
         return {subnet.backend_id: subnet for subnet in subnets}
 
+    @transaction.atomic
     def execute(self):
-        remote_ips = self.remote_ips
+        for remote_ip in self.remote_ips:
 
-        with transaction.atomic():
-            for remote_ip in self.remote_ips:
+            # Check if related subnet exists.
+            subnet = self.subnets.get(remote_ip._subnet_backend_id)
+            if subnet is None:
+                logger.warning('Skipping Neutron port synchronization process because '
+                               'related subnet is not imported yet. Port ID: %s, subnet ID: %s',
+                               remote_ip.backend_id, remote_ip._subnet_backend_id)
+                continue
 
-                # Check if related subnet exists.
-                subnet = self.subnets.get(remote_ip._subnet_backend_id)
-                if subnet is None:
-                    logger.warning('Skipping Neutron port synchronization process because '
-                                   'related subnet is not imported yet. Port ID: %s, subnet ID: %s',
-                                   remote_ip.backend_id, remote_ip._subnet_backend_id)
-                    continue
+            local_ip = self.local_ips.get(remote_ip.backend_id)
+            instance = None
 
-                local_ip = self.local_ips.get(remote_ip.backend_id)
-                instance = None
+            if remote_ip._device_owner == 'compute:nova':
+                instance = self.instances.get(remote_ip._instance_backend_id)
+                # Check if internal IP is pending.
+                if instance and not local_ip:
+                    local_ip = self.pending_ips.get((instance.backend_id, subnet.backend_id))
 
-                if remote_ip._device_owner == 'compute:nova':
-                    instance = self.instances.get(remote_ip._instance_backend_id)
-                    # Check if internal IP is pending.
-                    if instance and not local_ip:
-                        local_ip = self.pending_ips.get((instance.backend_id, subnet.backend_id))
+            # Create local internal IP if it does not exist yet.
+            if local_ip is None:
+                local_ip = remote_ip
+                local_ip.subnet = subnet
+                local_ip.instance = instance
+                local_ip.save()
+            else:
+                # Update backend ID for pending internal IP.
+                update_pulled_fields(local_ip, remote_ip,
+                                     models.InternalIP.get_backend_fields() + ('backend_id',))
 
-                # Create local internal IP if it does not exist yet.
-                if local_ip is None:
-                    local_ip = remote_ip
-                    local_ip.subnet = subnet
-                    local_ip.instance = instance
-                    local_ip.save()
-                else:
-                    # Update backend ID for pending internal IP.
-                    update_pulled_fields(local_ip, remote_ip,
-                                         models.InternalIP.get_backend_fields() + ('backend_id',))
-
-            # Remove stale internal IPs.
-            if self.stale_ips:
-                models.InternalIP.objects.filter(pk__in=self.stale_ips).delete()
+        # Remove stale internal IPs.
+        if self.stale_ips:
+            models.InternalIP.objects.filter(pk__in=self.stale_ips).delete()
 
 
 class OpenStackTenantBackend(BaseOpenStackBackend):
