@@ -2,8 +2,6 @@ from __future__ import unicode_literals
 
 from rest_framework import test, status
 
-from waldur_core.structure.tests import factories as structure_factories
-
 from . import factories, fixtures
 from .. import models
 
