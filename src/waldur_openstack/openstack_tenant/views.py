@@ -109,15 +109,26 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
             query = self.handle_query(request)
         active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE, query)
         shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF, query)
+        images = models.Image.objects.values_list('name', 'uuid')
+
+        page = self.paginate_queryset(images)
+        if page is not None:
+            result = self.build_result(page, active_stats, shutoff_stats)
+            return self.get_paginated_response(result)
+
+        result = self.build_result(images, active_stats, shutoff_stats)
+        return response.Response(result)
+
+    def build_result(self, queryset, active_stats, shutoff_stats):
         result = []
-        for (name, uuid) in models.Image.objects.values_list('name', 'uuid'):
+        for (name, uuid) in queryset:
             result.append({
                 'name': name,
                 'uuid': uuid,
                 'running_instances_count': active_stats.get(name, 0),
                 'created_instances_count': shutoff_stats.get(name, 0),
             })
-        return response.Response(result)
+        return result
 
     def get_stats(self, runtime_state, query):
         volumes = models.Volume.objects.filter(bootable=True, instance__runtime_state=runtime_state)
@@ -159,15 +170,25 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
         active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE, query)
         shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF, query)
         flavors = models.Flavor.objects.values_list('uuid', 'name')
-        queryset = list()
-        for (uuid, name) in flavors:
-            queryset.append({
+
+        page = self.paginate_queryset(flavors)
+        if page is not None:
+            result = self.build_result(page, active_stats, shutoff_stats)
+            return self.get_paginated_response(result)
+
+        result = self.build_result(flavors, active_stats, shutoff_stats)
+        return response.Response(result)
+
+    def build_result(self, queryset, active_stats, shutoff_stats):
+        result = []
+        for (uuid, name) in queryset:
+            result.append({
                 'uuid': uuid,
                 'name': name,
                 'running_instances_count': active_stats.get(name, 0),
                 'created_instances_count': shutoff_stats.get(name, 0)
             })
-        return response.Response(queryset)
+        return result
 
     def get_stats(self, runtime_state, query):
         instances = models.Instance.objects.filter(runtime_state=runtime_state)
