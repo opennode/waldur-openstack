@@ -68,7 +68,7 @@ class PullFloatingIPTest(BaseBackendTest):
             'port_id': internal_ip.backend_id
         }])
 
-    def test_pull_floating_ips_does_not_create_ip_if_internal_ip_is_missing(self):
+    def test_floating_ip_is_not_created_if_internal_ip_is_missing(self):
         internal_ip = factories.InternalIPFactory(instance=self.fixture.instance)
         backend_floating_ips = self._get_valid_new_backend_ip(internal_ip)
         internal_ip.delete()
@@ -79,7 +79,7 @@ class PullFloatingIPTest(BaseBackendTest):
 
         self.assertEqual(models.FloatingIP.objects.count(), 0)
 
-    def test_pull_floating_ips_does_not_update_ip_if_internal_ip_is_missing(self):
+    def test_floating_ip_is_not_updated_if_internal_ip_is_missing(self):
         internal_ip = factories.InternalIPFactory(instance=self.fixture.instance)
         backend_floating_ips = self._get_valid_new_backend_ip(internal_ip)
         internal_ip.delete()
@@ -102,8 +102,31 @@ class PullFloatingIPTest(BaseBackendTest):
         self.assertNotEqual(floating_ip.runtime_state, backend_ip['status'])
         self.assertNotEqual(floating_ip.backend_network_id, backend_ip['floating_network_id'])
 
+    def test_floating_ip_is_updated_if_internal_ip_exists_even_if_not_connected_to_instance(self):
+        internal_ip = factories.InternalIPFactory(subnet=self.fixture.subnet)
+        backend_floating_ips = self._get_valid_new_backend_ip(internal_ip)
+        self.neutron_client_mock.list_floatingips.return_value = backend_floating_ips
+
+        backend_ip = backend_floating_ips['floatingips'][0]
+        floating_ip = factories.FloatingIPFactory(settings=self.settings,
+                                                  backend_id=backend_ip['id'],
+                                                  name='old_name',
+                                                  runtime_state='old_status',
+                                                  backend_network_id='old_backend_network_id',
+                                                  address='127.0.0.1')
+
+        self.tenant_backend.pull_floating_ips()
+
+        floating_ip.refresh_from_db()
+
+        self.assertEqual(models.FloatingIP.objects.count(), 1)
+        self.assertEqual(floating_ip.address, backend_ip['floating_ip_address'])
+        self.assertEqual(floating_ip.runtime_state, backend_ip['status'])
+        self.assertEqual(floating_ip.backend_network_id, backend_ip['floating_network_id'])
+        self.assertEqual(floating_ip.internal_ip, internal_ip)
+
     def test_floating_ip_is_created_if_it_does_not_exist(self):
-        internal_ip = factories.InternalIPFactory(instance=self.fixture.instance)
+        internal_ip = factories.InternalIPFactory(subnet=self.fixture.subnet, instance=self.fixture.instance)
         backend_floating_ips = self._get_valid_new_backend_ip(internal_ip)
         backend_ip = backend_floating_ips['floatingips'][0]
         self.neutron_client_mock.list_floatingips.return_value = backend_floating_ips
@@ -633,22 +656,7 @@ class PullInternalIpsTest(BaseBackendTest):
 
     def test_even_if_internal_ip_is_not_connected_it_is_not_skipped(self):
         # Arrange
-        self.neutron_client_mock.list_ports.return_value = {
-            'ports': [
-                {
-                    'id': 'port_id',
-                    'mac_address': 'DC-D6-5E-9B-49-70',
-                    'device_id': '',
-                    'device_owner': '',
-                    'fixed_ips': [
-                        {
-                            'ip_address': '10.0.0.2',
-                            'subnet_id': self.fixture.internal_ip.subnet.backend_id,
-                        }
-                    ]
-                }
-            ]
-        }
+        self.setup_neutron('port_id', '', self.fixture.internal_ip.subnet.backend_id)
 
         # Act
         self.tenant_backend.pull_internal_ips()

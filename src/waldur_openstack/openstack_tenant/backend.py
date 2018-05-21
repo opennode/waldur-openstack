@@ -289,7 +289,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         ips_to_update = set(imported_ips) - set(booked_ips)
 
         internal_ips = {ip.backend_id: ip for ip in models.InternalIP.objects.filter(
-            instance__service_project_link__service__settings=self.settings).exclude(backend_id='')}
+            subnet__settings=self.settings).exclude(backend_id='')}
 
         # Step 2. Update or create imported IPs
         for backend_id in ips_to_update:
@@ -301,11 +301,11 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 logger.warning('Failed to set internal_ip for Floating IP %s', imported_ip.backend_id)
                 continue
 
+            imported_ip.internal_ip = internal_ip
             if not floating_ip:
-                imported_ip.internal_ip = internal_ip
                 imported_ip.save()
             else:
-                fields_to_update = models.FloatingIP.get_backend_fields()
+                fields_to_update = models.FloatingIP.get_backend_fields() + ('internal_ip',)
                 if floating_ip.address != floating_ip.name:
                     # Don't update user defined name.
                     fields_to_update = [field for field in fields_to_update if field != 'name']
