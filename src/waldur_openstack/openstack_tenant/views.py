@@ -96,6 +96,83 @@ class OpenStackServiceProjectLinkViewSet(structure_views.BaseServiceProjectLinkV
     filter_class = filters.OpenStackTenantServiceProjectLinkFilter
 
 
+class UsageReporter(object):
+    def __init__(self, view, request):
+        self.view = view
+        self.request = request
+        self.query = None
+
+    def get_report(self):
+        if self.request.query_params:
+            self.query = self.parse_query(self.request)
+
+        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE)
+        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF)
+        qs = self.get_initial_queryset().values_list('name', 'uuid')
+
+        page = self.view.paginate_queryset(qs)
+        result = self.serialize_result(page, active_stats, shutoff_stats)
+        return self.view.get_paginated_response(result)
+
+    def serialize_result(self, queryset, active_stats, shutoff_stats):
+        result = []
+        for (name, uuid) in queryset:
+            result.append({
+                'name': name,
+                'uuid': uuid,
+                'running_instances_count': active_stats.get(name, 0),
+                'created_instances_count': shutoff_stats.get(name, 0),
+            })
+        return result
+
+    def apply_filters(self, qs):
+        if self.query:
+            filter_dict = dict()
+            if self.query.get('shared', None):
+                filter_dict['service_project_link__service__settings__shared'] = self.query['shared']
+            if self.query.get('service_provider', None):
+                filter_dict['service_project_link__service__settings__uuid__in'] = self.query['service_provider']
+                filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
+            return qs.filter(**filter_dict)
+        return qs
+
+    def parse_query(self, request):
+        serializer_class = serializers.UsageStatsSerializer
+        serializer = serializer_class(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        query = serializer.validated_data
+        return query
+
+    def get_initial_queryset(self):
+        raise NotImplementedError
+
+    def get_stats(self, runtime_state):
+        raise NotImplementedError
+
+
+class ImageUsageReporter(UsageReporter):
+
+    def get_initial_queryset(self):
+        return models.Image.objects.all()
+
+    def get_stats(self, runtime_state):
+        volumes = models.Volume.objects.filter(bootable=True, instance__runtime_state=runtime_state)
+        rows = self.apply_filters(volumes).values('image_name').annotate(count=Count('image_name'))
+        return {row['image_name']: row['count'] for row in rows}
+
+
+class FlavorUsageReporter(UsageReporter):
+
+    def get_initial_queryset(self):
+        return models.Flavor.objects.all()
+
+    def get_stats(self, runtime_state):
+        instances = models.Instance.objects.filter(runtime_state=runtime_state)
+        rows = self.apply_filters(instances)\
+            .values('flavor_name').annotate(count=Count('flavor_name'))
+        return {row['flavor_name']: row['count'] for row in rows}
+
+
 class ImageViewSet(structure_views.BaseServicePropertyViewSet):
     queryset = models.Image.objects.all().order_by('settings', 'name')
     serializer_class = serializers.ImageSerializer
@@ -104,40 +181,7 @@ class ImageViewSet(structure_views.BaseServicePropertyViewSet):
 
     @decorators.list_route()
     def usage_stats(self, request):
-        query = None
-        if request.query_params:
-            query = self.handle_query(request)
-        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE, query)
-        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF, query)
-        result = []
-        for (name, uuid) in models.Image.objects.values_list('name', 'uuid'):
-            result.append({
-                'name': name,
-                'uuid': uuid,
-                'running_instances_count': active_stats.get(name, 0),
-                'created_instances_count': shutoff_stats.get(name, 0),
-            })
-        return response.Response(result)
-
-    def get_stats(self, runtime_state, query):
-        volumes = models.Volume.objects.filter(bootable=True, instance__runtime_state=runtime_state)
-        if query:
-            filter_dict = dict()
-            if query.get('shared', None):
-                filter_dict['service_project_link__service__settings__shared'] = query['shared']
-            if query.get('service_provider', None):
-                filter_dict['service_project_link__service__settings__uuid__in'] = query['service_provider']
-                filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
-            volumes = volumes.filter(**filter_dict)
-        rows = volumes.values('image_name').annotate(count=Count('image_name'))
-        return {row['image_name']: row['count'] for row in rows}
-
-    def handle_query(self, request):
-        serializer_class = serializers.UsageStatsSerializer
-        serializer = serializer_class(data=request.query_params)
-        serializer.is_valid(raise_exception=True)
-        query = serializer.validated_data
-        return query
+        return ImageUsageReporter(self, request).get_report()
 
 
 class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
@@ -153,43 +197,7 @@ class FlavorViewSet(structure_views.BaseServicePropertyViewSet):
 
     @decorators.list_route()
     def usage_stats(self, request):
-        query = None
-        if request.query_params:
-            query = self.handle_query(request)
-        active_stats = self.get_stats(models.Instance.RuntimeStates.ACTIVE, query)
-        shutoff_stats = self.get_stats(models.Instance.RuntimeStates.SHUTOFF, query)
-        flavors = models.Flavor.objects.values_list('uuid', 'name')
-        queryset = list()
-        for (uuid, name) in flavors:
-            queryset.append({
-                'uuid': uuid,
-                'name': name,
-                'running_instances_count': active_stats.get(name, 0),
-                'created_instances_count': shutoff_stats.get(name, 0)
-            })
-        return response.Response(queryset)
-
-    def get_stats(self, runtime_state, query):
-        instances = models.Instance.objects.filter(runtime_state=runtime_state)
-        if query:
-            filter_dict = dict()
-            if query.get('shared', None):
-                filter_dict['service_project_link__service__settings__shared'] = query['shared']
-            if query.get('service_provider', None):
-                filter_dict['service_project_link__service__settings__uuid__in'] = query['service_provider']
-                filter_dict['service_project_link__service__settings__type'] = 'OpenStackTenant'
-            instances = instances.filter(**filter_dict)
-        rows = instances \
-            .values('flavor_name')\
-            .annotate(count=Count('flavor_name'))
-        return {row['flavor_name']: row['count'] for row in rows}
-
-    def handle_query(self, request):
-        serializer_class = serializers.UsageStatsSerializer
-        serializer = serializer_class(data=request.query_params)
-        serializer.is_valid(raise_exception=True)
-        query = serializer.validated_data
-        return query
+        return FlavorUsageReporter(self, request).get_report()
 
 
 class NetworkViewSet(structure_views.BaseServicePropertyViewSet):
