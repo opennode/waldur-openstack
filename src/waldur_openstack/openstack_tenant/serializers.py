@@ -170,12 +170,13 @@ class VolumeImportableSerializer(core_serializers.AugmentedSerializerMixin,
         model_fields = ('name', 'description', 'size', 'bootable', 'type', 'device',
                         'runtime_state', 'instance_name', 'instance_uuid')
         fields = ('service_project_link', 'backend_id') + model_fields
-        read_only_fields = model_fields
+        read_only_fields = model_fields + ('backend_id',)
 
 
 class VolumeImportSerializer(VolumeImportableSerializer):
     class Meta(VolumeImportableSerializer.Meta):
         fields = VolumeImportableSerializer.Meta.fields + ('url', 'uuid', 'created')
+        read_only_fields = VolumeImportableSerializer.Meta.model_fields
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
         }
@@ -448,7 +449,7 @@ class SnapshotImportableSerializer(core_serializers.AugmentedSerializerMixin,
         model_fields = ('name', 'description', 'size', 'action', 'action_details',
                         'metadata', 'runtime_state', 'state', 'source_volume_name', 'source_volume_name')
         fields = ('service_project_link', 'backend_id') + model_fields
-        read_only_fields = model_fields
+        read_only_fields = model_fields + ('backend_id',)
         extra_kwargs = dict(
             source_volume={'lookup_field': 'uuid', 'view_name': 'openstacktenant-volume-detail'},
         )
@@ -457,6 +458,7 @@ class SnapshotImportableSerializer(core_serializers.AugmentedSerializerMixin,
 class SnapshotImportSerializer(SnapshotImportableSerializer):
     class Meta(SnapshotImportableSerializer.Meta):
         fields = SnapshotImportableSerializer.Meta.fields + ('url', 'uuid', 'created')
+        read_only_fields = SnapshotImportableSerializer.Meta.model_fields
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
         }
@@ -1384,12 +1386,13 @@ class InstanceImportableSerializer(core_serializers.AugmentedSerializerMixin, se
         model = models.Instance
         model_fields = ('name', 'description', 'state', 'runtime_state', 'flavor_name', 'size', 'ram', 'cores')
         fields = ('service_project_link', 'backend_id') + model_fields
-        read_only_fields = model_fields
+        read_only_fields = model_fields + ('backend_id',)
 
 
 class InstanceImportSerializer(InstanceImportableSerializer):
     class Meta(InstanceImportableSerializer.Meta):
         fields = InstanceImportableSerializer.Meta.fields + ('url', 'uuid', 'created')
+        read_only_fields = InstanceImportableSerializer.Meta.model_fields
         extra_kwargs = {
             'url': {'lookup_field': 'uuid'},
         }
