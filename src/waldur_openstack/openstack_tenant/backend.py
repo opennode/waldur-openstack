@@ -5,8 +5,8 @@ import re
 from ceilometerclient import exc as ceilometer_exceptions
 from cinderclient import exceptions as cinder_exceptions
 from django.db import transaction, IntegrityError
-from django.db.models import Q
 from django.utils import six, timezone, dateparse
+from django.utils.functional import cached_property
 from keystoneclient import exceptions as keystone_exceptions
 from neutronclient.client import exceptions as neutron_exceptions
 from novaclient import exceptions as nova_exceptions
@@ -19,6 +19,135 @@ from waldur_openstack.openstack_base.backend import BaseOpenStackBackend, OpenSt
 from . import models
 
 logger = logging.getLogger(__name__)
+
+
+def backend_internal_ip_to_internal_ip(backend_internal_ip, **kwargs):
+    internal_ip = models.InternalIP(
+        backend_id=backend_internal_ip['id'],
+        mac_address=backend_internal_ip['mac_address'],
+        ip4_address=backend_internal_ip['fixed_ips'][0]['ip_address'],
+    )
+
+    for field, value in kwargs.items():
+        setattr(internal_ip, field, value)
+
+    if 'instance' not in kwargs:
+        internal_ip._instance_backend_id = backend_internal_ip['device_id']
+    if 'subnet' not in kwargs:
+        internal_ip._subnet_backend_id = backend_internal_ip['fixed_ips'][0]['subnet_id']
+
+    internal_ip._device_owner = backend_internal_ip['device_owner']
+
+    return internal_ip
+
+
+class InternalIPSynchronizer(object):
+    """
+    It is assumed that all subnets for the current tenant have been successfully synchronized.
+    """
+
+    def __init__(self, neutron_client, tenant_id, settings):
+        self.neutron_client = neutron_client
+        self.tenant_id = tenant_id
+        self.settings = settings
+
+    @cached_property
+    def remote_ips(self):
+        """
+        Fetch all Neutron ports for the current tenant.
+        Convert Neutron port to local internal IP model.
+        """
+        try:
+            ips = self.neutron_client.list_ports(tenant_id=self.tenant_id)['ports']
+        except neutron_exceptions.NeutronClientException as e:
+            six.reraise(OpenStackBackendError, e)
+
+        return [backend_internal_ip_to_internal_ip(ip) for ip in ips]
+
+    @cached_property
+    def local_ips(self):
+        """
+        Prepare mapping from backend ID to local internal IP model.
+        """
+        internal_ips = models.InternalIP.objects\
+            .filter(subnet__settings=self.settings).exclude(backend_id='')
+        return {ip.backend_id: ip for ip in internal_ips}
+
+    @cached_property
+    def pending_ips(self):
+        """
+        Prepare mapping from device and subnet ID to local internal IP model.
+        """
+        pending_internal_ips = models.InternalIP.objects.filter(
+            subnet__settings=self.settings, backend_id='').exclude(instance__isnull=True)
+        return {(ip.instance.backend_id, ip.subnet.backend_id): ip for ip in pending_internal_ips}
+
+    @cached_property
+    def stale_ips(self):
+        """
+        Prepare list of IDs for stale internal IPs.
+        """
+        remote_ips = {ip.backend_id for ip in self.remote_ips}
+        return [
+            ip.pk
+            for (backend_id, ip) in self.local_ips.items()
+            if backend_id not in remote_ips
+        ]
+
+    @cached_property
+    def instances(self):
+        """
+        Prepare mapping from backend ID to local instance model.
+        """
+        instances = models.Instance.objects.filter(
+            service_project_link__service__settings=self.settings).exclude(backend_id='')
+        return {instance.backend_id: instance for instance in instances}
+
+    @cached_property
+    def subnets(self):
+        """
+        Prepare mapping from backend ID to local subnet model.
+        """
+        subnets = models.SubNet.objects.filter(settings=self.settings).exclude(backend_id='')
+        return {subnet.backend_id: subnet for subnet in subnets}
+
+    def execute(self):
+        remote_ips = self.remote_ips
+
+        with transaction.atomic():
+            for remote_ip in self.remote_ips:
+
+                # Check if related subnet exists.
+                subnet = self.subnets.get(remote_ip._subnet_backend_id)
+                if subnet is None:
+                    logger.warning('Skipping Neutron port synchronization process because '
+                                   'related subnet is not imported yet. Port ID: %s, subnet ID: %s',
+                                   remote_ip.backend_id, remote_ip._subnet_backend_id)
+                    continue
+
+                local_ip = self.local_ips.get(remote_ip.backend_id)
+                instance = None
+
+                if remote_ip._device_owner == 'compute:nova':
+                    instance = self.instances.get(remote_ip._instance_backend_id)
+                    # Check if internal IP is pending.
+                    if instance and not local_ip:
+                        local_ip = self.pending_ips.get((instance.backend_id, subnet.backend_id))
+
+                # Create local internal IP if it does not exist yet.
+                if local_ip is None:
+                    local_ip = remote_ip
+                    local_ip.subnet = subnet
+                    local_ip.instance = instance
+                    local_ip.save()
+                else:
+                    # Update backend ID for pending internal IP.
+                    update_pulled_fields(local_ip, remote_ip,
+                                         models.InternalIP.get_backend_fields() + ('backend_id',))
+
+            # Remove stale internal IPs.
+            if self.stale_ips:
+                models.InternalIP.objects.filter(pk__in=self.stale_ips).delete()
 
 
 class OpenStackTenantBackend(BaseOpenStackBackend):
@@ -912,7 +1041,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
         subnet_to_ip_mappings = {ip.subnet.backend_id: ip for ip in instance.internal_ips_set.all()}
 
         for backend_ip in backend_internal_ips:
-            imported_internal_ip = self._backend_internal_ip_to_internal_ip(backend_ip)
+            imported_internal_ip = backend_internal_ip_to_internal_ip(backend_ip)
             internal_ip = subnet_to_ip_mappings.get(imported_internal_ip._subnet_backend_id)
             if internal_ip is None:
                 logger.warning('Internal IP object does not exist in database for instance %s '
@@ -935,7 +1064,7 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
 
         with transaction.atomic():
             for backend_internal_ip in backend_internal_ips:
-                imported_internal_ip = self._backend_internal_ip_to_internal_ip(backend_internal_ip, instance=instance)
+                imported_internal_ip = backend_internal_ip_to_internal_ip(backend_internal_ip, instance=instance)
                 subnet = subnet_mappings.get(imported_internal_ip._subnet_backend_id)
                 if subnet is None:
                     logger.warning('Skipping Neutron port synchronization process because '
@@ -958,72 +1087,9 @@ class OpenStackTenantBackend(BaseOpenStackBackend):
                 # remove stale internal IPs
                 instance.internal_ips_set.filter(subnet__backend_id__in=internal_ip_mappings.keys()).delete()
 
-    def pull_internal_ips(self, instances=None):
-        # we assume that instance can be connected to subnet only once.
-        neutron = self.neutron_client
-
-        if instances is None:
-            instances = models.Instance.objects.filter(
-                state=models.Instance.States.OK,
-                service_project_link__service__settings=self.settings).exclude(backend_id='')
-        instance_mappings = {instance.backend_id: instance for instance in instances}
-        if not instance_mappings:
-            return
-
-        try:
-            backend_internal_ips = neutron.list_ports(device_id=instance_mappings.keys())['ports']
-        except neutron_exceptions.NeutronClientException as e:
-            six.reraise(OpenStackBackendError, e)
-
-        subnet_mappings = {subnet.backend_id: subnet for subnet in models.SubNet.objects.filter(settings=self.settings)}
-        internal_ip_mappings = {(ip.instance.backend_id, ip.subnet.backend_id): ip for ip in
-                                models.InternalIP.objects.filter(instance__in=instances)}
-
-        with transaction.atomic():
-            for backend_internal_ip in backend_internal_ips:
-                imported_internal_ip = self._backend_internal_ip_to_internal_ip(backend_internal_ip)
-                instance = instance_mappings[imported_internal_ip._instance_backend_id]
-                subnet = subnet_mappings.get(imported_internal_ip._subnet_backend_id)
-                if subnet is None:
-                    logger.warning('Skipping Neutron port synchronization process because '
-                                   'related subnet is not imported yet. Port ID: %s, subnet ID: %s',
-                                   imported_internal_ip.backend_id, imported_internal_ip._subnet_backend_id)
-                    continue
-
-                internal_ip = internal_ip_mappings.pop((instance.backend_id, subnet.backend_id), None)
-                if internal_ip is None:
-                    internal_ip = imported_internal_ip
-                    internal_ip.subnet = subnet
-                    internal_ip.instance = instance
-                    internal_ip.save()
-                else:
-                    # Update backend ID for pending internal IP
-                    update_pulled_fields(internal_ip, imported_internal_ip,
-                                         models.InternalIP.get_backend_fields() + ('backend_id',))
-
-            if internal_ip_mappings:
-                # remove stale internal IPs
-                query = Q()
-                for (instance_backend_id, subnet_backend_id) in internal_ip_mappings.keys():
-                    query |= Q(instance__backend_id=instance_backend_id, subnet__backend_id=subnet_backend_id)
-                models.InternalIP.objects.filter(query).delete()
-
-    def _backend_internal_ip_to_internal_ip(self, backend_internal_ip, **kwargs):
-        internal_ip = models.InternalIP(
-            backend_id=backend_internal_ip['id'],
-            mac_address=backend_internal_ip['mac_address'],
-            ip4_address=backend_internal_ip['fixed_ips'][0]['ip_address'],
-        )
-
-        for field, value in kwargs.items():
-            setattr(internal_ip, field, value)
-
-        if 'instance' not in kwargs:
-            internal_ip._instance_backend_id = backend_internal_ip['device_id']
-        if 'subnet' not in kwargs:
-            internal_ip._subnet_backend_id = backend_internal_ip['fixed_ips'][0]['subnet_id']
-
-        return internal_ip
+    def pull_internal_ips(self):
+        synchronizer = InternalIPSynchronizer(self.neutron_client, self.tenant_id, self.settings)
+        synchronizer.execute()
 
     @log_backend_action()
     def push_instance_internal_ips(self, instance):

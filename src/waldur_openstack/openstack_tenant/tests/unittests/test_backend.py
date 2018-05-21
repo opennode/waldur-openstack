@@ -484,6 +484,7 @@ class PullInstanceInternalIpsTest(BaseBackendTest):
                     'id': port_id,
                     'mac_address': 'DC-D6-5E-9B-49-70',
                     'device_id': device_id,
+                    'device_owner': 'compute:nova',
                     'fixed_ips': [
                         {
                             'ip_address': '10.0.0.2',
@@ -561,6 +562,7 @@ class PullInternalIpsTest(BaseBackendTest):
                     'id': port_id,
                     'mac_address': 'DC-D6-5E-9B-49-70',
                     'device_id': device_id,
+                    'device_owner': 'compute:nova',
                     'fixed_ips': [
                         {
                             'ip_address': '10.0.0.2',
@@ -626,6 +628,38 @@ class PullInternalIpsTest(BaseBackendTest):
 
         # Assert
         internal_ip.refresh_from_db()
+        self.assertEqual(internal_ip.mac_address, 'DC-D6-5E-9B-49-70')
+        self.assertEqual(internal_ip.ip4_address, '10.0.0.2')
+
+    def test_even_if_internal_ip_is_not_connected_it_is_not_skipped(self):
+        # Arrange
+        self.neutron_client_mock.list_ports.return_value = {
+            'ports': [
+                {
+                    'id': 'port_id',
+                    'mac_address': 'DC-D6-5E-9B-49-70',
+                    'device_id': '',
+                    'device_owner': '',
+                    'fixed_ips': [
+                        {
+                            'ip_address': '10.0.0.2',
+                            'subnet_id': self.fixture.internal_ip.subnet.backend_id,
+                        }
+                    ]
+                }
+            ]
+        }
+
+        # Act
+        self.tenant_backend.pull_internal_ips()
+
+        # Assert
+        internal_ips = models.InternalIP.objects.filter(subnet=self.fixture.subnet)
+        self.assertEqual(internal_ips.count(), 1)
+
+        internal_ip = internal_ips.first()
+        self.assertEqual(internal_ip.instance, None)
+        self.assertEqual(internal_ip.backend_id, 'port_id')
         self.assertEqual(internal_ip.mac_address, 'DC-D6-5E-9B-49-70')
         self.assertEqual(internal_ip.ip4_address, '10.0.0.2')
 
