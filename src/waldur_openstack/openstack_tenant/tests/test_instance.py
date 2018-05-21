@@ -716,7 +716,7 @@ class InstanceImportableResourcesTest(BaseInstanceImportTest):
         self.client.force_authenticate(self.fixture.owner)
 
     @mock.patch('waldur_openstack.openstack_tenant.backend.OpenStackTenantBackend.get_instances_for_import')
-    def test_importable_volumes_are_returned(self, get_instances_for_import_mock):
+    def test_importable_instances_are_returned(self, get_instances_for_import_mock):
         backend_instances = self._generate_backend_instances()
         get_instances_for_import_mock.return_value = backend_instances
         data = {'service_project_link': factories.OpenStackTenantServiceProjectLinkFactory.get_url(self.fixture.spl)}

@@ -294,16 +294,16 @@ class TenantImportSerializer(serializers.HyperlinkedModelSerializer):
                             'user_username', 'user_password', 'quotas')
         fields = read_only_fields + ('service_project_link', 'backend_id')
 
-    def validate_backend_id(self, backend_id):
-        if models.Tenant.objects.filter(backend_id=backend_id).exists():
-            raise serializers.ValidationError(_('Tenant with ID "%s" is already registered.') % backend_id)
-
-        return backend_id
-
+    @transaction.atomic
     def create(self, validated_data):
         service_project_link = validated_data['service_project_link']
         backend = service_project_link.service.get_backend()
         backend_id = validated_data['backend_id']
+
+        if models.Tenant.objects.filter(
+                service_project_link__service__settings=service_project_link.service.settings,
+                backend_id=backend_id).exists():
+            raise serializers.ValidationError(_('Tenant with ID "%s" is already registered.') % backend_id)
 
         try:
             tenant = backend.import_tenant(backend_id, service_project_link)
