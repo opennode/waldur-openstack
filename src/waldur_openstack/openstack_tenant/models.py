@@ -440,7 +440,7 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
 class InternalIP(openstack_base_models.Port):
     # Name "internal_ips" is reserved by virtual machine mixin and corresponds to list of internal IPs.
     # So another related name should be used.
-    instance = models.ForeignKey(Instance, related_name='internal_ips_set')
+    instance = models.ForeignKey(Instance, related_name='internal_ips_set', null=True)
     subnet = models.ForeignKey(SubNet, related_name='internal_ips')
 
     class Meta:
