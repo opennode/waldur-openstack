@@ -89,8 +89,9 @@ class FlavorFactory(factory.DjangoModelFactory):
         return 'http://testserver' + reverse('openstacktenant-flavor-detail', kwargs={'uuid': flavor.uuid})
 
     @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstacktenant-flavor-list')
+    def get_list_url(cls, action):
+        url = 'http://testserver' + reverse('openstacktenant-flavor-list')
+        return url if action is None else url + action + '/'
 
 
 class ImageFactory(factory.DjangoModelFactory):
@@ -109,8 +110,9 @@ class ImageFactory(factory.DjangoModelFactory):
         return 'http://testserver' + reverse('openstacktenant-image-detail', kwargs={'uuid': image.uuid})
 
     @classmethod
-    def get_list_url(cls):
-        return 'http://testserver' + reverse('openstacktenant-image-list')
+    def get_list_url(cls, action=None):
+        url = 'http://testserver' + reverse('openstacktenant-image-list')
+        return url if action is None else url + action + '/'
 
 
 class VolumeFactory(factory.DjangoModelFactory):
@@ -161,16 +163,18 @@ class InstanceFactory(factory.DjangoModelFactory):
             return
 
         self.volumes.create(
+            backend_id='{0}-system'.format(self.name),
             service_project_link=self.service_project_link,
             bootable=True,
             size=10 * 1024,
             name='{0}-system'.format(self.name),
+            image_name='{0}-image-name'.format(self.name) if not kwargs else kwargs['image_name']
         )
         self.volumes.create(
+            backend_id='{0}-data'.format(self.name),
             service_project_link=self.service_project_link,
             size=20 * 1024,
-            name='{0}-system'.format(self.name),
-            backend_id='volume-1',
+            name='{0}-data'.format(self.name),
             state=models.Volume.States.OK
         )
 

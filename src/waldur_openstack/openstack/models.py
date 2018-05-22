@@ -181,6 +181,10 @@ class Tenant(structure_models.PrivateCloud):
         network_count = QuotaField(default_limit=10, is_backend=True)
         subnet_count = QuotaField(default_limit=10, is_backend=True)
 
+    # backend_id is nullable on purpose, otherwise
+    # it wouldn't be possible to put a unique constraint on it
+    backend_id = models.CharField(max_length=255, blank=True, null=True)
+
     service_project_link = models.ForeignKey(
         OpenStackServiceProjectLink, related_name='tenants', on_delete=models.PROTECT)
 
@@ -194,6 +198,9 @@ class Tenant(structure_models.PrivateCloud):
     user_password = models.CharField(max_length=50, blank=True)
 
     tracker = FieldTracker()
+
+    class Meta(object):
+        unique_together = ('service_project_link', 'backend_id')
 
     @classmethod
     def generate_username(cls, name):
