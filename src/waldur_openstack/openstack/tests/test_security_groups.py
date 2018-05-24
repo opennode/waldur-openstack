@@ -12,6 +12,95 @@ class BaseSecurityGroupTest(test.APITransactionTestCase):
 
 
 @ddt
+class SecurityGroupCreateTest(BaseSecurityGroupTest):
+
+    def setUp(self):
+        super(SecurityGroupCreateTest, self).setUp()
+        self.url = factories.TenantFactory.get_url(self.fixture.tenant, 'create_security_group')
+
+    @data('staff', 'owner', 'admin', 'manager')
+    def test_user_with_access_can_create_security_group(self, user):
+        self.client.force_authenticate(getattr(self.fixture, user))
+
+        data = {
+            'name': 'https',
+            'rules': [
+                {
+                    'protocol': 'tcp',
+                    'from_port': 100,
+                    'to_port': 8001,
+                    'cidr': '11.11.1.2/24',
+                }
+            ]
+        }
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(models.SecurityGroup.objects.count(), 1)
+        self.assertEqual(models.SecurityGroupRule.objects.count(), 1)
+
+    def test_can_not_create_security_group_with_invalid_protocol(self):
+        self.client.force_authenticate(self.fixture.staff)
+
+        data = {
+            'name': 'https',
+            'rules': [
+                {
+                    'protocol': 'invalid',
+                    'from_port': 100,
+                    'to_port': 8001,
+                    'cidr': '11.11.1.2/24',
+                }
+            ]
+        }
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(models.SecurityGroup.objects.count(), 0)
+        self.assertEqual(models.SecurityGroupRule.objects.count(), 0)
+
+    def test_can_not_create_security_group_with_invalid_port(self):
+        self.client.force_authenticate(self.fixture.staff)
+
+        data = {
+            'name': 'https',
+            'rules': [
+                {
+                    'protocol': 'icmp',
+                    'from_port': 8001,
+                    'to_port': 8001,
+                    'cidr': '11.11.1.2/24',
+                }
+            ]
+        }
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(models.SecurityGroup.objects.count(), 0)
+        self.assertEqual(models.SecurityGroupRule.objects.count(), 0)
+
+    def test_can_not_create_security_group_with_invalid_cidr(self):
+        self.client.force_authenticate(self.fixture.staff)
+
+        data = {
+            'name': 'https',
+            'rules': [
+                {
+                    'protocol': 'tcp',
+                    'from_port': 8001,
+                    'to_port': 8001,
+                    'cidr': '300.300.300.300/100',
+                }
+            ]
+        }
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(models.SecurityGroup.objects.count(), 0)
+        self.assertEqual(models.SecurityGroupRule.objects.count(), 0)
+
+
+@ddt
 class SecurityGroupUpdateTest(BaseSecurityGroupTest):
 
     def setUp(self):
@@ -124,7 +213,7 @@ class SecurityGroupSetRulesTest(BaseSecurityGroupTest):
         self.assertIn(rule_to_remain, exist_rules)
         self.assertNotIn(rule_to_delete, exist_rules)
 
-    def test_user_can_add_new_security_group_rule_and_left_existant(self):
+    def test_user_can_add_new_security_group_rule_and_leave_existing(self):
         exist_rule = factories.SecurityGroupRuleFactory(security_group=self.security_group)
         self.client.force_authenticate(self.fixture.admin)
         new_rule_data = {
@@ -140,6 +229,64 @@ class SecurityGroupSetRulesTest(BaseSecurityGroupTest):
         self.assertEqual(self.security_group.rules.count(), 2)
         self.assertTrue(self.security_group.rules.filter(id=exist_rule.id).exists())
         self.assertTrue(self.security_group.rules.filter(**new_rule_data).exists())
+
+    def test_rule_is_not_created_if_port_range_is_invalid(self):
+        self.client.force_authenticate(self.fixture.admin)
+
+        data = [
+            {
+                'protocol': 'udp',
+                'from_port': 125,
+                'to_port': 25,
+                'cidr': '11.11.1.2/24',
+            }
+        ]
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.security_group.refresh_from_db()
+        self.assertEqual(self.security_group.rules.count(), 0)
+
+    def test_rule_is_not_updated_if_port_range_is_invalid(self):
+        rule = factories.SecurityGroupRuleFactory(
+            security_group=self.security_group, from_port=2222, to_port=2222)
+        self.client.force_authenticate(self.fixture.admin)
+
+        data = [
+            {
+                'protocol': rule.protocol,
+                'from_port': 125,
+                'to_port': 25,
+                'cidr': rule.cidr,
+            }
+        ]
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        rule.refresh_from_db()
+        self.assertEqual(rule.from_port, 2222)
+        self.assertEqual(rule.to_port, 2222)
+
+    def test_rule_is_updated_if_port_range_is_valid(self):
+        rule = factories.SecurityGroupRuleFactory(
+            security_group=self.security_group, from_port=2222, to_port=2222)
+        self.client.force_authenticate(self.fixture.admin)
+
+        data = [
+            {
+                'id': rule.id,
+                'protocol': rule.protocol,
+                'from_port': 125,
+                'to_port': 225,
+                'cidr': rule.cidr,
+            }
+        ]
+        response = self.client.post(self.url, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        rule.refresh_from_db()
+        self.assertEqual(rule.from_port, 125)
+        self.assertEqual(rule.to_port, 225)
 
 
 @ddt

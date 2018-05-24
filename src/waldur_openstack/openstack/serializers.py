@@ -12,6 +12,7 @@ from django.db.models import Q
 from django.template.defaultfilters import slugify
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import serializers
+from iptools.ipv4 import validate_cidr
 
 from waldur_core.core import utils as core_utils, serializers as core_serializers
 from waldur_core.core.fields import JsonField
@@ -173,6 +174,60 @@ class SecurityGroupRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.SecurityGroupRule
         fields = ('id', 'protocol', 'from_port', 'to_port', 'cidr')
+
+    def validate(self, rule):
+        """
+        Please note that validate function accepts rule object instead of validated data
+        because it is used as a child of list serializer.
+        """
+        protocol = rule.protocol
+        from_port = rule.from_port
+        to_port = rule.to_port
+        cidr = rule.cidr
+
+        if cidr and not validate_cidr(cidr):
+            raise serializers.ValidationError({
+                'cidr': _('Expected cidr format: <0-255>.<0-255>.<0-255>.<0-255>/<0-32>')
+            })
+
+        if to_port is None:
+            raise serializers.ValidationError({
+                'to_port': _('Empty value is not allowed.')
+            })
+
+        if from_port is None:
+            raise serializers.ValidationError({
+                'from_port': _('Empty value is not allowed.')
+            })
+
+        if protocol == 'icmp':
+            if from_port is not None and not -1 <= from_port <= 255:
+                raise serializers.ValidationError({
+                    'from_port': _('Value should be in range [-1, 255], found %d') % from_port})
+            if to_port is not None and not -1 <= to_port <= 255:
+                raise serializers.ValidationError({
+                    'to_port': _('Value should be in range [-1, 255], found %d') % to_port
+                })
+
+        elif protocol in ('tcp', 'udp'):
+            if from_port is not None and to_port is not None:
+                if from_port > to_port:
+                    raise serializers.ValidationError(_('"from_port" should be less or equal to "to_port"'))
+            if from_port is not None and from_port < 1:
+                raise serializers.ValidationError({
+                    'from_port': _('Value should be in range [1, 65535], found %d') % from_port
+                })
+            if to_port is not None and to_port < 1:
+                raise serializers.ValidationError({
+                    'to_port': _('Value should be in range [1, 65535], found %d') % to_port
+                })
+
+        else:
+            raise serializers.ValidationError({
+                'protocol': _('Value should be one of (tcp, udp, icmp), found %s') % protocol
+            })
+
+        return rule
 
 
 class SecurityGroupRuleCreateSerializer(SecurityGroupRuleSerializer):
