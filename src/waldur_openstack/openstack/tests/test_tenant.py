@@ -7,12 +7,13 @@ from mock import patch
 from rest_framework import test, status
 
 from waldur_core.core.tests.helpers import override_waldur_core_settings
-from waldur_core.structure.tests import factories as structure_factories
 from waldur_core.structure.models import PrivateServiceSettings
+from waldur_core.structure.tests import factories as structure_factories
 from waldur_openstack.openstack.models import Tenant
 from waldur_openstack.openstack.tests.helpers import override_openstack_settings
 
 from . import factories, fixtures
+from .. import executors
 from .. import models
 
 
@@ -827,3 +828,30 @@ class TenantImportTest(BaseTenantActionsTest):
         service_settings = ServiceSettings.objects.get(scope=tenant)
         self.assertEquals(tenant.user_username, service_settings.username)
         self.assertEquals(tenant.user_password, service_settings.password)
+
+
+@ddt
+class TenantExecutorTest(test.APITransactionTestCase):
+    def setUp(self):
+        self.fixture = fixtures.OpenStackFixture()
+        self.tenant = self.fixture.tenant
+        self.network = self.fixture.network
+        self.subnet = self.fixture.subnet
+        self.subnet.network = self.network
+        self.subnet.save()
+
+        self.service_settings = self.fixture.openstack_service_settings
+        self.service_settings.options = {'external_network_id': 'external_network_id'}
+        self.service_settings.save()
+
+    def test_if_skip_connection_extnet_is_true_task_does_not_exists(self):
+        chain = executors.TenantCreateExecutor.get_task_signature(self.tenant,
+                                                                  'openstack.tenant:1',
+                                                                  skip_connection_extnet=True)
+        self.assertEqual(len([t.args for t in chain.tasks if 'connect_tenant_to_external_network' in t.args]), 0)
+
+    def test_if_skip_connection_extnet_is_false_task_exists(self):
+        chain = executors.TenantCreateExecutor.get_task_signature(self.tenant,
+                                                                  'openstack.tenant:1',
+                                                                  skip_connection_extnet=False)
+        self.assertEqual(len([t.args for t in chain.tasks if 'connect_tenant_to_external_network' in t.args]), 1)
