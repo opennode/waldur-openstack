@@ -379,6 +379,17 @@ class TenantUpdateTest(BaseTenantActionsTest):
         tenant_service_setting.refresh_from_db()
         self.assertEqual(tenant_service_setting.get_option('external_network_id'), NEW_EXTERNAL_NETWORK_ID)
 
+    def test_updating_openstack_tenant_name_should_lead_to_update_of_a_provider_name(self):
+        self.service_settings = factories.OpenStackServiceSettingsFactory()
+        self.service_settings.scope = self.tenant
+        self.service_settings.save()
+
+        self.client.force_authenticate(self.fixture.staff)
+        new_name = 'New name'
+        self.client.put(self.get_url(), {'name': new_name})
+        self.service_settings.refresh_from_db()
+        self.assertEqual(self.service_settings.name, new_name)
+
     def get_url(self):
         return factories.TenantFactory.get_url(self.fixture.tenant)
 
