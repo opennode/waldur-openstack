@@ -92,7 +92,7 @@ class TenantCreateExecutor(core_executors.CreateExecutor):
         except models.CustomerOpenStack.DoesNotExist:
             pass
 
-        if external_network_id:
+        if external_network_id and not kwargs.get('skip_connection_extnet'):
             creation_tasks.append(core_tasks.BackendMethodTask().si(
                 serialized_tenant, 'connect_tenant_to_external_network', external_network_id=external_network_id))
 

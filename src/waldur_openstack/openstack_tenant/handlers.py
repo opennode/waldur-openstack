@@ -431,7 +431,7 @@ def create_service_from_tenant(sender, instance, created=False, **kwargs):
 def update_service_settings(sender, instance, created=False, **kwargs):
     tenant = instance
 
-    if created or not tenant.tracker.has_changed('external_network_id'):
+    if created or not (set(['external_network_id', 'name']) & set(tenant.tracker.changed())):
         return
 
     try:
@@ -441,6 +441,7 @@ def update_service_settings(sender, instance, created=False, **kwargs):
         return
     else:
         service_settings.options['external_network_id'] = tenant.external_network_id
+        service_settings.name = tenant.name
         service_settings.save()
 
 
