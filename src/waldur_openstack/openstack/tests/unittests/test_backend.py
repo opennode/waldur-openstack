@@ -1,3 +1,4 @@
+from ddt import data, ddt
 import mock
 
 from rest_framework import test
@@ -14,34 +15,100 @@ class MockedSession(mock.MagicMock):
 
 class BaseBackendTestCase(test.APITransactionTestCase):
     def setUp(self):
-        self.session_patcher = mock.patch('keystoneauth1.session.Session', MockedSession)
-        self.session_patcher.start()
-
-        self.session_recover_patcher = mock.patch('waldur_openstack.openstack_base.backend.OpenStackSession.recover')
-        self.session_recover_patcher.start()
-
-        self.keystone_patcher = mock.patch('keystoneclient.v3.client.Client')
-        self.mocked_keystone = self.keystone_patcher.start()
-
-        self.nova_patcher = mock.patch('novaclient.v2.client.Client')
-        self.mocked_nova = self.nova_patcher.start()
-
-        self.neutron_patcher = mock.patch('neutronclient.v2_0.client.Client')
-        self.mocked_neutron = self.neutron_patcher.start()
-
-        self.cinder_patcher = mock.patch('cinderclient.v2.client.Client')
-        self.mocked_cinder = self.cinder_patcher.start()
-
-        self.glance_patcher = mock.patch('glanceclient.v2.client.Client')
-        self.mocked_glance = self.glance_patcher.start()
-
         self.fixture = fixtures.OpenStackFixture()
         self.tenant = self.fixture.tenant
-        self.backend = OpenStackBackend(settings=self.fixture.openstack_service_settings, tenant_id=self.tenant.id)
+        self.backend = OpenStackBackend(settings=self.fixture.openstack_service_settings,
+                                        tenant_id=self.tenant.id)
+
+        self.mocked_keystone = mock.Mock()
+        self.mocked_keystone_admin = mock.Mock()
+        self.mocked_neutron = mock.Mock()
+        self.mocked_neutron_admin = mock.Mock()
+        self.mocked_glance = mock.Mock()
+
+        self.backend.keystone_client = self.mocked_keystone
+        self.backend.keystone_admin_client = self.mocked_keystone_admin
+        self.backend.neutron_client = self.mocked_neutron
+        self.backend.neutron_admin_client = self.mocked_neutron_admin
+        self.backend.glance_client = self.mocked_glance
 
     def tearDown(self):
         super(BaseBackendTestCase, self).tearDown()
         mock.patch.stopall()
+
+
+@ddt
+class PullFloatingIPTest(BaseBackendTestCase):
+
+    def _get_valid_new_backend_ip(self, floating_ip):
+        return dict(floatingips=[{
+            'floating_ip_address': floating_ip.address,
+            'floating_network_id': floating_ip.backend_network_id,
+            'status': floating_ip.runtime_state,
+            'id': floating_ip.backend_id,
+            'description': '',
+            'tenant_id': floating_ip.tenant.backend_id,
+        }])
+
+    def setup_client(self, is_admin, value):
+        client = is_admin and self.mocked_neutron_admin or self.mocked_neutron
+        client.list_floatingips.return_value = value
+
+    def call_backend(self, is_admin):
+        if is_admin:
+            return self.backend.pull_floating_ips()
+        else:
+            return self.backend.pull_tenant_floating_ips(self.fixture.tenant)
+
+    @data(True, False)
+    def test_floating_ip_is_created_if_it_does_not_exist(self, is_admin):
+        floating_ip = self.fixture.floating_ip
+        floating_ip.backend_network_id = 'new_backend_network_id'
+        self.setup_client(is_admin, self._get_valid_new_backend_ip(floating_ip))
+        floating_ip.delete()
+
+        self.call_backend(is_admin)
+
+        self.assertEqual(models.FloatingIP.objects.count(), 1)
+        created_ip = models.FloatingIP.objects.get(tenant=self.tenant, backend_id=floating_ip.backend_id)
+        self.assertEqual(created_ip.runtime_state, floating_ip.runtime_state)
+        self.assertEqual(created_ip.backend_network_id, floating_ip.backend_network_id)
+        self.assertEqual(created_ip.address, floating_ip.address)
+
+    @data(True, False)
+    def test_floating_ip_is_deleted_if_it_is_not_returned_by_neutron(self, is_admin):
+        floating_ip = self.fixture.floating_ip
+        self.setup_client(is_admin, dict(floatingips=[]))
+
+        self.call_backend(is_admin)
+
+        self.assertRaises(models.FloatingIP.DoesNotExist, floating_ip.refresh_from_db)
+
+    @data(True, False)
+    def test_floating_ip_is_not_deleted_if_it_is_in_creating_state(self, is_admin):
+        floating_ip = self.fixture.floating_ip
+        floating_ip.state = models.FloatingIP.States.CREATING
+        floating_ip.backend_id = ''
+        floating_ip.save()
+        self.setup_client(is_admin, dict(floatingips=[]))
+
+        self.call_backend(is_admin)
+
+        floating_ip.refresh_from_db()
+
+    @data(True, False)
+    def test_floating_ip_is_updated(self, is_admin):
+        floating_ip = self.fixture.floating_ip
+        floating_ip.runtime_state = 'ACTIVE'
+        self.setup_client(is_admin, self._get_valid_new_backend_ip(floating_ip))
+
+        floating_ip.runtime_state = 'DOWN'
+        floating_ip.save()
+
+        self.call_backend(is_admin)
+
+        floating_ip.refresh_from_db()
+        self.assertEqual(floating_ip.runtime_state, 'ACTIVE')
 
 
 class PullTenantSecurityGroupsTest(BaseBackendTestCase):
@@ -54,7 +121,7 @@ class PullTenantSecurityGroupsTest(BaseBackendTestCase):
         factories.SecurityGroupRuleFactory(security_group=security_group_in_progress)
         security_groups = [original_security_group, security_group_in_progress]
         backend_security_groups = self._form_backend_security_groups(security_groups)
-        self.mocked_neutron().list_security_groups.return_value = {
+        self.mocked_neutron.list_security_groups.return_value = {
             'security_groups': backend_security_groups
         }
 
@@ -96,18 +163,18 @@ class PullTenantSecurityGroupsTest(BaseBackendTestCase):
 class CreateOrUpdateTenantUserTest(BaseBackendTestCase):
 
     def test_change_tenant_user_password_is_called_if_user_exists(self):
-        self.mocked_keystone().users.find.return_value = self.fixture.owner
+        self.mocked_keystone.users.find.return_value = self.fixture.owner
 
         self.backend.create_or_update_tenant_user(self.tenant)
 
-        self.mocked_keystone().users.update.assert_called_once()
+        self.mocked_keystone.users.update.assert_called_once()
 
     def test_user_is_created_if_it_is_not_found(self):
-        self.mocked_keystone().users.find.side_effect = keystone_exceptions.NotFound
+        self.mocked_keystone.users.find.side_effect = keystone_exceptions.NotFound
 
         self.backend.create_or_update_tenant_user(self.tenant)
 
-        self.mocked_keystone().users.create.assert_called_once()
+        self.mocked_keystone.users.create.assert_called_once()
 
 
 class ImportTenantNetworksTest(BaseBackendTestCase):
@@ -129,7 +196,7 @@ class ImportTenantNetworksTest(BaseBackendTestCase):
 
     def test_import_tenant_networks_imports_network(self):
         backend_network = self._generate_backend_networks()[0]
-        self.mocked_neutron().list_networks.return_value = {'networks': [backend_network]}
+        self.mocked_neutron.list_networks.return_value = {'networks': [backend_network]}
         self.assertEqual(self.tenant.networks.count(), 0)
 
         self.backend.import_tenant_networks(self.tenant)
@@ -144,7 +211,7 @@ class ImportTenantNetworksTest(BaseBackendTestCase):
         self.assertEqual(self.tenant.internal_network_id, backend_network['id'])
 
     def test_internal_network_is_not_set_if_networks_are_missing(self):
-        self.mocked_neutron().list_networks.return_value = {'networks': []}
+        self.mocked_neutron.list_networks.return_value = {'networks': []}
 
         self.backend.import_tenant_networks(self.tenant)
 
@@ -153,7 +220,7 @@ class ImportTenantNetworksTest(BaseBackendTestCase):
 
     def test_networks_are_updated_if_they_exist(self):
         backend_network = self._generate_backend_networks()[0]
-        self.mocked_neutron().list_networks.return_value = {'networks': [backend_network]}
+        self.mocked_neutron.list_networks.return_value = {'networks': [backend_network]}
         network = factories.NetworkFactory(tenant=self.tenant,
                                            service_project_link=self.tenant.service_project_link,
                                            backend_id=backend_network['id'])
@@ -199,7 +266,7 @@ class ImportTenantSubnets(BaseBackendTestCase):
 
     def test_tenant_subnet_is_imported(self):
         backend_subnet = self._generate_backend_subnet()[0]
-        self.mocked_neutron().list_subnets.return_value = {'subnets': [backend_subnet]}
+        self.mocked_neutron.list_subnets.return_value = {'subnets': [backend_subnet]}
         self.assertEqual(models.SubNet.objects.count(), 0)
 
         self.backend.import_tenant_subnets(self.tenant)
@@ -216,7 +283,7 @@ class ImportTenantSubnets(BaseBackendTestCase):
     def test_tenant_subnets_are_not_imported_if_network_is_missing(self):
         backend_subnet = self._generate_backend_subnet()[0]
         self.tenant.networks.all().delete()
-        self.mocked_neutron().list_subnets.return_value = {'subnets': [backend_subnet]}
+        self.mocked_neutron.list_subnets.return_value = {'subnets': [backend_subnet]}
         self.assertEqual(models.SubNet.objects.count(), 0)
 
         self.backend.import_tenant_subnets(self.tenant)
@@ -228,7 +295,7 @@ class PullImagesTest(BaseBackendTestCase):
 
     def setUp(self):
         super(PullImagesTest, self).setUp()
-        self.mocked_glance().images.list.return_value = [
+        self.mocked_glance.images.list.return_value = [
             {
                 'status': 'active',
                 'id': '1',
@@ -276,11 +343,11 @@ class PullImagesTest(BaseBackendTestCase):
         self.assertEqual(models.Image.objects.get(backend_id='1').min_ram, 1024)
 
     def test_private_images_are_filtered_out(self):
-        self.mocked_glance().images.list.return_value[0]['visibility'] = 'private'
+        self.mocked_glance.images.list.return_value[0]['visibility'] = 'private'
         self.backend.pull_images()
         self.assertEqual(models.Image.objects.count(), 0)
 
     def test_deleted_images_are_filtered_out(self):
-        self.mocked_glance().images.list.return_value[0]['status'] = 'deleted'
+        self.mocked_glance.images.list.return_value[0]['status'] = 'deleted'
         self.backend.pull_images()
         self.assertEqual(models.Image.objects.count(), 0)

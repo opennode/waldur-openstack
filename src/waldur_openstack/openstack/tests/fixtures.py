@@ -35,3 +35,11 @@ class OpenStackFixture(ProjectFixture):
     def subnet(self):
         return factories.SubNetFactory(service_project_link=self.openstack_spl,
                                        state=models.SubNet.States.OK)
+
+    @cached_property
+    def floating_ip(self):
+        return factories.FloatingIPFactory(
+            service_project_link=self.openstack_spl,
+            tenant=self.tenant,
+            state=models.FloatingIP.States.OK
+        )
