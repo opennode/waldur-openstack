@@ -190,30 +190,15 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
-        floating_ip_uuids = []
+        tenant_floating_ips = dict()
+        for tenant_id, floating_ips in groupby(backend_floating_ips, lambda x: x['tenant_id']):
+            tenant_floating_ips[tenant_mappings[tenant_id]] = floating_ips
+
         with transaction.atomic():
-            for backend_ip in backend_floating_ips:
-                tenant = tenant_mappings[backend_ip['tenant_id']]
-                imported_floating_ip = self._backend_floating_ip_to_floating_ip(
-                    backend_ip, tenant=tenant, service_project_link=tenant.service_project_link)
-                try:
-                    floating_ip = tenant.floating_ips.get(backend_id=imported_floating_ip.backend_id)
-                except models.FloatingIP.DoesNotExist:
-                    imported_floating_ip.save()
-                    floating_ip = imported_floating_ip
-                else:
-                    # Don't update user defined name.
-                    if floating_ip.address != floating_ip.name:
-                        imported_floating_ip.name = floating_ip.name
-                    update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
-                    handle_resource_update_success(floating_ip)
+            for tenant, floating_ips in tenant_floating_ips.items():
+                self._update_tenant_floating_ips(tenant, floating_ips)
 
-                floating_ip_uuids.append(floating_ip.uuid)
-
-            for floating_ip in models.FloatingIP.objects.filter(
-                    state__in=[models.FloatingIP.States.OK, models.FloatingIP.States.ERRED],
-                    service_project_link__service__settings=self.settings).exclude(uuid__in=floating_ip_uuids):
-                handle_resource_not_found(floating_ip)
+            self._remove_stale_floating_ips(tenants, backend_floating_ips)
 
     @log_backend_action('pull floating IPs for tenant')
     def pull_tenant_floating_ips(self, tenant):
@@ -224,28 +209,38 @@ class OpenStackBackend(BaseOpenStackBackend):
         except neutron_exceptions.NeutronClientException as e:
             six.reraise(OpenStackBackendError, e)
 
+        with transaction.atomic():
+            self._update_tenant_floating_ips(tenant, backend_floating_ips)
+            self._remove_stale_floating_ips([tenant], backend_floating_ips)
+
+    def _remove_stale_floating_ips(self, tenants, backend_floating_ips):
+        remote_ids = {ip['id'] for ip in backend_floating_ips}
+        stale_ips = models.FloatingIP.objects.filter(
+            tenant__in=tenants,
+            state__in=[models.FloatingIP.States.OK, models.FloatingIP.States.ERRED]
+        ).exclude(backend_id__in=remote_ids)
+        stale_ips.delete()
+
+    def _update_tenant_floating_ips(self, tenant, backend_floating_ips):
         floating_ips = {ip.backend_id: ip for ip in tenant.floating_ips.filter(
             state__in=[models.FloatingIP.States.OK, models.FloatingIP.States.ERRED])}
-        with transaction.atomic():
-            for backend_ip in backend_floating_ips:
-                imported_floating_ip = self._backend_floating_ip_to_floating_ip(
-                    backend_ip,
-                    tenant=tenant,
-                    service_project_link=tenant.service_project_link,
-                )
-                floating_ip = floating_ips.pop(imported_floating_ip.backend_id, None)
-                if floating_ip is None:
-                    imported_floating_ip.save()
-                    continue
 
-                # Don't update user defined name.
-                if floating_ip.address != floating_ip.name:
-                    imported_floating_ip.name = floating_ip.name
-                update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
-                handle_resource_update_success(floating_ip)
+        for backend_ip in backend_floating_ips:
+            imported_floating_ip = self._backend_floating_ip_to_floating_ip(
+                backend_ip,
+                tenant=tenant,
+                service_project_link=tenant.service_project_link,
+            )
+            floating_ip = floating_ips.pop(imported_floating_ip.backend_id, None)
+            if floating_ip is None:
+                imported_floating_ip.save()
+                continue
 
-            for floating_ip in tenant.floating_ips.filter(backend_id__in=floating_ips.keys()):
-                handle_resource_not_found(floating_ip)
+            # Don't update user defined name.
+            if floating_ip.address != floating_ip.name:
+                imported_floating_ip.name = floating_ip.name
+            update_pulled_fields(floating_ip, imported_floating_ip, models.FloatingIP.get_backend_fields())
+            handle_resource_update_success(floating_ip)
 
     def _backend_floating_ip_to_floating_ip(self, backend_floating_ip, **kwargs):
         floating_ip = models.FloatingIP(
@@ -287,6 +282,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         with transaction.atomic():
             for tenant, security_groups in tenant_security_groups.items():
                 self._update_tenant_security_groups(tenant, security_groups)
+            self._remove_stale_security_groups(tenants, backend_security_groups)
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
@@ -298,6 +294,15 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         with transaction.atomic():
             self._update_tenant_security_groups(tenant, backend_security_groups)
+            self._remove_stale_security_groups([tenant], backend_security_groups)
+
+    def _remove_stale_security_groups(self, tenants, backend_security_groups):
+        remote_ids = {ip['id'] for ip in backend_security_groups}
+        stale_ips = models.SecurityGroup.objects.filter(
+            tenant__in=tenants,
+            state__in=[models.SecurityGroup.States.OK, models.SecurityGroup.States.ERRED]
+        ).exclude(backend_id__in=remote_ids)
+        stale_ips.delete()
 
     def _update_tenant_security_groups(self, tenant, backend_security_groups):
         security_group_uuids = []
@@ -317,9 +322,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
             security_group_uuids.append(security_group.uuid)
             self._extract_security_group_rules(security_group, backend_security_group)
-
-        for security_group in tenant.security_groups.filter(backend_id__in=security_group_uuids):
-            handle_resource_not_found(security_group)
 
     def _backend_security_group_to_security_group(self, backend_security_group, **kwargs):
         security_group = models.SecurityGroup(
@@ -378,10 +380,10 @@ class OpenStackBackend(BaseOpenStackBackend):
                 networks.append(network)
 
             networks_uuid = [network_item.uuid for network_item in networks]
-            for network in models.Network.objects.filter(
-                    state__in=[models.Network.States.OK, models.Network.States.ERRED],
-                    service_project_link__service__settings=self.settings).exclude(uuid__in=networks_uuid):
-                handle_resource_not_found(network)
+            stale_networks = models.Network.objects.filter(
+                state__in=[models.Network.States.OK, models.Network.States.ERRED],
+                tenant__in=tenants).exclude(uuid__in=networks_uuid)
+            stale_networks.delete()
 
         return networks
 
@@ -440,10 +442,10 @@ class OpenStackBackend(BaseOpenStackBackend):
 
                 subnet_uuids.append(subnet.uuid)
 
-            for subnet in models.SubNet.objects.filter(
-                    state__in=[models.SubNet.States.OK, models.SubNet.States.ERRED],
-                    service_project_link__service__settings=self.settings).exclude(uuid__in=subnet_uuids):
-                handle_resource_not_found(subnet)
+            stale_subnets = models.SubNet.objects.filter(
+                state__in=[models.SubNet.States.OK, models.SubNet.States.ERRED],
+                network__in=networks).exclude(uuid__in=subnet_uuids)
+            stale_subnets.delete()
 
     @log_backend_action()
     def import_tenant_subnets(self, tenant):
