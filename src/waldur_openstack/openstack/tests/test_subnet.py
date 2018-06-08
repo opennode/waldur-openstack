@@ -35,13 +35,9 @@ class SubNetDeleteActionTest(BaseSubNetTest):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         executor_action_mock.assert_called_once()
 
-    def test_subnet_delete_action_decreases_set_quota_limit(self, executor_action_mock):
-        self.fixture.subnet.increase_backend_quotas_usage()
-        self.assertEqual(self.fixture.subnet.network.tenant.quotas.get(name='subnet_count').usage, 1)
-
+    def test_subnet_delete_action_schedules_executor(self, executor_action_mock):
         response = self.client.delete(self.url)
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-        self.assertEqual(self.fixture.tenant.quotas.get(name='subnet_count').usage, 0)
         executor_action_mock.assert_called_once()
 
 
