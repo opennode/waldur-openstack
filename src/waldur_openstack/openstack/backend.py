@@ -19,11 +19,6 @@ from . import models
 logger = logging.getLogger(__name__)
 
 
-class FloatingIpSynchronizer(object):
-    def __init__(self, backend):
-        self.backend = backend
-
-
 class OpenStackBackend(BaseOpenStackBackend):
     DEFAULTS = {
         'tenant_name': 'admin',
@@ -203,12 +198,7 @@ class OpenStackBackend(BaseOpenStackBackend):
             for tenant, floating_ips in tenant_floating_ips.items():
                 self._update_tenant_floating_ips(tenant, floating_ips)
 
-            remote_ids = {ip['id'] for ip in backend_floating_ips}
-            stale_ips = models.FloatingIP.objects.filter(
-                tenant__in=tenants,
-                state__in=[models.FloatingIP.States.OK, models.FloatingIP.States.ERRED]
-            ).exclude(backend_id__in=remote_ids)
-            stale_ips.delete()
+            self._remove_stale_floating_ips(tenants, backend_floating_ips)
 
     @log_backend_action('pull floating IPs for tenant')
     def pull_tenant_floating_ips(self, tenant):
@@ -221,11 +211,15 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         with transaction.atomic():
             self._update_tenant_floating_ips(tenant, backend_floating_ips)
-            remote_ids = {ip['id'] for ip in backend_floating_ips}
-            stale_ips = tenant.floating_ips.filter(
-                state__in=[models.FloatingIP.States.OK, models.FloatingIP.States.ERRED]
-            ).exclude(backend_id__in=remote_ids)
-            stale_ips.delete()
+            self._remove_stale_floating_ips([tenant], backend_floating_ips)
+
+    def _remove_stale_floating_ips(self, tenants, backend_floating_ips):
+        remote_ids = {ip['id'] for ip in backend_floating_ips}
+        stale_ips = models.FloatingIP.objects.filter(
+            tenant__in=tenants,
+            state__in=[models.FloatingIP.States.OK, models.FloatingIP.States.ERRED]
+        ).exclude(backend_id__in=remote_ids)
+        stale_ips.delete()
 
     def _update_tenant_floating_ips(self, tenant, backend_floating_ips):
         floating_ips = {ip.backend_id: ip for ip in tenant.floating_ips.filter(
@@ -288,6 +282,7 @@ class OpenStackBackend(BaseOpenStackBackend):
         with transaction.atomic():
             for tenant, security_groups in tenant_security_groups.items():
                 self._update_tenant_security_groups(tenant, security_groups)
+            self._remove_stale_security_groups(tenants, backend_security_groups)
 
     @log_backend_action('pull security groups for tenant')
     def pull_tenant_security_groups(self, tenant):
@@ -299,6 +294,15 @@ class OpenStackBackend(BaseOpenStackBackend):
 
         with transaction.atomic():
             self._update_tenant_security_groups(tenant, backend_security_groups)
+            self._remove_stale_security_groups([tenant], backend_security_groups)
+
+    def _remove_stale_security_groups(self, tenants, backend_security_groups):
+        remote_ids = {ip['id'] for ip in backend_security_groups}
+        stale_ips = models.SecurityGroup.objects.filter(
+            tenant__in=tenants,
+            state__in=[models.SecurityGroup.States.OK, models.SecurityGroup.States.ERRED]
+        ).exclude(backend_id__in=remote_ids)
+        stale_ips.delete()
 
     def _update_tenant_security_groups(self, tenant, backend_security_groups):
         security_group_uuids = []
@@ -318,11 +322,6 @@ class OpenStackBackend(BaseOpenStackBackend):
 
             security_group_uuids.append(security_group.uuid)
             self._extract_security_group_rules(security_group, backend_security_group)
-
-        stale_security_groups = tenant.security_groups.filter(
-            state__in=[models.SecurityGroup.States.OK, models.SecurityGroup.States.ERRED]
-        ).exclude(uuid__in=security_group_uuids)
-        stale_security_groups.delete()
 
     def _backend_security_group_to_security_group(self, backend_security_group, **kwargs):
         security_group = models.SecurityGroup(
