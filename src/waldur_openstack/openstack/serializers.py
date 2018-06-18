@@ -163,10 +163,14 @@ class FloatingIPSerializer(structure_serializers.BaseResourceSerializer):
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
-    def create(self, validated_data):
-        validated_data['tenant'] = tenant = self.context['view'].get_object()
-        validated_data['service_project_link'] = tenant.service_project_link
-        return super(FloatingIPSerializer, self).create(validated_data)
+    def validate(self, attrs):
+        # Skip validation on update
+        if self.instance:
+            return attrs
+
+        attrs['tenant'] = tenant = self.context['view'].get_object()
+        attrs['service_project_link'] = tenant.service_project_link
+        return super(FloatingIPSerializer, self).validate(attrs)
 
 
 class SecurityGroupRuleSerializer(serializers.ModelSerializer):
@@ -310,10 +314,17 @@ class SecurityGroupSerializer(structure_serializers.BaseResourceSerializer):
             raise serializers.ValidationError(_('Default security group is managed by OpenStack itself.'))
         return value
 
+    def validate(self, attrs):
+        # Skip validation on update
+        if self.instance:
+            return attrs
+
+        attrs['tenant'] = tenant = self.context['view'].get_object()
+        attrs['service_project_link'] = tenant.service_project_link
+        return super(SecurityGroupSerializer, self).validate(attrs)
+
     def create(self, validated_data):
         rules = validated_data.pop('rules', [])
-        validated_data['tenant'] = tenant = self.context['view'].get_object()
-        validated_data['service_project_link'] = tenant.service_project_link
         with transaction.atomic():
             # quota usage has to be increased only after rules creation,
             # so we cannot execute BaseResourceSerializer create method.
@@ -419,9 +430,8 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
 
         return fields
 
-    def validate_service_project_link(self, spl):
+    def _validate_service_project_link(self, spl):
         """ Administrator can create tenant only using not shared service settings """
-        spl = super(TenantSerializer, self).validate_service_project_link(spl)
         user = self.context['request'].user
         message = _('You do not have permissions to create tenant in this project using selected service.')
         if spl.service.settings.shared and not user.is_staff:
@@ -486,6 +496,11 @@ class TenantSerializer(structure_serializers.PrivateCloudSerializer):
             })
 
     def validate(self, attrs):
+        attrs = super(TenantSerializer, self).validate(attrs)
+
+        if not self.instance:
+            self._validate_service_project_link(attrs['service_project_link'])
+
         self.validate_security_groups_configuration()
 
         if self.instance is not None:
@@ -600,11 +615,14 @@ class NetworkSerializer(structure_serializers.BaseResourceSerializer):
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
-    @transaction.atomic
-    def create(self, validated_data):
-        validated_data['tenant'] = tenant = self.context['view'].get_object()
-        validated_data['service_project_link'] = tenant.service_project_link
-        return super(NetworkSerializer, self).create(validated_data)
+    def validate(self, attrs):
+        # Skip validation on update
+        if self.instance:
+            return attrs
+
+        attrs['tenant'] = tenant = self.context['view'].get_object()
+        attrs['service_project_link'] = tenant.service_project_link
+        return super(NetworkSerializer, self).validate(attrs)
 
 
 class SubNetSerializer(structure_serializers.BaseResourceSerializer):

@@ -211,10 +211,14 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstacktenant-detail',
         read_only=True,
         lookup_field='uuid')
+
     service_project_link = serializers.HyperlinkedRelatedField(
         view_name='openstacktenant-spl-detail',
         queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
+        allow_null=True,
+        required=False,
     )
+
     action_details = core_serializers.JSONField(read_only=True)
     instance_name = serializers.SerializerMethodField()
 
@@ -245,6 +249,8 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
             return volume.instance.name
 
     def validate(self, attrs):
+        attrs = super(VolumeSerializer, self).validate(attrs)
+
         if self.instance is None:
             # image validation
             image = attrs.get('image')
@@ -417,12 +423,16 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
             **structure_serializers.BaseResourceSerializer.Meta.extra_kwargs
         )
 
-    def create(self, validated_data):
-        validated_data['source_volume'] = source_volume = self.context['view'].get_object()
-        validated_data['service_project_link'] = source_volume.service_project_link
-        validated_data['size'] = source_volume.size
-        validated_data['metadata'] = self.get_snapshot_metadata(source_volume)
-        return super(SnapshotSerializer, self).create(validated_data)
+    def validate(self, attrs):
+        # Skip validation on update
+        if self.instance:
+            return attrs
+
+        attrs['source_volume'] = source_volume = self.context['view'].get_object()
+        attrs['service_project_link'] = source_volume.service_project_link
+        attrs['size'] = source_volume.size
+        attrs['metadata'] = self.get_snapshot_metadata(source_volume)
+        return super(SnapshotSerializer, self).validate(attrs)
 
     @staticmethod
     def get_snapshot_metadata(volume):
@@ -681,7 +691,10 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
 
     service_project_link = serializers.HyperlinkedRelatedField(
         view_name='openstacktenant-spl-detail',
-        queryset=models.OpenStackTenantServiceProjectLink.objects.all())
+        queryset=models.OpenStackTenantServiceProjectLink.objects.all(),
+        allow_null=True,
+        required=False,
+    )
 
     flavor = serializers.HyperlinkedRelatedField(
         view_name='openstacktenant-flavor-detail',
@@ -744,6 +757,8 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
         )
 
     def validate(self, attrs):
+        attrs = super(InstanceSerializer, self).validate(attrs)
+
         # skip validation on object update
         if self.instance is not None:
             return attrs
@@ -1195,11 +1210,18 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
             'backup_schedule': {'lookup_field': 'uuid', 'view_name': 'openstacktenant-backup-schedule-detail'},
         }
 
+    def validate(self, attrs):
+        # Skip validation on update
+        if self.instance:
+            return attrs
+
+        attrs['instance'] = instance = self.context['view'].get_object()
+        attrs['service_project_link'] = instance.service_project_link
+        attrs['metadata'] = self.get_backup_metadata(instance)
+        return super(BackupSerializer, self).validate(attrs)
+
     @transaction.atomic
     def create(self, validated_data):
-        validated_data['instance'] = instance = self.context['view'].get_object()
-        validated_data['service_project_link'] = instance.service_project_link
-        validated_data['metadata'] = self.get_backup_metadata(instance)
         backup = super(BackupSerializer, self).create(validated_data)
         self.create_backup_snapshots(backup)
         return backup
@@ -1272,12 +1294,16 @@ class BackupScheduleSerializer(BaseScheduleSerializer):
             'instance': ('name',),
         }
 
-    def create(self, validated_data):
+    def validate(self, attrs):
+        # Skip validation on update
+        if self.instance:
+            return attrs
+
         instance = self.context['view'].get_object()
-        validated_data['instance'] = instance
-        validated_data['service_project_link'] = instance.service_project_link
-        validated_data['state'] = instance.States.OK
-        return super(BackupScheduleSerializer, self).create(validated_data)
+        attrs['instance'] = instance
+        attrs['service_project_link'] = instance.service_project_link
+        attrs['state'] = instance.States.OK
+        return super(BackupScheduleSerializer, self).validate(attrs)
 
 
 class SnapshotScheduleSerializer(BaseScheduleSerializer):
@@ -1296,12 +1322,16 @@ class SnapshotScheduleSerializer(BaseScheduleSerializer):
             'source_volume': ('name',),
         }
 
-    def create(self, validated_data):
+    def validate(self, attrs):
+        # Skip validation on update
+        if self.instance:
+            return attrs
+
         volume = self.context['view'].get_object()
-        validated_data['source_volume'] = volume
-        validated_data['service_project_link'] = volume.service_project_link
-        validated_data['state'] = volume.States.OK
-        return super(SnapshotScheduleSerializer, self).create(validated_data)
+        attrs['source_volume'] = volume
+        attrs['service_project_link'] = volume.service_project_link
+        attrs['state'] = volume.States.OK
+        return super(SnapshotScheduleSerializer, self).validate(attrs)
 
 
 class MeterSampleSerializer(serializers.Serializer):
