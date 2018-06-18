@@ -15,7 +15,7 @@ install_requires = [
     'Babel!=2.4.0,>=2.3.4',
     'cmd2<0.9.0',  # TODO: Drop restriction after Waldur is migrated to Python 3.
     'iptools>=0.6.1',
-    'waldur-core>=0.157.5',
+    'waldur-core>=0.161.1',
     'python-ceilometerclient>=2.9.0',
     'python-cinderclient>=3.1.0',
     'python-glanceclient>=2.8.0',
@@ -27,7 +27,7 @@ install_requires = [
 
 setup(
     name='waldur-openstack',
-    version='0.43.1',
+    version='0.43.2',
     author='OpenNode Team',
     author_email='info@opennodecloud.com',
     url='http://waldur.com',

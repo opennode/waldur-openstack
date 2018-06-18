@@ -1,13 +1,13 @@
 Name: waldur-openstack
 Summary: OpenStack plugin for Waldur
 Group: Development/Libraries
-Version: 0.43.1
+Version: 0.43.2
 Release: 1.el7
 License: MIT
 Url: http://waldur.com
 Source0: %{name}-%{version}.tar.gz
 
-Requires: waldur-core >= 0.157.5
+Requires: waldur-core >= 0.161.1
 Requires: python-ceilometerclient >= 2.9.0
 Requires: python-cinderclient >= 3.1.0
 Requires: python-glanceclient >= 1:2.8.0
@@ -44,6 +44,9 @@ rm -rf %{buildroot}
 %{python_sitelib}/*
 
 %changelog
+* Mon Jun 18 2018 Jenkins <jenkins@opennodecloud.com> - 0.43.2-1.el7
+- New upstream release
+
 * Fri Jun 8 2018 Jenkins <jenkins@opennodecloud.com> - 0.43.1-1.el7
 - New upstream release
 
