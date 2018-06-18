@@ -669,15 +669,13 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
             cidr = attrs['cidr']
             if models.SubNet.objects.filter(cidr=cidr, network__tenant=network.tenant).exists():
                 raise serializers.ValidationError(_('Subnet with cidr "%s" is already registered') % cidr)
-        return attrs
 
-    def create(self, validated_data):
-        network = validated_data['network']
-        validated_data['service_project_link'] = network.service_project_link
-        spl = network.service_project_link
-        validated_data['allocation_pools'] = _generate_subnet_allocation_pool(validated_data['cidr'])
-        validated_data['dns_nameservers'] = spl.service.settings.options.get('dns_nameservers', [])
-        return super(SubNetSerializer, self).create(validated_data)
+            attrs['service_project_link'] = network.service_project_link
+            options = network.service_project_link.service.settings.options
+            attrs['allocation_pools'] = _generate_subnet_allocation_pool(cidr)
+            attrs['dns_nameservers'] = options.get('dns_nameservers', [])
+
+        return attrs
 
 
 def _generate_subnet_allocation_pool(cidr):
