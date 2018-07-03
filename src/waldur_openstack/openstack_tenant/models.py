@@ -157,7 +157,7 @@ class Volume(structure_models.Volume):
                                         on_delete=models.SET_NULL)
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
-    action_details = JSONField(default={})
+    action_details = JSONField(default=dict)
 
     tracker = FieldTracker()
 
@@ -195,7 +195,7 @@ class Snapshot(structure_models.Snapshot):
     metadata = JSONField(blank=True)
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
-    action_details = JSONField(default={})
+    action_details = JSONField(default=dict)
     snapshot_schedule = models.ForeignKey('SnapshotSchedule',
                                           blank=True,
                                           null=True,
@@ -276,7 +276,7 @@ class Instance(structure_models.VirtualMachine):
     security_groups = models.ManyToManyField(SecurityGroup, related_name='instances')
     # TODO: Move this fields to resource model.
     action = models.CharField(max_length=50, blank=True)
-    action_details = JSONField(default={})
+    action_details = JSONField(default=dict)
     subnets = models.ManyToManyField('SubNet', through='InternalIP')
 
     tracker = FieldTracker()
@@ -439,10 +439,10 @@ class SubNet(core_models.DescribableMixin, structure_models.ServiceProperty):
     network = models.ForeignKey(Network, related_name='subnets')
     cidr = models.CharField(max_length=32, blank=True)
     gateway_ip = models.GenericIPAddressField(protocol='IPv4', null=True)
-    allocation_pools = JSONField(default={})
+    allocation_pools = JSONField(default=dict)
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
-    dns_nameservers = JSONField(default=[], help_text=_('List of DNS name servers associated with the subnet.'))
+    dns_nameservers = JSONField(default=list, help_text=_('List of DNS name servers associated with the subnet.'))
 
     class Meta(object):
         verbose_name = _('Subnet')
