@@ -12,7 +12,8 @@ from django.utils.translation import ugettext, ugettext_lazy as _
 from rest_framework import serializers
 from rest_framework.reverse import reverse
 
-from waldur_core.core import (serializers as core_serializers, fields as core_fields, utils as core_utils,
+from waldur_core.core import (serializers as core_serializers,
+                              utils as core_utils,
                               signals as core_signals)
 from waldur_core.structure import serializers as structure_serializers
 from waldur_openstack.openstack import serializers as openstack_serializers
@@ -105,8 +106,8 @@ class NetworkSerializer(structure_serializers.BasePropertySerializer):
 
 
 class SubNetSerializer(structure_serializers.BasePropertySerializer):
-    dns_nameservers = core_fields.JsonField(read_only=True)
-    allocation_pools = core_fields.JsonField(read_only=True)
+    dns_nameservers = serializers.JSONField(read_only=True)
+    allocation_pools = serializers.JSONField(read_only=True)
 
     class Meta(structure_serializers.BasePropertySerializer.Meta):
         model = models.SubNet
@@ -219,7 +220,8 @@ class VolumeSerializer(structure_serializers.BaseResourceSerializer):
         required=False,
     )
 
-    action_details = core_serializers.JSONField(read_only=True)
+    action_details = serializers.JSONField(read_only=True)
+    metadata = serializers.JSONField(read_only=True)
     instance_name = serializers.SerializerMethodField()
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
@@ -403,8 +405,8 @@ class SnapshotSerializer(structure_serializers.BaseResourceSerializer):
         read_only=True)
 
     source_volume_name = serializers.ReadOnlyField(source='source_volume.name')
-    action_details = core_serializers.JSONField(read_only=True)
-    metadata = core_serializers.JSONField(required=False)
+    action_details = serializers.JSONField(read_only=True)
+    metadata = serializers.JSONField(required=False)
     restorations = SnapshotRestorationSerializer(many=True, read_only=True)
     snapshot_schedule_uuid = serializers.ReadOnlyField(source='snapshot_schedule.uuid')
 
@@ -721,7 +723,7 @@ class InstanceSerializer(structure_serializers.VirtualMachineSerializer):
     data_volume_size = serializers.IntegerField(min_value=1024, required=False, write_only=True)
 
     volumes = NestedVolumeSerializer(many=True, required=False, read_only=True)
-    action_details = core_serializers.JSONField(read_only=True)
+    action_details = serializers.JSONField(read_only=True)
 
     class Meta(structure_serializers.VirtualMachineSerializer.Meta):
         model = models.Instance
@@ -1184,7 +1186,7 @@ class BackupSerializer(structure_serializers.BaseResourceSerializer):
         view_name='openstacktenant-spl-detail',
         read_only=True,
     )
-    metadata = core_fields.JsonField(read_only=True)
+    metadata = serializers.JSONField(read_only=True)
     instance_name = serializers.ReadOnlyField(source='instance.name')
     instance_security_groups = NestedSecurityGroupSerializer(
         read_only=True, many=True, source='instance.security_groups')
