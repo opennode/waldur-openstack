@@ -273,10 +273,10 @@ class SubNet(structure_models.SubResource):
     network = models.ForeignKey(Network, related_name='subnets')
     cidr = models.CharField(max_length=32, blank=True)
     gateway_ip = models.GenericIPAddressField(protocol='IPv4', null=True)
-    allocation_pools = JSONField(default={})
+    allocation_pools = JSONField(default=dict)
     ip_version = models.SmallIntegerField(default=4)
     enable_dhcp = models.BooleanField(default=True)
-    dns_nameservers = JSONField(default=[], help_text=_('List of DNS name servers associated with the subnet.'))
+    dns_nameservers = JSONField(default=list, help_text=_('List of DNS name servers associated with the subnet.'))
 
     class Meta:
         verbose_name = _('Subnet')

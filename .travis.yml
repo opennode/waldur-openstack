@@ -16,5 +16,5 @@ deploy:
     secure: JNDdM7dQEl4PINuysJlDGwOB/Stnnmx+I0NlzMQpO//13kuAV95jD5qp9Y/e9rxWNUutVsgBOG6LM9AzM/FtqACeywC3MCxq+5TVVwN3Hqy28fWItamJJE81HltMHe604ZUCgolo0cBSQw5YaMA3sh0sIhPKxZL5J/QEvAf651Sko4lvK2yHxVP48MTKCSMw+FK9JnSHfXL6kdPnc/bMJkK9qK19FNc4d54i4/Ldz+2Z3WtcfJs1bSX9YMPN9bzRjR0ibeGe2rLNg5cxOd/EIu3PZFj8R4o7r/K5+TlLXcWZ/h2cpQbkS5eb3GYlSJDNokEzwuO32mnIsDY4HU64xt95QQFCevP/hlqS5ZkkvkNOUesEIFwBVAATLD/YzuKo+w+k6rv/Z0pBnqo6S6/JmCg35/VCh92gIWgOPmG4kVHXsl4d3Nd1ItoypMQGt2HFT4KLNyNYySyEOTbE9+Pd7lMAegFwhy4T9Qd3Y4UE82QcukS79UqL9lvhZwoYU90Vvaq6S85SLrmG5a8+Ac8BXYqvZR8icrOz/MX//dyNwtofjiE+38sA48QJwXlTLIAuJWE6FklHrfrqhs74Xs+u742JRW0SidaaB6L/pzUQlTypp6Br02Ug2XW7TK/8BeapDf5SUoWXf5rO0+9/xCIHJVwtzRLWfnwS4PbK6vqCnus=
   on:
     tags: true
-    distributions: sdist bdist_wheel
     repo: opennode/waldur-openstack
+  distributions: "sdist bdist_wheel"

@@ -15,7 +15,6 @@ from rest_framework import serializers
 from iptools.ipv4 import validate_cidr
 
 from waldur_core.core import utils as core_utils, serializers as core_serializers
-from waldur_core.core.fields import JsonField
 from waldur_core.quotas import serializers as quotas_serializers
 from waldur_core.structure import serializers as structure_serializers, permissions as structure_permissions
 
@@ -636,7 +635,7 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         read_only=True)
     cidr = serializers.CharField(
         validators=[subnet_cidr_validator], required=False, initial='192.168.42.0/24')
-    allocation_pools = JsonField(read_only=True)
+    allocation_pools = serializers.JSONField(read_only=True)
     network_name = serializers.CharField(source='network.name', read_only=True)
     tenant = serializers.HyperlinkedRelatedField(
         source='network.tenant',
@@ -644,7 +643,7 @@ class SubNetSerializer(structure_serializers.BaseResourceSerializer):
         read_only=True,
         lookup_field='uuid')
     tenant_name = serializers.CharField(source='network.tenant.name', read_only=True)
-    dns_nameservers = JsonField(read_only=True)
+    dns_nameservers = serializers.JSONField(read_only=True)
 
     class Meta(structure_serializers.BaseResourceSerializer.Meta):
         model = models.SubNet
